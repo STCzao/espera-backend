@@ -10,6 +10,8 @@ const controller = new AuthController();
 export const authRouter = Router();
 
 authRouter.post("/register", rateLimiter, controller.register);
+authRouter.get("/verify-email", controller.verifyEmail);
+authRouter.post("/resend-verification", rateLimiter, controller.resendVerification);
 authRouter.post("/login", rateLimiter, controller.login);
 authRouter.post("/refresh-token", rateLimiter, controller.refreshToken);
 authRouter.get("/me", authenticate, authorize("turn:read_own"), (request, response) => {
