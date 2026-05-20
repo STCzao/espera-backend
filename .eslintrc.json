@@ -1,0 +1,231 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "project": "./tsconfig.json",
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint", "boundaries"],
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "overrides": [
+    {
+      "files": ["src/modules/auth/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": ["**/modules/queue/**", "**/modules/business/**", "../../queue/**", "../../business/**"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/queue/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": ["**/modules/auth/**", "**/modules/business/**", "../../auth/**", "../../business/**"]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/modules/business/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": ["**/modules/auth/**", "**/modules/queue/**", "../../auth/**", "../../queue/**"]
+          }
+        ]
+      }
+    }
+  ],
+  "settings": {
+    "boundaries/elements": [
+      {
+        "type": "auth-domain",
+        "pattern": "src/modules/auth/domain/*.ts"
+      },
+      {
+        "type": "auth-application",
+        "pattern": "src/modules/auth/application/*.ts"
+      },
+      {
+        "type": "auth-infrastructure",
+        "pattern": "src/modules/auth/infrastructure/**/*.ts"
+      },
+      {
+        "type": "auth-interfaces",
+        "pattern": "src/modules/auth/interfaces/*.ts"
+      },
+      {
+        "type": "auth-public-api",
+        "pattern": "src/modules/auth/index.ts"
+      },
+      {
+        "type": "queue-domain",
+        "pattern": "src/modules/queue/domain/*.ts"
+      },
+      {
+        "type": "queue-application",
+        "pattern": "src/modules/queue/application/*.ts"
+      },
+      {
+        "type": "queue-infrastructure",
+        "pattern": "src/modules/queue/infrastructure/**/*.ts"
+      },
+      {
+        "type": "queue-interfaces",
+        "pattern": "src/modules/queue/interfaces/*.ts"
+      },
+      {
+        "type": "queue-public-api",
+        "pattern": "src/modules/queue/index.ts"
+      },
+      {
+        "type": "business-domain",
+        "pattern": "src/modules/business/domain/*.ts"
+      },
+      {
+        "type": "business-application",
+        "pattern": "src/modules/business/application/*.ts"
+      },
+      {
+        "type": "business-infrastructure",
+        "pattern": "src/modules/business/infrastructure/**/*.ts"
+      },
+      {
+        "type": "business-interfaces",
+        "pattern": "src/modules/business/interfaces/*.ts"
+      },
+      {
+        "type": "business-public-api",
+        "pattern": "src/modules/business/index.ts"
+      },
+      {
+        "type": "shared",
+        "pattern": "src/shared/**/*.ts"
+      },
+      {
+        "type": "middleware",
+        "pattern": "src/middleware/*.ts"
+      },
+      {
+        "type": "app",
+        "pattern": "src/app.ts"
+      }
+    ]
+  },
+  "rules": {
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "boundaries/element-types": [
+      "error",
+      {
+        "default": "disallow",
+        "rules": [
+          {
+            "from": ["auth-domain", "queue-domain", "business-domain"],
+            "allow": ["shared"]
+          },
+          {
+            "from": ["auth-application"],
+            "allow": ["auth-domain", "shared"]
+          },
+          {
+            "from": ["queue-application"],
+            "allow": ["queue-domain", "shared"]
+          },
+          {
+            "from": ["business-application"],
+            "allow": ["business-domain", "shared"]
+          },
+          {
+            "from": ["auth-infrastructure"],
+            "allow": ["auth-domain", "auth-application", "shared"]
+          },
+          {
+            "from": ["queue-infrastructure"],
+            "allow": ["queue-domain", "queue-application", "shared"]
+          },
+          {
+            "from": ["business-infrastructure"],
+            "allow": ["business-domain", "business-application", "shared"]
+          },
+          {
+            "from": ["auth-interfaces"],
+            "allow": ["auth-application", "auth-infrastructure", "shared", "middleware"]
+          },
+          {
+            "from": ["auth-public-api"],
+            "allow": [
+              "auth-domain",
+              "auth-application",
+              "auth-infrastructure",
+              "auth-interfaces"
+            ]
+          },
+          {
+            "from": ["queue-interfaces"],
+            "allow": ["queue-application", "queue-infrastructure", "shared", "middleware"]
+          },
+          {
+            "from": ["queue-public-api"],
+            "allow": [
+              "queue-domain",
+              "queue-application",
+              "queue-infrastructure",
+              "queue-interfaces"
+            ]
+          },
+          {
+            "from": ["business-interfaces"],
+            "allow": ["business-application", "business-infrastructure", "shared", "middleware"]
+          },
+          {
+            "from": ["business-public-api"],
+            "allow": [
+              "business-domain",
+              "business-application",
+              "business-infrastructure",
+              "business-interfaces"
+            ]
+          },
+          {
+            "from": ["middleware"],
+            "allow": ["shared"]
+          },
+          {
+            "from": ["app"],
+            "allow": [
+              "auth-interfaces",
+              "queue-interfaces",
+              "business-interfaces",
+              "auth-public-api",
+              "queue-public-api",
+              "business-public-api",
+              "shared",
+              "middleware"
+            ]
+          },
+          {
+            "from": ["shared"],
+            "allow": ["shared"]
+          }
+        ]
+      }
+    ]
+  }
+}
