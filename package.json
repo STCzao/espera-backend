@@ -1,10 +1,15 @@
 {
   "name": "espera-back",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Backend base para Espera",
+  "main": "dist/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "lint": "eslint src/**/*.ts",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "prisma generate"
   },
   "repository": {
     "type": "git",
@@ -17,5 +22,40 @@
   "bugs": {
     "url": "https://github.com/STCzao/espera-backend/issues"
   },
-  "homepage": "https://github.com/STCzao/espera-backend#readme"
+  "homepage": "https://github.com/STCzao/espera-backend#readme",
+  "dependencies": {
+    "@prisma/client": "^6.8.2",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-async-errors": "^3.1.1",
+    "helmet": "^8.1.0",
+    "ioredis": "^5.6.1",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.0.7",
+    "pino": "^9.7.0",
+    "pino-http": "^10.4.0",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.15.30",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "prisma": "^6.8.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
 }
