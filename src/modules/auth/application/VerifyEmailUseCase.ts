@@ -19,19 +19,25 @@ export class VerifyEmailUseCase
     private readonly userRepo: IUserRepo = new PostgresUserRepo()
   ) {}
 
+  /**
+   * Verifies a user's email address using the stored verification token.
+   * Clears verification fields once the email is confirmed.
+   */
   public async execute(input: VerifyEmailInput): Promise<VerifyEmailOutput> {
     if (!input.token) {
-      throw AppError.badRequest("Token de verificación inválido.");
+      throw AppError.badRequest("Invalid verification token.");
     }
 
     const user = await this.userRepo.findByVerificationToken(input.token);
 
     if (!user) {
-      throw AppError.badRequest("Token de verificación inválido.");
+      throw AppError.badRequest("Invalid verification token.");
     }
 
     if (user.emailVerificationExpiry && user.emailVerificationExpiry < new Date()) {
-      throw AppError.badRequest("El token de verificación expiró. Solicitá uno nuevo.");
+      throw AppError.badRequest(
+        "Verification token has expired. Please request a new one."
+      );
     }
 
     await this.userRepo.save({
@@ -42,6 +48,6 @@ export class VerifyEmailUseCase
       updatedAt: new Date()
     });
 
-    return { message: "Email verificado correctamente." };
+    return { message: "Email verified successfully." };
   }
 }

@@ -8,6 +8,7 @@ export interface User {
   phone?: string;
   locality?: string;
   passwordHash?: string;
+  refreshTokenHash?: string;
   role: UserRole;
   isEmailVerified: boolean;
   emailVerificationToken?: string;

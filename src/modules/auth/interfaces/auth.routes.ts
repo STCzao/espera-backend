@@ -14,6 +14,7 @@ authRouter.get("/verify-email", controller.verifyEmail);
 authRouter.post("/resend-verification", rateLimiter, controller.resendVerification);
 authRouter.post("/login", rateLimiter, controller.login);
 authRouter.post("/refresh-token", rateLimiter, controller.refreshToken);
+authRouter.post("/logout", controller.logout);
 authRouter.get("/me", authenticate, authorize("turn:read_own"), (request, response) => {
   response.status(200).json({ user: request.user });
 });
