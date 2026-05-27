@@ -16,45 +16,46 @@ const nameRegex = /^[\p{L}\s'\-]+$/u;
 
 const registerSchema = z.object({
   email: z
-    .string({ required_error: "El email es obligatorio." })
+    .string({ required_error: "Email is required." })
     .transform((value) => value.trim())
     .pipe(
       z
         .string()
-        .email("Email inválido.")
-        .max(254, "El email no puede superar los 254 caracteres.")
+        .email("Invalid email.")
+        .max(254, "Email must not exceed 254 characters.")
         .transform((value) => value.toLowerCase())
     ),
   password: z
-    .string({ required_error: "La contraseña es obligatoria." })
-    .min(8, "La contraseña debe tener al menos 8 caracteres.")
-    .max(72, "La contraseña no puede superar los 72 caracteres.")
+    .string({ required_error: "Password is required." })
+    .min(8, "Password must be at least 8 characters.")
+    .max(72, "Password must not exceed 72 characters.")
     .regex(
       passwordRegex,
-      "La contraseña debe tener al menos una mayúscula, una minúscula y un número."
+      "Password must contain at least one uppercase letter, one lowercase letter, and one number."
     ),
   firstName: z
-    .string({ required_error: "El nombre es obligatorio." })
+    .string({ required_error: "First name is required." })
     .transform((value) => value.trim())
     .pipe(
       z
         .string()
-        .min(2, "El nombre debe tener al menos 2 caracteres.")
-        .max(50, "El nombre no puede superar los 50 caracteres.")
-        .regex(nameRegex, "El nombre solo puede contener letras.")
+        .min(2, "First name must be at least 2 characters.")
+        .max(50, "First name must not exceed 50 characters.")
+        .regex(nameRegex, "First name can only contain letters.")
     ),
   lastName: z
-    .string({ required_error: "El apellido es obligatorio." })
+    .string({ required_error: "Last name is required." })
     .transform((value) => value.trim())
     .pipe(
       z
         .string()
-        .min(2, "El apellido debe tener al menos 2 caracteres.")
-        .max(50, "El apellido no puede superar los 50 caracteres.")
-        .regex(nameRegex, "El apellido solo puede contener letras.")
+        .min(2, "Last name must be at least 2 characters.")
+        .max(50, "Last name must not exceed 50 characters.")
+        .regex(nameRegex, "Last name can only contain letters.")
     )
 });
 
+// Verification links remain valid for 24 hours to balance usability and account safety.
 const VERIFICATION_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -68,6 +69,11 @@ export class RegisterUseCase implements UseCase<RegisterInput, RegisterOutput> {
     private readonly userRepo: IUserRepo = new PostgresUserRepo()
   ) {}
 
+  /**
+   * Registers a new user and starts the email verification flow.
+   * Sends a verification email after persistence succeeds.
+   * Rolls back the created user if the email cannot be sent.
+   */
   public async execute(input: RegisterInput): Promise<RegisterOutput> {
     const parsed = registerSchema.safeParse(input);
     if (!parsed.success) {
@@ -78,7 +84,7 @@ export class RegisterUseCase implements UseCase<RegisterInput, RegisterOutput> {
 
     const existing = await this.userRepo.findByEmail(email);
     if (existing) {
-      throw AppError.conflict("El email ya está en uso.");
+      throw AppError.conflict("Email already in use.");
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -104,8 +110,9 @@ export class RegisterUseCase implements UseCase<RegisterInput, RegisterOutput> {
     try {
       await sendVerificationEmail(email, verificationToken);
     } catch {
+      // Rollback: user was created but email failed, so remove the unverifiable account.
       await this.userRepo.delete(user.id);
-      throw AppError.internal("Error al enviar el email de verificación. Intentá de nuevo.");
+      throw AppError.internal("Failed to send verification email. Please try again.");
     }
 
     domainEventBus.emit("user.registered", {

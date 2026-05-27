@@ -22,6 +22,7 @@ model User {
   phone                   String?
   locality                String?
   passwordHash            String?
+  refreshTokenHash        String?   @unique
   role                    Role      @default(USER)
   isEmailVerified         Boolean   @default(false)
   emailVerificationToken  String?   @unique

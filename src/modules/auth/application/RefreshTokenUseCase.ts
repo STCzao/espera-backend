@@ -1,5 +1,3 @@
-import jwt from "jsonwebtoken";
-
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 
@@ -13,6 +11,7 @@ export interface RefreshTokenInput {
 
 export interface RefreshTokenOutput {
   accessToken: string;
+  refreshToken: string;
 }
 
 export class RefreshTokenUseCase
@@ -23,29 +22,31 @@ export class RefreshTokenUseCase
     private readonly tokenService = new JWTTokenService()
   ) {}
 
+  /**
+   * Exchanges a valid refresh token for a new access token and rotated refresh token.
+   * Rejects tokens that are missing from storage, expired by policy, or already replaced.
+   */
   public async execute(input: RefreshTokenInput): Promise<RefreshTokenOutput> {
     if (!input.refreshToken) {
-      throw AppError.badRequest("Token inválido.");
+      throw AppError.badRequest("Invalid token.");
     }
 
-    try {
-      const payload = jwt.verify(
-        input.refreshToken,
-        process.env.JWT_REFRESH_SECRET ?? "development-refresh-secret"
-      ) as jwt.JwtPayload;
-
-      const user = await this.userRepo.findById(payload.sub!);
-      if (!user) {
-        throw AppError.unauthorized("Token inválido.");
-      }
-
-      return { accessToken: this.tokenService.generateAccessToken(user) };
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw AppError.unauthorized("Token inválido o expirado.");
+    const hash = this.tokenService.hashRefreshToken(input.refreshToken);
+    const user = await this.userRepo.findByRefreshTokenHash(hash);
+    if (!user) {
+      throw AppError.unauthorized("Invalid or expired token.");
     }
+
+    // Rotate token on every use to reduce replay risk if an old token is leaked.
+    const { token, hash: newHash } = this.tokenService.generateRefreshToken();
+    const updatedUser = await this.userRepo.save({
+      ...user,
+      refreshTokenHash: newHash
+    });
+
+    return {
+      accessToken: this.tokenService.generateAccessToken(updatedUser),
+      refreshToken: token
+    };
   }
 }

@@ -1,4 +1,5 @@
 export * from "./application/LoginUseCase";
+export * from "./application/LogoutUseCase";
 export * from "./application/ResendVerificationUseCase";
 export * from "./application/RefreshTokenUseCase";
 export * from "./application/RegisterUseCase";

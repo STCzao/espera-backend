@@ -12,7 +12,7 @@ import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 const resendVerificationSchema = z.object({
   email: z
     .string()
-    .email("Token inválido.")
+    .email("Invalid token.")
     .transform((value) => value.trim().toLowerCase())
 });
 
@@ -32,27 +32,34 @@ export class ResendVerificationUseCase
     private readonly userRepo: IUserRepo = new PostgresUserRepo()
   ) {}
 
+  /**
+   * Resends a verification email to an existing unverified user.
+   * Refreshes the verification token and expiry before sending the new email.
+   */
   public async execute(input: ResendVerificationInput): Promise<ResendVerificationOutput> {
     const parsed = resendVerificationSchema.safeParse(input);
     if (!parsed.success) {
-      throw AppError.badRequest("Token inválido.");
+      throw AppError.badRequest("Invalid token.");
     }
 
     const user = await this.userRepo.findByEmail(parsed.data.email);
 
     if (!user) {
-      throw AppError.badRequest("Token inválido.");
+      throw AppError.badRequest("Invalid token.");
     }
 
     if (user.isEmailVerified) {
-      throw AppError.badRequest("El email ya fue verificado.");
+      throw AppError.badRequest("Email is already verified.");
     }
 
+    // Cooldown prevents email flooding and repeated token churn for the same account.
     if (
       user.lastVerificationSentAt &&
       Date.now() - user.lastVerificationSentAt.getTime() < RESEND_COOLDOWN_MS
     ) {
-      throw AppError.tooManyRequests("Esperá 5 minutos antes de solicitar otro email.");
+      throw AppError.tooManyRequests(
+        "Please wait 5 minutes before requesting another email."
+      );
     }
 
     const verificationToken = randomUUID();
@@ -70,9 +77,9 @@ export class ResendVerificationUseCase
     try {
       await sendVerificationEmail(updatedUser.email, verificationToken);
     } catch {
-      throw AppError.internal("Error al enviar el email de verificación. Intentá de nuevo.");
+      throw AppError.internal("Failed to send verification email. Please try again.");
     }
 
-    return { message: "Email de verificación reenviado." };
+    return { message: "Verification email resent." };
   }
 }
