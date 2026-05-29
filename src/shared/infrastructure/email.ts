@@ -41,3 +41,22 @@ export const sendPasswordResetEmail = async (
     `,
   });
 };
+
+export const sendBusinessWelcomeEmail = async (
+  to: string,
+  firstName: string,
+): Promise<void> => {
+  const dashboardUrl = `${process.env.APP_URL}/login`;
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "Your Espera business account is now approved",
+    html: `
+      <p>Hello ${firstName},</p>
+      <p>Your business account has been approved and you can now access the Espera panel.</p>
+      <p>You can sign in here:</p>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};

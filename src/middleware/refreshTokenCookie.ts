@@ -5,8 +5,8 @@ const refreshTokenCookieOptions = {
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
   maxAge: 30 * 24 * 60 * 60 * 1000,
-  domain: process.env.COOKIE_DOMAIN ?? "localhost",
-  path: "/"
+  path: "/",
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
 
 export const setRefreshTokenCookie = (response: Response, token: string): void => {
@@ -14,8 +14,5 @@ export const setRefreshTokenCookie = (response: Response, token: string): void =
 };
 
 export const clearRefreshTokenCookie = (response: Response): void => {
-  response.clearCookie("refreshToken", {
-    domain: refreshTokenCookieOptions.domain,
-    path: refreshTokenCookieOptions.path
-  });
+  response.clearCookie("refreshToken", refreshTokenCookieOptions);
 };

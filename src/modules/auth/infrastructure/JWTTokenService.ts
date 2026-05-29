@@ -15,7 +15,8 @@ export class JWTTokenService {
         email: user.email,
         role: user.role,
         firstName: user.firstName,
-        lastName: user.lastName
+        lastName: user.lastName,
+        approvalStatus: user.approvalStatus,
       },
       process.env.JWT_ACCESS_SECRET ?? "development-access-secret",
       {

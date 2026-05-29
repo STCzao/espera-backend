@@ -99,6 +99,8 @@ export class RegisterUseCase implements UseCase<RegisterInput, RegisterOutput> {
       lastName,
       passwordHash,
       role: "user",
+      approvalStatus: "approved",
+      authProvider: "local",
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
       emailVerificationExpiry: verificationExpiry,

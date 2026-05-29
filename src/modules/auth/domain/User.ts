@@ -1,4 +1,6 @@
 export type UserRole = "user" | "employee" | "business_admin" | "super_admin";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type AuthProvider = "local" | "google";
 
 export interface User {
   id: string;
@@ -10,6 +12,9 @@ export interface User {
   passwordHash?: string;
   refreshTokenHash?: string;
   role: UserRole;
+  approvalStatus: ApprovalStatus;
+  authProvider: AuthProvider;
+  googleId?: string;
   isEmailVerified: boolean;
   emailVerificationToken?: string;
   emailVerificationExpiry?: Date;

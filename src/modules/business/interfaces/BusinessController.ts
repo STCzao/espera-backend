@@ -11,7 +11,10 @@ export class BusinessController {
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
-    const result = await this.registerBusinessUseCase.execute(request.body);
+    const result = await this.registerBusinessUseCase.execute({
+      ...request.body,
+      ownerUserId: request.user?.id ?? "",
+    });
     logger.info({ businessId: result.businessId }, "Business registered");
     response.status(201).json(result);
   };

@@ -10,7 +10,7 @@ import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email."),
-  password: z.string().min(1, "Password is required.")
+  password: z.string().min(1, "Password is required."),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -23,7 +23,7 @@ export interface LoginOutput {
 export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
-    private readonly tokenService = new JWTTokenService()
+    private readonly tokenService = new JWTTokenService(),
   ) {}
 
   /**
@@ -42,25 +42,46 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       throw AppError.unauthorized("Invalid credentials.");
     }
 
-    const passwordMatches = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    const passwordMatches = await bcrypt.compare(
+      parsed.data.password,
+      user.passwordHash,
+    );
     if (!passwordMatches) {
       throw AppError.unauthorized("Invalid credentials.");
     }
 
+    // Business admins should always see their review state before any other access hint.
+    if (user.role === "business_admin" && user.approvalStatus === "pending") {
+      throw AppError.forbidden(
+        "Your account is still under review.",
+        "ACCOUNT_PENDING_REVIEW",
+      );
+    }
+
+    if (user.role === "business_admin" && user.approvalStatus === "rejected") {
+      throw AppError.forbidden(
+        "Your account approval request was rejected.",
+        "ACCOUNT_REJECTED",
+      );
+    }
+
     if (!user.isEmailVerified) {
-      throw AppError.forbidden("You must verify your email before logging in.");
+      throw AppError.forbidden(
+        "You must verify your email before logging in.",
+        "EMAIL_NOT_VERIFIED",
+      );
     }
 
     const { token, hash } = this.tokenService.generateRefreshToken();
 
     await this.userRepo.save({
       ...user,
-      refreshTokenHash: hash
+      refreshTokenHash: hash,
     });
 
     return {
       accessToken: this.tokenService.generateAccessToken(user),
-      refreshToken: token
+      refreshToken: token,
     };
   }
 }

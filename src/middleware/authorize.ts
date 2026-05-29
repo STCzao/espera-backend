@@ -4,6 +4,7 @@ import { AppError } from "@shared/kernel/AppError";
 
 type Permission =
   | "*"
+  | "platform:approve_business_account"
   | "turn:create"
   | "turn:cancel"
   | "turn:read_own"
@@ -20,7 +21,7 @@ const rolePermissions: Record<
   user: ["turn:create", "turn:cancel", "turn:read_own"],
   employee: ["queue:read", "queue:call_next", "turn:create", "turn:cancel"],
   business_admin: ["queue:configure", "employee:manage", "business:edit"],
-  super_admin: ["*"]
+  super_admin: ["*", "platform:approve_business_account"]
 };
 
 export const authorize =
