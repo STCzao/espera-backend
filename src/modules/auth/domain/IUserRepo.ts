@@ -18,6 +18,12 @@ export interface IUserRepo extends Repository<User> {
   findByVerificationToken(token: string): Promise<User | null>;
 
   /**
+   * Finds a user by password reset token
+   */
+
+  findByPasswordResetToken(token: string): Promise<User | null>;
+
+  /**
    * Deletes a user by id.
    */
   delete(id: string): Promise<void>;
