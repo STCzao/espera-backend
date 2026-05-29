@@ -10,7 +10,6 @@ export interface User {
   phone?: string;
   locality?: string;
   passwordHash?: string;
-  refreshTokenHash?: string;
   role: UserRole;
   approvalStatus: ApprovalStatus;
   authProvider: AuthProvider;

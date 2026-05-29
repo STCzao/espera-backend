@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 
+import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
 import { GoogleOAuthService } from "../infrastructure/GoogleOAuthService";
 import { JWTTokenService } from "../infrastructure/JWTTokenService";
+import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const loginWithGoogleSchema = z.object({
@@ -25,6 +29,7 @@ export class LoginWithGoogleUseCase
 {
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
     private readonly tokenService = new JWTTokenService(),
     private readonly googleOAuthService = new GoogleOAuthService(),
   ) {}
@@ -73,11 +78,21 @@ export class LoginWithGoogleUseCase
       );
     }
 
+    if (!user.googleId) {
+      await this.userRepo.save({
+        ...user,
+        googleId: profile.googleId,
+      });
+    }
+
     const { token, hash } = this.tokenService.generateRefreshToken();
-    await this.userRepo.save({
-      ...user,
-      refreshTokenHash: hash,
-      googleId: user.googleId ?? profile.googleId,
+    await this.refreshSessionRepo.save({
+      id: randomUUID(),
+      userId: user.id,
+      tokenHash: hash,
+      expiresAt: this.tokenService.getRefreshTokenExpiryDate(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     return {

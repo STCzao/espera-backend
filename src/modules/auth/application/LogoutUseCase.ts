@@ -1,9 +1,9 @@
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 
-import type { IUserRepo } from "../domain/IUserRepo";
+import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import { JWTTokenService } from "../infrastructure/JWTTokenService";
-import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
+import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 
 export interface LogoutInput {
   refreshToken: string;
@@ -11,7 +11,7 @@ export interface LogoutInput {
 
 export class LogoutUseCase implements UseCase<LogoutInput, void> {
   public constructor(
-    private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
     private readonly tokenService = new JWTTokenService()
   ) {}
 
@@ -25,15 +25,12 @@ export class LogoutUseCase implements UseCase<LogoutInput, void> {
     }
 
     const hash = this.tokenService.hashRefreshToken(input.refreshToken);
-    const user = await this.userRepo.findByRefreshTokenHash(hash);
+    const session = await this.refreshSessionRepo.findByTokenHash(hash);
     // Idempotent: if the token is already gone, logout is already effective.
-    if (!user) {
+    if (!session || session.revokedAt) {
       return;
     }
 
-    await this.userRepo.save({
-      ...user,
-      refreshTokenHash: undefined
-    });
+    await this.refreshSessionRepo.revokeById(session.id);
   }
 }

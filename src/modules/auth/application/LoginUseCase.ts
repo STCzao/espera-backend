@@ -1,10 +1,19 @@
+import { randomUUID } from "node:crypto";
+
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
+import {
+  getLoginAttemptStatus,
+  recordFailedLoginAttempt,
+  resetLoginAttemptStatus,
+} from "@shared/infrastructure/loginAttemptTracker";
 import type { UseCase } from "@shared/kernel/UseCase";
 
+import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
+import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 import { JWTTokenService } from "../infrastructure/JWTTokenService";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
@@ -23,6 +32,7 @@ export interface LoginOutput {
 export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
     private readonly tokenService = new JWTTokenService(),
   ) {}
 
@@ -37,8 +47,20 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
     }
 
     const email = parsed.data.email.trim().toLowerCase();
+    const loginAttemptStatus = await getLoginAttemptStatus(email);
+    if (
+      loginAttemptStatus.blockedUntil &&
+      loginAttemptStatus.blockedUntil.getTime() > Date.now()
+    ) {
+      throw AppError.tooManyRequests(
+        "Too many failed login attempts. Please try again in 5 minutes.",
+        "LOGIN_TEMPORARILY_BLOCKED",
+      );
+    }
+
     const user = await this.userRepo.findByEmail(email);
     if (!user?.passwordHash) {
+      await recordFailedLoginAttempt(email);
       throw AppError.unauthorized("Invalid credentials.");
     }
 
@@ -47,6 +69,7 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       user.passwordHash,
     );
     if (!passwordMatches) {
+      await recordFailedLoginAttempt(email);
       throw AppError.unauthorized("Invalid credentials.");
     }
 
@@ -72,11 +95,17 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       );
     }
 
+    await resetLoginAttemptStatus(email);
+
     const { token, hash } = this.tokenService.generateRefreshToken();
 
-    await this.userRepo.save({
-      ...user,
-      refreshTokenHash: hash,
+    await this.refreshSessionRepo.save({
+      id: randomUUID(),
+      userId: user.id,
+      tokenHash: hash,
+      expiresAt: this.tokenService.getRefreshTokenExpiryDate(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     return {

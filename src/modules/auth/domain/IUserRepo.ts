@@ -8,11 +8,6 @@ export interface IUserRepo extends Repository<User> {
   findByEmail(email: string): Promise<User | null>;
 
   /**
-   * Finds a user by the persisted refresh token hash.
-   */
-  findByRefreshTokenHash(hash: string): Promise<User | null>;
-
-  /**
    * Finds a user by email verification token.
    */
   findByVerificationToken(token: string): Promise<User | null>;
