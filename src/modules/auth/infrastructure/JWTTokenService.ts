@@ -3,6 +3,8 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 
 import type { User } from "../domain/User";
 
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 export class JWTTokenService {
   /**
    * Creates a signed JWT access token for an authenticated user.
@@ -43,5 +45,12 @@ export class JWTTokenService {
   public hashRefreshToken(token: string): string {
     // Hashing keeps plaintext refresh tokens out of storage while preserving deterministic lookup.
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  /**
+   * Returns the absolute expiry date for a newly issued refresh token.
+   */
+  public getRefreshTokenExpiryDate(): Date {
+    return new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
   }
 }

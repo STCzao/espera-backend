@@ -4,7 +4,9 @@ import { z } from "zod";
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 
+import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
+import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
@@ -39,7 +41,8 @@ export class ResetPasswordUseCase
   implements UseCase<ResetPasswordInput, ResetPasswordOutput>
 {
   public constructor(
-    private readonly userRepo: IUserRepo = new PostgresUserRepo()
+    private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
   ) {}
 
   public async execute(input: ResetPasswordInput): Promise<ResetPasswordOutput> {
@@ -65,10 +68,13 @@ export class ResetPasswordUseCase
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Password resets revoke every active refresh session to protect the account
+    // if the previous password or session cookies were compromised.
+    await this.refreshSessionRepo.revokeAllByUserId(user.id);
+
     await this.userRepo.save({
       ...user,
       passwordHash,
-      refreshTokenHash: undefined,
       passwordResetToken: undefined,
       passwordResetExpiry: undefined,
       passwordResetUsedAt: new Date()

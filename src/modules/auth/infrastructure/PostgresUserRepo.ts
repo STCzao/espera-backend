@@ -57,16 +57,6 @@ export class PostgresUserRepo implements IUserRepo {
   }
 
   /**
-   * Finds a user by the stored refresh token hash.
-   */
-  public async findByRefreshTokenHash(hash: string): Promise<User | null> {
-    const user = await prisma.user.findUnique({
-      where: { refreshTokenHash: hash },
-    });
-    return user ? this.toDomain(user) : null;
-  }
-
-  /**
    * Creates or updates a user record and returns the normalized domain entity.
    */
   public async save(user: User): Promise<User> {
@@ -82,7 +72,6 @@ export class PostgresUserRepo implements IUserRepo {
         phone: user.phone ?? null,
         locality: user.locality ?? null,
         passwordHash: user.passwordHash ?? null,
-        refreshTokenHash: user.refreshTokenHash ?? null,
         role: toRoleEnum(user.role),
         approvalStatus: toApprovalStatusEnum(user.approvalStatus),
         authProvider: toAuthProviderEnum(user.authProvider),
@@ -102,7 +91,6 @@ export class PostgresUserRepo implements IUserRepo {
         phone: user.phone ?? null,
         locality: user.locality ?? null,
         passwordHash: user.passwordHash ?? null,
-        refreshTokenHash: user.refreshTokenHash ?? null,
         role: toRoleEnum(user.role),
         approvalStatus: toApprovalStatusEnum(user.approvalStatus),
         authProvider: toAuthProviderEnum(user.authProvider),
@@ -139,7 +127,6 @@ export class PostgresUserRepo implements IUserRepo {
       phone: raw.phone ?? undefined,
       locality: raw.locality ?? undefined,
       passwordHash: raw.passwordHash ?? undefined,
-      refreshTokenHash: raw.refreshTokenHash ?? undefined,
       role: raw.role.toLowerCase() as User["role"],
       approvalStatus:
         raw.approvalStatus.toLowerCase() as User["approvalStatus"],

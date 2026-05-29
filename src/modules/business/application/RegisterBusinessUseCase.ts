@@ -52,27 +52,41 @@ export class RegisterBusinessUseCase
       );
     }
 
-    if (user.role !== "business_admin" || user.approvalStatus === "rejected") {
-      // Existing accounts can start the business onboarding flow by creating a business.
-      await this.userRepo.save({
-        ...user,
-        role: "business_admin",
-        approvalStatus: "pending",
+    const requiresBusinessAdminPromotion =
+      user.role !== "business_admin" || user.approvalStatus === "rejected";
+
+    try {
+      if (requiresBusinessAdminPromotion) {
+        // Existing accounts can start the business onboarding flow by creating a business.
+        await this.userRepo.save({
+          ...user,
+          role: "business_admin",
+          approvalStatus: "pending",
+        });
+      }
+
+      const business = await this.businessRepo.save({
+        id: randomUUID(),
+        name: parsed.data.name,
+        slug: parsed.data.slug,
+        categoryId: parsed.data.categoryId,
+        ownerUserId: parsed.data.ownerUserId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
+
+      return {
+        businessId: business.id,
+      };
+    } catch {
+      if (requiresBusinessAdminPromotion) {
+        await this.userRepo.save(user);
+      }
+
+      throw AppError.internal(
+        "Failed to create business. Please try again.",
+        "BUSINESS_REGISTRATION_FAILED",
+      );
     }
-
-    const business = await this.businessRepo.save({
-      id: randomUUID(),
-      name: parsed.data.name,
-      slug: parsed.data.slug,
-      categoryId: parsed.data.categoryId,
-      ownerUserId: parsed.data.ownerUserId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    return {
-      businessId: business.id,
-    };
   }
 }
