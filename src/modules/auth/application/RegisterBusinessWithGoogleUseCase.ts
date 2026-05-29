@@ -13,6 +13,7 @@ import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const registerBusinessWithGoogleSchema = z.object({
   code: z.string().min(1, "Google authorization code is required."),
+  state: z.string().min(1, "Google OAuth state is required."),
   businessName: z.string().trim().min(2, "Business name is required.").max(120),
   businessSlug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
   categoryId: z.string().uuid("Invalid category id."),

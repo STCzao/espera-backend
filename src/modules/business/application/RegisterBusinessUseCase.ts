@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "../../../shared/kernel/UseCase";
+import type { IUserRepo } from "../../auth/domain/IUserRepo";
+import { PostgresUserRepo } from "../../auth/infrastructure/PostgresUserRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
@@ -24,6 +26,7 @@ export class RegisterBusinessUseCase
 {
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly userRepo: IUserRepo = new PostgresUserRepo(),
   ) {}
 
   public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
@@ -35,6 +38,27 @@ export class RegisterBusinessUseCase
     const existingBusiness = await this.businessRepo.findBySlug(parsed.data.slug);
     if (existingBusiness) {
       throw AppError.conflict("Business slug already in use.", "BUSINESS_SLUG_IN_USE");
+    }
+
+    const user = await this.userRepo.findById(parsed.data.ownerUserId);
+    if (!user) {
+      throw AppError.notFound("User not found.", "OWNER_NOT_FOUND");
+    }
+
+    if (user.role === "employee") {
+      throw AppError.forbidden(
+        "Employee accounts cannot register businesses.",
+        "EMPLOYEE_CANNOT_CREATE_BUSINESS",
+      );
+    }
+
+    if (user.role !== "business_admin" || user.approvalStatus === "rejected") {
+      // Existing accounts can start the business onboarding flow by creating a business.
+      await this.userRepo.save({
+        ...user,
+        role: "business_admin",
+        approvalStatus: "pending",
+      });
     }
 
     const business = await this.businessRepo.save({

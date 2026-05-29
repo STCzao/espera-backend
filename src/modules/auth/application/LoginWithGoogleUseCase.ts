@@ -10,6 +10,7 @@ import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const loginWithGoogleSchema = z.object({
   code: z.string().min(1, "Google authorization code is required."),
+  state: z.string().min(1, "Google OAuth state is required."),
 });
 
 export type LoginWithGoogleInput = z.infer<typeof loginWithGoogleSchema>;

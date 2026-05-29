@@ -1,10 +1,16 @@
 import type { Request, Response } from "express";
 
+import { AppError } from "@shared/kernel/AppError";
 import { logger } from "@shared/infrastructure/logger";
 import {
   clearRefreshTokenCookie,
   setRefreshTokenCookie,
 } from "../../../middleware/refreshTokenCookie";
+import {
+  clearGoogleOAuthState,
+  issueGoogleOAuthState,
+  readGoogleOAuthState,
+} from "../../../middleware/googleOAuthStateCookie";
 
 import { LoginUseCase } from "../application/LoginUseCase";
 import { LoginWithGoogleUseCase } from "../application/LoginWithGoogleUseCase";
@@ -44,9 +50,30 @@ export class AuthController {
     _request: Request,
     response: Response,
   ): Promise<void> => {
-    const url = this.googleOAuthService.getAuthorizationUrl("business-signup");
-    response.status(200).json({ url });
+    const state = issueGoogleOAuthState(response);
+    const url = this.googleOAuthService.getAuthorizationUrl(state);
+    response.status(200).json({ url, state });
   };
+
+  private assertValidGoogleOAuthState(
+    request: Request,
+    response: Response,
+  ): string {
+    const requestState =
+      typeof request.body?.state === "string" ? request.body.state : "";
+    const cookieState = readGoogleOAuthState(request);
+
+    clearGoogleOAuthState(response);
+
+    if (!requestState || !cookieState || requestState !== cookieState) {
+      throw AppError.forbidden(
+        "Invalid Google OAuth state.",
+        "GOOGLE_OAUTH_STATE_MISMATCH",
+      );
+    }
+
+    return requestState;
+  }
 
   /**
    * Approves a pending business admin account.
@@ -90,6 +117,8 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<void> => {
+    this.assertValidGoogleOAuthState(request, response);
+
     const result = await this.registerBusinessWithGoogleUseCase.execute(
       request.body,
     );
@@ -186,6 +215,8 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<void> => {
+    this.assertValidGoogleOAuthState(request, response);
+
     const result = await this.loginWithGoogleUseCase.execute(request.body);
     setRefreshTokenCookie(response, result.refreshToken);
     logger.info("User logged in with Google");
