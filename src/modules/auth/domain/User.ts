@@ -14,6 +14,9 @@ export interface User {
   emailVerificationToken?: string;
   emailVerificationExpiry?: Date;
   lastVerificationSentAt?: Date;
+  passwordResetToken?: string;
+  passwordResetExpiry?: Date;
+  passwordResetUsedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

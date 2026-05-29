@@ -12,6 +12,8 @@ export const authRouter = Router();
 authRouter.post("/register", rateLimiter, controller.register);
 authRouter.get("/verify-email", controller.verifyEmail);
 authRouter.post("/resend-verification", rateLimiter, controller.resendVerification);
+authRouter.post("/forgot-password", rateLimiter, controller.requestPasswordReset);
+authRouter.post("/reset-password", rateLimiter, controller.resetPassword);
 authRouter.post("/login", rateLimiter, controller.login);
 authRouter.post("/refresh-token", rateLimiter, controller.refreshToken);
 authRouter.post("/logout", controller.logout);

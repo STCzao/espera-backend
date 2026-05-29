@@ -28,6 +28,9 @@ model User {
   emailVerificationToken  String?   @unique
   emailVerificationExpiry DateTime?
   lastVerificationSentAt  DateTime?
+  passwordResetToken      String?   @unique
+  passwordResetExpiry     DateTime?
+  passwordResetUsedAt     DateTime? 
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 

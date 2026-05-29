@@ -5,7 +5,7 @@ const FROM = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
 
 export const sendVerificationEmail = async (
   to: string,
-  token: string
+  token: string,
 ): Promise<void> => {
   const url = `${process.env.APP_URL}/auth/verify-email?token=${token}`;
 
@@ -18,6 +18,26 @@ export const sendVerificationEmail = async (
       <p>Hace clic en el siguiente enlace para verificar tu cuenta:</p>
       <a href="${url}">${url}</a>
       <p>El enlace expira en 24 horas.</p>
-    `
+    `,
+  });
+};
+
+export const sendPasswordResetEmail = async (
+  to: string,
+  token: string,
+): Promise<void> => {
+  const url = `${process.env.APP_URL}/auth/reset-password?token=${token}`;
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "Recupera tu contrasena en Espera",
+    html: `
+      <p>Recibimos una solicitud para restablecer tu contrasena.</p>
+      <p>Hace clic en el siguiente enlace para elegir una nueva contrasena:</p>
+      <a href="${url}">${url}</a>
+      <p>El enlace expira en 1 hora.</p>
+      <p>Si no solicitaste este cambio, puedes ignorar este email.</p>
+    `,
   });
 };

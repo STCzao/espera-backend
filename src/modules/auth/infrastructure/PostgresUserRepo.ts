@@ -35,6 +35,16 @@ export class PostgresUserRepo implements IUserRepo {
   }
 
   /**
+   * Finds a user by password reset token.
+   */
+  public async findByPasswordResetToken(token: string): Promise<User | null> {
+    const user = await prisma.user.findUnique({
+      where: { passwordResetToken: token }
+    });
+    return user ? this.toDomain(user) : null;
+  }
+
+  /**
    * Finds a user by the stored refresh token hash.
    */
   public async findByRefreshTokenHash(hash: string): Promise<User | null> {
@@ -63,13 +73,15 @@ export class PostgresUserRepo implements IUserRepo {
         isEmailVerified: user.isEmailVerified,
         emailVerificationToken: user.emailVerificationToken,
         emailVerificationExpiry: user.emailVerificationExpiry,
-        lastVerificationSentAt: user.lastVerificationSentAt
+        lastVerificationSentAt: user.lastVerificationSentAt,
+        passwordResetToken: user.passwordResetToken,
+        passwordResetExpiry: user.passwordResetExpiry,
+        passwordResetUsedAt: user.passwordResetUsedAt
       },
       update: {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        // Prisma expects explicit nulls on update to clear nullable columns.
         phone: user.phone ?? null,
         locality: user.locality ?? null,
         passwordHash: user.passwordHash ?? null,
@@ -78,7 +90,10 @@ export class PostgresUserRepo implements IUserRepo {
         isEmailVerified: user.isEmailVerified,
         emailVerificationToken: user.emailVerificationToken ?? null,
         emailVerificationExpiry: user.emailVerificationExpiry ?? null,
-        lastVerificationSentAt: user.lastVerificationSentAt ?? null
+        lastVerificationSentAt: user.lastVerificationSentAt ?? null,
+        passwordResetToken: user.passwordResetToken ?? null,
+        passwordResetExpiry: user.passwordResetExpiry ?? null,
+        passwordResetUsedAt: user.passwordResetUsedAt ?? null
       }
     });
 
@@ -110,6 +125,9 @@ export class PostgresUserRepo implements IUserRepo {
       emailVerificationToken: raw.emailVerificationToken ?? undefined,
       emailVerificationExpiry: raw.emailVerificationExpiry ?? undefined,
       lastVerificationSentAt: raw.lastVerificationSentAt ?? undefined,
+      passwordResetToken: raw.passwordResetToken ?? undefined,
+      passwordResetExpiry: raw.passwordResetExpiry ?? undefined,
+      passwordResetUsedAt: raw.passwordResetUsedAt ?? undefined,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt
     };
