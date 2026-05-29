@@ -9,7 +9,10 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
       logger.error({ err: error }, "Unexpected AppError");
     }
 
-    res.status(error.statusCode).json({ message: error.message });
+    res.status(error.statusCode).json({
+      message: error.message,
+      code: error.code,
+    });
     return;
   }
 

@@ -13,6 +13,16 @@ enum Role {
   BUSINESS_ADMIN
   SUPER_ADMIN
 }
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
 
 model User {
   id                      String    @id @default(uuid())
@@ -24,6 +34,9 @@ model User {
   passwordHash            String?
   refreshTokenHash        String?   @unique
   role                    Role      @default(USER)
+  approvalStatus          ApprovalStatus  @default(APPROVED)
+  authProvider            AuthProvider    @default(LOCAL)
+  googleId                String?   @unique
   isEmailVerified         Boolean   @default(false)
   emailVerificationToken  String?   @unique
   emailVerificationExpiry DateTime?
@@ -33,6 +46,21 @@ model User {
   passwordResetUsedAt     DateTime? 
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+  businesses              Business[]
 
   @@map("users")
+}
+
+model Business {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  categoryId  String
+  ownerUserId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User     @relation(fields: [ownerUserId], references: [id])
+
+  @@map("businesses")
 }

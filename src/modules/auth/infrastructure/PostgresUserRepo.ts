@@ -1,11 +1,23 @@
-import { Role, type User as PrismaUser } from "@prisma/client";
+import {
+  ApprovalStatus,
+  AuthProvider,
+  Role,
+  type User as PrismaUser,
+} from "@prisma/client";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { IUserRepo } from "../domain/IUserRepo";
 import type { User } from "../domain/User";
 
 const toRoleEnum = (role: User["role"]): Role =>
-  role.toUpperCase().replace(" ", "_") as Role;
+  role.toUpperCase() as Role;
+
+const toApprovalStatusEnum = (
+  approvalStatus: User["approvalStatus"],
+): ApprovalStatus => approvalStatus.toUpperCase() as ApprovalStatus;
+
+const toAuthProviderEnum = (authProvider: User["authProvider"]): AuthProvider =>
+  authProvider.toUpperCase() as AuthProvider;
 
 export class PostgresUserRepo implements IUserRepo {
   /**
@@ -29,7 +41,7 @@ export class PostgresUserRepo implements IUserRepo {
    */
   public async findByVerificationToken(token: string): Promise<User | null> {
     const user = await prisma.user.findUnique({
-      where: { emailVerificationToken: token }
+      where: { emailVerificationToken: token },
     });
     return user ? this.toDomain(user) : null;
   }
@@ -39,7 +51,7 @@ export class PostgresUserRepo implements IUserRepo {
    */
   public async findByPasswordResetToken(token: string): Promise<User | null> {
     const user = await prisma.user.findUnique({
-      where: { passwordResetToken: token }
+      where: { passwordResetToken: token },
     });
     return user ? this.toDomain(user) : null;
   }
@@ -49,7 +61,7 @@ export class PostgresUserRepo implements IUserRepo {
    */
   public async findByRefreshTokenHash(hash: string): Promise<User | null> {
     const user = await prisma.user.findUnique({
-      where: { refreshTokenHash: hash }
+      where: { refreshTokenHash: hash },
     });
     return user ? this.toDomain(user) : null;
   }
@@ -58,6 +70,8 @@ export class PostgresUserRepo implements IUserRepo {
    * Creates or updates a user record and returns the normalized domain entity.
    */
   public async save(user: User): Promise<User> {
+    // This repository persists full user snapshots, so callers should load and merge
+    // existing state before updating individual fields.
     const saved = await prisma.user.upsert({
       where: { id: user.id },
       create: {
@@ -65,18 +79,21 @@ export class PostgresUserRepo implements IUserRepo {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        phone: user.phone,
-        locality: user.locality,
-        passwordHash: user.passwordHash,
-        refreshTokenHash: user.refreshTokenHash,
+        phone: user.phone ?? null,
+        locality: user.locality ?? null,
+        passwordHash: user.passwordHash ?? null,
+        refreshTokenHash: user.refreshTokenHash ?? null,
         role: toRoleEnum(user.role),
+        approvalStatus: toApprovalStatusEnum(user.approvalStatus),
+        authProvider: toAuthProviderEnum(user.authProvider),
+        googleId: user.googleId ?? null,
         isEmailVerified: user.isEmailVerified,
-        emailVerificationToken: user.emailVerificationToken,
-        emailVerificationExpiry: user.emailVerificationExpiry,
-        lastVerificationSentAt: user.lastVerificationSentAt,
-        passwordResetToken: user.passwordResetToken,
-        passwordResetExpiry: user.passwordResetExpiry,
-        passwordResetUsedAt: user.passwordResetUsedAt
+        emailVerificationToken: user.emailVerificationToken ?? null,
+        emailVerificationExpiry: user.emailVerificationExpiry ?? null,
+        lastVerificationSentAt: user.lastVerificationSentAt ?? null,
+        passwordResetToken: user.passwordResetToken ?? null,
+        passwordResetExpiry: user.passwordResetExpiry ?? null,
+        passwordResetUsedAt: user.passwordResetUsedAt ?? null,
       },
       update: {
         email: user.email,
@@ -87,14 +104,17 @@ export class PostgresUserRepo implements IUserRepo {
         passwordHash: user.passwordHash ?? null,
         refreshTokenHash: user.refreshTokenHash ?? null,
         role: toRoleEnum(user.role),
+        approvalStatus: toApprovalStatusEnum(user.approvalStatus),
+        authProvider: toAuthProviderEnum(user.authProvider),
+        googleId: user.googleId ?? null,
         isEmailVerified: user.isEmailVerified,
         emailVerificationToken: user.emailVerificationToken ?? null,
         emailVerificationExpiry: user.emailVerificationExpiry ?? null,
         lastVerificationSentAt: user.lastVerificationSentAt ?? null,
         passwordResetToken: user.passwordResetToken ?? null,
         passwordResetExpiry: user.passwordResetExpiry ?? null,
-        passwordResetUsedAt: user.passwordResetUsedAt ?? null
-      }
+        passwordResetUsedAt: user.passwordResetUsedAt ?? null,
+      },
     });
 
     return this.toDomain(saved);
@@ -121,6 +141,10 @@ export class PostgresUserRepo implements IUserRepo {
       passwordHash: raw.passwordHash ?? undefined,
       refreshTokenHash: raw.refreshTokenHash ?? undefined,
       role: raw.role.toLowerCase() as User["role"],
+      approvalStatus:
+        raw.approvalStatus.toLowerCase() as User["approvalStatus"],
+      authProvider: raw.authProvider.toLowerCase() as User["authProvider"],
+      googleId: raw.googleId ?? undefined,
       isEmailVerified: raw.isEmailVerified,
       emailVerificationToken: raw.emailVerificationToken ?? undefined,
       emailVerificationExpiry: raw.emailVerificationExpiry ?? undefined,
@@ -129,7 +153,7 @@ export class PostgresUserRepo implements IUserRepo {
       passwordResetExpiry: raw.passwordResetExpiry ?? undefined,
       passwordResetUsedAt: raw.passwordResetUsedAt ?? undefined,
       createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt
+      updatedAt: raw.updatedAt,
     };
   }
 }

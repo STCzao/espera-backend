@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
+import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "../../../shared/kernel/UseCase";
+import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
-export interface RegisterBusinessInput {
-  name: string;
-  slug: string;
-  categoryId: string;
-}
+const registerBusinessSchema = z.object({
+  name: z.string().trim().min(2, "Business name is required.").max(120),
+  slug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
+  categoryId: z.string().uuid("Invalid category id."),
+  ownerUserId: z.string().uuid("Invalid owner user id."),
+});
+
+export type RegisterBusinessInput = z.infer<typeof registerBusinessSchema>;
 
 export interface RegisterBusinessOutput {
   businessId: string;
@@ -15,9 +22,33 @@ export interface RegisterBusinessOutput {
 export class RegisterBusinessUseCase
   implements UseCase<RegisterBusinessInput, RegisterBusinessOutput>
 {
-  public async execute(_input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
+  public constructor(
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+  ) {}
+
+  public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
+    const parsed = registerBusinessSchema.safeParse(input);
+    if (!parsed.success) {
+      throw AppError.badRequest(parsed.error.errors[0].message);
+    }
+
+    const existingBusiness = await this.businessRepo.findBySlug(parsed.data.slug);
+    if (existingBusiness) {
+      throw AppError.conflict("Business slug already in use.", "BUSINESS_SLUG_IN_USE");
+    }
+
+    const business = await this.businessRepo.save({
+      id: randomUUID(),
+      name: parsed.data.name,
+      slug: parsed.data.slug,
+      categoryId: parsed.data.categoryId,
+      ownerUserId: parsed.data.ownerUserId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
     return {
-      businessId: randomUUID()
+      businessId: business.id,
     };
   }
 }
