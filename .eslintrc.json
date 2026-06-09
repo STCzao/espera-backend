@@ -18,7 +18,7 @@
         "no-restricted-imports": [
           "error",
           {
-            "patterns": ["**/modules/queue/**", "**/modules/business/**", "../../queue/**", "../../business/**"]
+            "patterns": ["../../queue/**", "../../business/**"]
           }
         ]
       }
@@ -29,7 +29,7 @@
         "no-restricted-imports": [
           "error",
           {
-            "patterns": ["**/modules/auth/**", "**/modules/business/**", "../../auth/**", "../../business/**"]
+            "patterns": ["../../auth/**", "../../business/**"]
           }
         ]
       }
@@ -40,7 +40,7 @@
         "no-restricted-imports": [
           "error",
           {
-            "patterns": ["**/modules/auth/**", "**/modules/queue/**", "../../auth/**", "../../queue/**"]
+            "patterns": ["../../auth/**", "../../queue/**"]
           }
         ]
       }
@@ -67,6 +67,10 @@
       {
         "type": "auth-public-api",
         "pattern": "src/modules/auth/index.ts"
+      },
+      {
+        "type": "auth-cross-module-api",
+        "pattern": "src/modules/auth/public-api.ts"
       },
       {
         "type": "queue-domain",
@@ -109,6 +113,10 @@
         "pattern": "src/modules/business/index.ts"
       },
       {
+        "type": "business-cross-module-api",
+        "pattern": "src/modules/business/public-api.ts"
+      },
+      {
         "type": "shared",
         "pattern": "src/shared/**/*.ts"
       },
@@ -142,7 +150,7 @@
           },
           {
             "from": ["auth-application"],
-            "allow": ["auth-domain", "shared"]
+            "allow": ["auth-domain", "shared", "business-cross-module-api"]
           },
           {
             "from": ["queue-application"],
@@ -150,7 +158,7 @@
           },
           {
             "from": ["business-application"],
-            "allow": ["business-domain", "shared"]
+            "allow": ["business-domain", "shared", "auth-cross-module-api"]
           },
           {
             "from": ["auth-infrastructure"],
@@ -178,6 +186,10 @@
             ]
           },
           {
+            "from": ["auth-cross-module-api"],
+            "allow": ["auth-domain", "auth-infrastructure"]
+          },
+          {
             "from": ["queue-interfaces"],
             "allow": ["queue-application", "queue-infrastructure", "shared", "middleware"]
           },
@@ -202,6 +214,10 @@
               "business-infrastructure",
               "business-interfaces"
             ]
+          },
+          {
+            "from": ["business-cross-module-api"],
+            "allow": ["business-domain", "business-infrastructure"]
           },
           {
             "from": ["middleware"],

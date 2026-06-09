@@ -5,11 +5,11 @@ import { z } from "zod";
 import { AppError } from "@shared/kernel/AppError";
 import { sendVerificationEmail } from "@shared/infrastructure/email";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "@modules/business/public-api";
+import { PostgresBusinessRepo } from "@modules/business/public-api";
 
 import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
-import { PostgresBusinessRepo } from "../../business/infrastructure/PostgresBusinessRepo";
-import type { IBusinessRepo } from "../../business/domain/IBusinessRepo";
 
 const registerBusinessAccountSchema = z.object({
   email: z

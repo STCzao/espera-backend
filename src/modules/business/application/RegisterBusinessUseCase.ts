@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
+import type { IUserRepo } from "@modules/auth/public-api";
+import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
-import type { IUserRepo } from "../../auth/domain/IUserRepo";
-import { PostgresUserRepo } from "../../auth/infrastructure/PostgresUserRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 

@@ -12,7 +12,7 @@ import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
-const nameRegex = /^[\p{L}\s'\-]+$/u;
+const nameRegex = /^[\p{L}\s'-]+$/u;
 
 const registerSchema = z.object({
   email: z

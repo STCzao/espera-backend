@@ -14,6 +14,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
 import { businessRouter } from "./modules/business/interfaces/business.routes";
 import { queueRouter } from "./modules/queue/interfaces/queue.routes";
+import { env } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
 import { prisma } from "./shared/infrastructure/prisma";
 import { ensureRedisConnection, redis } from "./shared/infrastructure/redis";
@@ -35,11 +36,11 @@ export const createApp = (): express.Express => {
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.APP_ORIGIN ?? true,
+      origin: env.APP_ORIGIN ?? true,
       credentials: true
     })
   );
-  app.use(cookieParser(process.env.COOKIE_SECRET));
+  app.use(cookieParser(env.COOKIE_SECRET));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 
@@ -66,7 +67,7 @@ export const createApp = (): express.Express => {
     });
   });
 
-  const apiPrefix = process.env.API_PREFIX ?? "/api";
+  const apiPrefix = env.API_PREFIX;
   app.use(`${apiPrefix}/auth`, authRouter);
   app.use(`${apiPrefix}/business`, businessRouter);
   app.use(`${apiPrefix}/queue`, queueRouter);
@@ -81,7 +82,7 @@ export const createServer = () => {
 
   const io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.APP_ORIGIN ?? true,
+      origin: env.APP_ORIGIN ?? true,
       credentials: true
     }
   });
@@ -98,10 +99,9 @@ export const createServer = () => {
 };
 
 if (require.main === module) {
-  const port = Number(process.env.PORT ?? 3000);
   const { server } = createServer();
 
-  server.listen(port, () => {
-    logger.info({ port }, "HTTP server listening");
+  server.listen(env.PORT, () => {
+    logger.info({ port: env.PORT }, "HTTP server listening");
   });
 }

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
+import { getAccessTokenSecret } from "@shared/infrastructure/env";
 import { AppError } from "@shared/kernel/AppError";
 
 type AccessTokenPayload = JwtPayload & {
@@ -13,7 +14,7 @@ type AccessTokenPayload = JwtPayload & {
 
 export const authenticate = (
   request: Request,
-  response: Response,
+  _response: Response,
   next: NextFunction
 ): void => {
   const authorizationHeader = request.headers.authorization;
@@ -24,10 +25,12 @@ export const authenticate = (
   }
 
   const token = authorizationHeader.replace("Bearer ", "").trim();
-  const secret = process.env.JWT_ACCESS_SECRET;
+  let secret: string;
 
-  if (!secret) {
-    next(AppError.internal("JWT_ACCESS_SECRET is not configured."));
+  try {
+    secret = getAccessTokenSecret();
+  } catch {
+    next(AppError.internal("JWT access token configuration is invalid."));
     return;
   }
 

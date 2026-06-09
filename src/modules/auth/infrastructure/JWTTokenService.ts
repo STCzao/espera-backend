@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import jwt, { type SignOptions } from "jsonwebtoken";
 
+import { env, getAccessTokenSecret } from "@shared/infrastructure/env";
+
 import type { User } from "../domain/User";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -10,7 +12,7 @@ export class JWTTokenService {
    * Creates a signed JWT access token for an authenticated user.
    */
   public generateAccessToken(user: User): string {
-    const expiresIn = (process.env.JWT_ACCESS_EXPIRES_IN ?? "15m") as SignOptions["expiresIn"];
+    const expiresIn = env.JWT_ACCESS_EXPIRES_IN as SignOptions["expiresIn"];
 
     return jwt.sign(
       {
@@ -20,7 +22,7 @@ export class JWTTokenService {
         lastName: user.lastName,
         approvalStatus: user.approvalStatus,
       },
-      process.env.JWT_ACCESS_SECRET ?? "development-access-secret",
+      getAccessTokenSecret(),
       {
         subject: user.id,
         expiresIn
