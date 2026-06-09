@@ -4,9 +4,9 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "@modules/business/public-api";
+import { PostgresBusinessRepo } from "@modules/business/public-api";
 
-import type { IBusinessRepo } from "../../business/domain/IBusinessRepo";
-import { PostgresBusinessRepo } from "../../business/infrastructure/PostgresBusinessRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
 import { GoogleOAuthService } from "../infrastructure/GoogleOAuthService";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";

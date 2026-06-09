@@ -1,16 +1,17 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev";
+import { getEmailConfig } from "./env";
 
 export const sendVerificationEmail = async (
   to: string,
   token: string,
 ): Promise<void> => {
-  const url = `${process.env.APP_URL}/auth/verify-email?token=${token}`;
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+  const url = `${emailConfig.appUrl}/auth/verify-email?token=${token}`;
 
   await resend.emails.send({
-    from: FROM,
+    from: emailConfig.fromEmail,
     to,
     subject: "Verifica tu cuenta en Espera",
     html: `
@@ -26,10 +27,12 @@ export const sendPasswordResetEmail = async (
   to: string,
   token: string,
 ): Promise<void> => {
-  const url = `${process.env.APP_URL}/auth/reset-password?token=${token}`;
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+  const url = `${emailConfig.appUrl}/auth/reset-password?token=${token}`;
 
   await resend.emails.send({
-    from: FROM,
+    from: emailConfig.fromEmail,
     to,
     subject: "Recupera tu contrasena en Espera",
     html: `
@@ -46,10 +49,12 @@ export const sendBusinessWelcomeEmail = async (
   to: string,
   firstName: string,
 ): Promise<void> => {
-  const dashboardUrl = `${process.env.APP_URL}/login`;
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+  const dashboardUrl = `${emailConfig.appUrl}/login`;
 
   await resend.emails.send({
-    from: FROM,
+    from: emailConfig.fromEmail,
     to,
     subject: "Your Espera business account is now approved",
     html: `

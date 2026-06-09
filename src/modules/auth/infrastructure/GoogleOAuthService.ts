@@ -1,3 +1,5 @@
+import { getGoogleOAuthConfig } from "@shared/infrastructure/env";
+
 export interface GoogleProfile {
   googleId: string;
   email: string;
@@ -20,9 +22,11 @@ interface GoogleUserInfoResponse {
 
 export class GoogleOAuthService {
   public getAuthorizationUrl(state: string): string {
+    const config = getGoogleOAuthConfig();
+
     const params = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-      redirect_uri: process.env.GOOGLE_CALLBACK_URL ?? "",
+      client_id: config.clientId,
+      redirect_uri: config.callbackUrl,
       response_type: "code",
       scope: "openid email profile",
       access_type: "offline",
@@ -34,6 +38,8 @@ export class GoogleOAuthService {
   }
 
   public async exchangeCodeForProfile(code: string): Promise<GoogleProfile> {
+    const config = getGoogleOAuthConfig();
+
     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: {
@@ -41,9 +47,9 @@ export class GoogleOAuthService {
       },
       body: new URLSearchParams({
         code,
-        client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-        client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-        redirect_uri: process.env.GOOGLE_CALLBACK_URL ?? "",
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        redirect_uri: config.callbackUrl,
         grant_type: "authorization_code",
       }),
     });

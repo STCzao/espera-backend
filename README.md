@@ -1,1 +1,179 @@
-# espera-backend
+# Espera Backend
+
+Backend principal de producto para Espera. Expone API REST para autenticacion,
+registro de negocios y bases iniciales para colas, junto con infraestructura de
+Redis, PostgreSQL, JWT, email y Socket.IO.
+
+## Estado del proyecto
+
+El alcance implementado y validado hasta ahora corresponde principalmente a la
+Epica 1 hasta `HU-1.9`, con foco en autenticacion y onboarding de negocios.
+
+Historias en buen estado de avance:
+
+- `HU-1.1` Registro de usuario con email y password
+- `HU-1.3` Login con email y password
+- `HU-1.5` Refresh token
+- `HU-1.6` Logout con invalidacion de sesion
+- `HU-1.7` Recuperacion de password
+- `HU-1.8` Registro de negocio con cuenta pendiente
+- `HU-1.9` Flujo OAuth para negocio en panel web
+
+Historias en rollover justificado:
+
+- `HU-1.2` Registro de usuario con Google en app movil
+- `HU-1.4` Login de usuario con Google en app movil
+
+Motivo: dependen de configuracion real de OAuth por plataforma (`iOS` y
+`Android`) y del alta previa de la app en el ecosistema correspondiente.
+
+Desde Epica 2 en adelante, el repositorio contiene base tecnica y contratos
+iniciales, pero no debe interpretarse como implementacion funcional cerrada.
+
+## Stack
+
+- Node.js + TypeScript
+- Express
+- Prisma + PostgreSQL
+- Redis
+- JWT + cookies
+- Socket.IO
+- Zod
+- Resend
+- Pino
+
+## Arquitectura
+
+El proyecto esta organizado como un `Modular Monolith` con tres modulos
+principales:
+
+- `auth`: registro, login, refresh token, recuperacion de password, RBAC
+- `business`: registro y configuracion base de negocios
+- `queue`: base inicial para turnos y cola
+
+Estructura principal:
+
+```text
+src/
+  app.ts
+  middleware/
+  modules/
+    auth/
+    business/
+    queue/
+  shared/
+```
+
+Documentacion adicional:
+
+- [Estado y arquitectura](D:/Programacion/SaaS/Espera/espera-back/docs/project-status.md)
+- [Roadmap de implementacion](D:/Programacion/SaaS/Espera/espera-back/docs/implementation-roadmap.md)
+
+## Requisitos
+
+- Node.js 20+
+- npm 10+
+- PostgreSQL
+- Redis
+
+## Variables de entorno
+
+Partir de `.env.example`.
+
+Variables principales:
+
+- `PORT`
+- `NODE_ENV`
+- `APP_ORIGIN`
+- `API_PREFIX`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `COOKIE_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_CALLBACK_URL`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+- `APP_URL`
+
+## Puesta en marcha local
+
+1. Instalar dependencias:
+
+```bash
+npm install
+```
+
+2. Levantar infraestructura local:
+
+```bash
+docker-compose up -d
+```
+
+3. Configurar `.env` a partir de `.env.example`
+
+4. Generar cliente Prisma si hace falta:
+
+```bash
+npm exec prisma generate
+```
+
+5. Ejecutar en modo desarrollo:
+
+```bash
+npm run dev
+```
+
+## Scripts
+
+- `npm run dev`: desarrollo con recarga
+- `npm run build`: compila TypeScript a `dist`
+- `npm run start`: ejecuta la build compilada
+- `npm run lint`: corre ESLint
+- `npm run typecheck`: chequeo de tipos sin emitir archivos
+
+## Endpoints principales
+
+Base prefix: `API_PREFIX`, por defecto `/api`.
+
+Auth:
+
+- `POST /api/auth/register`
+- `POST /api/auth/register-business`
+- `GET /api/auth/google/url`
+- `POST /api/auth/register-business/google`
+- `PATCH /api/auth/business-accounts/:userId/approve`
+- `GET /api/auth/verify-email`
+- `POST /api/auth/resend-verification`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/login`
+- `POST /api/auth/login/google`
+- `POST /api/auth/refresh-token`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Business:
+
+- `POST /api/business`
+- `POST /api/business/configure-queue`
+
+Queue:
+
+- `POST /api/queue/turns`
+- `POST /api/queue/turns/call-next`
+- `POST /api/queue/turns/cancel`
+
+Healthcheck:
+
+- `GET /health`
+
+## Calidad actual
+
+Estado actual de comandos principales:
+
+- `typecheck`: pasa
+- `build`: pasa
+- `lint`: pendiente de alineacion con la arquitectura real del proyecto
