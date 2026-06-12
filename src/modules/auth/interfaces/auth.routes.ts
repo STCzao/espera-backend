@@ -46,7 +46,7 @@ authRouter.post("/logout", controller.logout);
 authRouter.get(
   "/me",
   authenticate,
-  authorize("turn:read_own"),
+  authorize("auth:read_self"),
   (request, response) => {
     response.status(200).json({ user: request.user });
   },

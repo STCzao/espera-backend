@@ -30,8 +30,9 @@ export const readGoogleOAuthState = (request: Request): string | undefined => {
 };
 
 export const clearGoogleOAuthState = (response: Response): void => {
+  const { maxAge: _maxAge, ...clearCookieOptions } = buildCookieOptions();
   response.clearCookie(GOOGLE_OAUTH_STATE_COOKIE, {
-    ...buildCookieOptions(),
+    ...clearCookieOptions,
     signed: true,
   });
 };

@@ -67,6 +67,8 @@ src/
 Documentacion adicional:
 
 - [Estado y arquitectura](D:/Programacion/SaaS/Espera/espera-back/docs/project-status.md)
+- [Estrategia de calidad y testing](D:/Programacion/SaaS/Espera/espera-back/docs/quality-and-testing.md)
+- [Pruebas manuales con Postman - Epica 1](D:/Programacion/SaaS/Espera/espera-back/docs/postman-epica-1.md)
 - [Roadmap de implementacion](D:/Programacion/SaaS/Espera/espera-back/docs/implementation-roadmap.md)
 
 ## Requisitos
@@ -133,6 +135,8 @@ npm run dev
 - `npm run start`: ejecuta la build compilada
 - `npm run lint`: corre ESLint
 - `npm run typecheck`: chequeo de tipos sin emitir archivos
+- `npm run typecheck:test`: chequeo de tipos incluyendo tests y config de Vitest
+- `npm run test:run`: corre la suite automatizada una vez
 
 ## Endpoints principales
 
@@ -175,5 +179,13 @@ Healthcheck:
 Estado actual de comandos principales:
 
 - `typecheck`: pasa
+- `typecheck:test`: pasa
 - `build`: pasa
-- `lint`: pendiente de alineacion con la arquitectura real del proyecto
+- `lint`: pasa
+- `test:run`: pasa
+
+Cobertura automatizada inicial:
+
+- use cases de login, refresh token, reset password y registro de negocio
+- tests unitarios de aplicacion con repositorios en memoria y mocks
+- todavia no cubre contratos HTTP, Prisma real, Redis real ni OAuth real
