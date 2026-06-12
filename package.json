@@ -9,6 +9,9 @@
     "start": "node dist/app.js",
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest",
+    "test:run": "vitest run",
     "postinstall": "prisma generate"
   },
   "repository": {
@@ -50,13 +53,16 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.15.30",
     "@types/node-cron": "^3.0.11",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
     "eslint": "^8.57.0",
     "eslint-plugin-boundaries": "^5.0.1",
     "prisma": "^6.8.2",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.4",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.8"
   }
 }

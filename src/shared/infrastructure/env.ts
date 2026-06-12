@@ -7,6 +7,8 @@ const baseEnvSchema = z.object({
   COOKIE_SECRET: z.string().min(1, "COOKIE_SECRET is required."),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required."),
   GOOGLE_CALLBACK_URL: z.string().url().optional(),
+  GOOGLE_CLIENT_BUSINESS_ID: z.string().optional(),
+  GOOGLE_CLIENT_BUSINESS_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
@@ -43,8 +45,14 @@ export const getAccessTokenSecret = (): string => env.JWT_ACCESS_SECRET;
 
 export const getGoogleOAuthConfig = () => ({
   callbackUrl: requireConfiguredValue(env.GOOGLE_CALLBACK_URL, "GOOGLE_CALLBACK_URL"),
-  clientId: requireConfiguredValue(env.GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID"),
-  clientSecret: requireConfiguredValue(env.GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET"),
+  clientId: requireConfiguredValue(
+    env.GOOGLE_CLIENT_ID ?? env.GOOGLE_CLIENT_BUSINESS_ID,
+    "GOOGLE_CLIENT_ID",
+  ),
+  clientSecret: requireConfiguredValue(
+    env.GOOGLE_CLIENT_SECRET ?? env.GOOGLE_CLIENT_BUSINESS_SECRET,
+    "GOOGLE_CLIENT_SECRET",
+  ),
 });
 
 export const getEmailConfig = () => ({

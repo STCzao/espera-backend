@@ -66,6 +66,10 @@ export class ResetPasswordUseCase
       throw AppError.badRequest("Invalid or expired password reset link.");
     }
 
+    if (user.authProvider !== "local") {
+      throw AppError.badRequest("Invalid or expired password reset link.");
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
 
     // Password resets revoke every active refresh session to protect the account

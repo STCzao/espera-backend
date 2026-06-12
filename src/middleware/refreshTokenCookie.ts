@@ -14,5 +14,6 @@ export const setRefreshTokenCookie = (response: Response, token: string): void =
 };
 
 export const clearRefreshTokenCookie = (response: Response): void => {
-  response.clearCookie("refreshToken", refreshTokenCookieOptions);
+  const { maxAge: _maxAge, ...clearCookieOptions } = refreshTokenCookieOptions;
+  response.clearCookie("refreshToken", clearCookieOptions);
 };

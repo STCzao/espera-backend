@@ -161,8 +161,50 @@ Se usa `Resend` para:
 Comandos principales:
 
 - `npm run typecheck`: ok
+- `npm run typecheck:test`: ok
 - `npm run build`: ok
-- `npm run lint`: falla
+- `npm run lint`: ok
+- `npm run test:run`: ok con cobertura inicial de casos de uso de Epica 1
+
+Validacion manual de Epica 1:
+
+- registro local validado con Postman
+- verificacion de email validada con token de desarrollo
+- login local validado luego de verificar email
+- forgot/reset password validado con token de desarrollo
+- registro de negocio local validado con Postman
+- verificacion de email de negocio validada con token de desarrollo
+- aprobacion de negocio validada en base
+- login de negocio aprobado validado con sesion refresh activa
+- registro web de negocio con Google OAuth validado manualmente
+- login web con Google OAuth validado manualmente con sesion refresh activa
+
+Cobertura automatizada actual:
+
+- tests unitarios de aplicacion sobre use cases de `auth`
+- test unitario de permisos para `auth:read_self` y `/auth/me`
+- tests API con `supertest` para contratos HTTP base de auth y cookies
+- tests dedicados de `rateLimiter` y `errorHandler`
+- repositorios en memoria para aislar reglas de negocio
+- mocks para servicios externos como email, intentos de login y token service
+- sin HTTP real, Prisma real, Redis real ni proveedores externos reales
+
+Casos cubiertos hasta ahora:
+
+- login local exitoso, credenciales invalidas y cuenta negocio pendiente
+- refresh token valido con rotacion y token revocado
+- forgot/reset password para cuenta local, respuesta generica y bloqueo de reset en cuentas Google
+- registro de negocio pendiente y rollback ante falla de email
+- verificacion de email, logout y aprobacion de negocio
+- registro/login Google con perfiles mockeados
+- contratos API base para registro, login, refresh, logout, `/me` y URL OAuth
+- rate limiting con Redis/fallback y serializacion de errores
+
+Pendiente para completar mejor Epica 1:
+
+- tests de integracion con Prisma/PostgreSQL y Redis
+- test dedicado de reenvio de verificacion
+- validacion automatizada de Resend real y Google real en staging
 
 ## Conclusion
 

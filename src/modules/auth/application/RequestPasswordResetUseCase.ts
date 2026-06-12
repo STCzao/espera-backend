@@ -50,7 +50,7 @@ export class RequestPasswordResetUseCase implements UseCase<
     const { email } = parsed.data;
     const user = await this.userRepo.findByEmail(email);
 
-    if (!user) {
+    if (!user || user.authProvider !== "local") {
       return {
         message: "If the email is registered, we sent a password recovery link.",
       };
