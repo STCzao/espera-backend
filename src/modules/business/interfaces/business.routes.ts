@@ -8,7 +8,13 @@ const controller = new BusinessController();
 
 export const businessRouter = Router();
 
-businessRouter.post("/", authenticate, controller.register);
+businessRouter.post("/", authenticate, authorize("business:edit"), controller.register);
+businessRouter.patch(
+  "/:businessId/profile",
+  authenticate,
+  authorize("business:edit"),
+  controller.updateProfile
+);
 businessRouter.post(
   "/configure-queue",
   authenticate,

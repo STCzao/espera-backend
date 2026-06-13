@@ -11,6 +11,7 @@ const baseEnvSchema = z.object({
   GOOGLE_CLIENT_BUSINESS_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_MAPS_API_KEY: z.string().optional(),
   JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
   JWT_ACCESS_SECRET: z.string().min(1, "JWT_ACCESS_SECRET is required."),
   LOG_LEVEL: z.string().default("info"),

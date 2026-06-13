@@ -52,6 +52,7 @@ describe("RegisterBusinessAccountUseCase", () => {
     expect(createdBusiness).toMatchObject({
       name: "Cafe Espera",
       slug: "cafe-espera",
+      listingStatus: "draft",
       ownerUserId: createdUser.id,
     });
     expect(emailMocks.sendVerificationEmail).toHaveBeenCalledWith(

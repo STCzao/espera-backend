@@ -67,6 +67,7 @@ src/
 Documentacion adicional:
 
 - [Estado y arquitectura](D:/Programacion/SaaS/Espera/espera-back/docs/project-status.md)
+- [Epica 2 - Gestion de Negocios](D:/Programacion/SaaS/Espera/espera-back/docs/epica-2-gestion-negocios.md)
 - [Estrategia de calidad y testing](D:/Programacion/SaaS/Espera/espera-back/docs/quality-and-testing.md)
 - [Pruebas manuales con Postman - Epica 1](D:/Programacion/SaaS/Espera/espera-back/docs/postman-epica-1.md)
 - [Roadmap de implementacion](D:/Programacion/SaaS/Espera/espera-back/docs/implementation-roadmap.md)
@@ -96,6 +97,7 @@ Variables principales:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_CALLBACK_URL`
+- `GOOGLE_MAPS_API_KEY`
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `APP_URL`

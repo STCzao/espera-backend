@@ -1,0 +1,78 @@
+import { z } from "zod";
+
+import { AppError } from "@shared/kernel/AppError";
+import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import type { IGeocodingService } from "../domain/IGeocodingService";
+import { GoogleMapsGeocodingService } from "../infrastructure/GoogleMapsGeocodingService";
+import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
+
+const updateBusinessProfileSchema = z.object({
+  businessId: z.string().uuid("Invalid business id."),
+  ownerUserId: z.string().uuid("Invalid owner user id."),
+  name: z.string().trim().min(2, "Business name is required.").max(120),
+  categoryId: z.string().uuid("Invalid category id."),
+  address: z.string().trim().min(5, "Business address is required.").max(200),
+});
+
+export type UpdateBusinessProfileInput = z.infer<typeof updateBusinessProfileSchema>;
+
+export interface UpdateBusinessProfileOutput {
+  businessId: string;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  listingStatus: "draft" | "hidden" | "published";
+}
+
+export class UpdateBusinessProfileUseCase
+  implements UseCase<UpdateBusinessProfileInput, UpdateBusinessProfileOutput>
+{
+  public constructor(
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly geocodingService: IGeocodingService = new GoogleMapsGeocodingService(),
+  ) {}
+
+  public async execute(
+    input: UpdateBusinessProfileInput,
+  ): Promise<UpdateBusinessProfileOutput> {
+    const parsed = updateBusinessProfileSchema.safeParse(input);
+    if (!parsed.success) {
+      throw AppError.badRequest(parsed.error.errors[0].message);
+    }
+
+    const business = await this.businessRepo.findById(parsed.data.businessId);
+    if (!business) {
+      throw AppError.notFound("Business not found.", "BUSINESS_NOT_FOUND");
+    }
+
+    if (business.ownerUserId !== parsed.data.ownerUserId) {
+      throw AppError.forbidden(
+        "You do not have permission to edit this business.",
+        "BUSINESS_OWNERSHIP_REQUIRED",
+      );
+    }
+
+    // Maps is a later discovery concern, so geocoding enriches the record when available
+    // but does not block the business profile from saving its textual address.
+    const coordinates = await this.geocodingService.geocode(parsed.data.address);
+
+    const updatedBusiness = await this.businessRepo.save({
+      ...business,
+      name: parsed.data.name,
+      categoryId: parsed.data.categoryId,
+      address: parsed.data.address,
+      latitude: coordinates?.latitude,
+      longitude: coordinates?.longitude,
+      updatedAt: new Date(),
+    });
+
+    return {
+      businessId: updatedBusiness.id,
+      address: updatedBusiness.address ?? parsed.data.address,
+      latitude: updatedBusiness.latitude,
+      longitude: updatedBusiness.longitude,
+      listingStatus: updatedBusiness.listingStatus,
+    };
+  }
+}

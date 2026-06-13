@@ -58,6 +58,7 @@ describe("RegisterBusinessWithGoogleUseCase", () => {
     expect(createdBusiness).toMatchObject({
       name: "Cafe Espera Google",
       slug: "cafe-espera-google",
+      listingStatus: "draft",
       ownerUserId: createdUser.id,
     });
   });

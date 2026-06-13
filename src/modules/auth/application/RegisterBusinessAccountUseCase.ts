@@ -31,6 +31,7 @@ const registerBusinessAccountSchema = z.object({
   businessName: z.string().trim().min(2, "Business name is required.").max(120),
   businessSlug: z.string().trim().min(3).max(80),
   categoryId: z.string().uuid("Invalid category id."),
+  address: z.string().trim().min(5).max(200).optional(),
 });
 
 export type RegisterBusinessAccountInput = z.infer<
@@ -71,6 +72,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       businessName,
       businessSlug,
       categoryId,
+      address,
     } = parsed.data;
 
     const existingUser = await this.userRepo.findByEmail(email);
@@ -114,6 +116,8 @@ export class RegisterBusinessAccountUseCase implements UseCase<
         name: businessName,
         slug: businessSlug,
         categoryId,
+        address,
+        listingStatus: "draft",
         ownerUserId: user.id,
         createdAt: new Date(),
         updatedAt: new Date(),

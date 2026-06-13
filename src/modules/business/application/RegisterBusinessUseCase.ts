@@ -6,12 +6,15 @@ import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import type { IGeocodingService } from "../domain/IGeocodingService";
+import { GoogleMapsGeocodingService } from "../infrastructure/GoogleMapsGeocodingService";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
 const registerBusinessSchema = z.object({
   name: z.string().trim().min(2, "Business name is required.").max(120),
   slug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
   categoryId: z.string().uuid("Invalid category id."),
+  address: z.string().trim().min(5, "Business address is required.").max(200),
   ownerUserId: z.string().uuid("Invalid owner user id."),
 });
 
@@ -27,6 +30,7 @@ export class RegisterBusinessUseCase
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly geocodingService: IGeocodingService = new GoogleMapsGeocodingService(),
   ) {}
 
   public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
@@ -65,11 +69,19 @@ export class RegisterBusinessUseCase
         });
       }
 
+      // Maps is a later discovery concern, so geocoding enriches the record when available
+      // but does not block the business profile from saving its textual address.
+      const coordinates = await this.geocodingService.geocode(parsed.data.address);
+
       const business = await this.businessRepo.save({
         id: randomUUID(),
         name: parsed.data.name,
         slug: parsed.data.slug,
         categoryId: parsed.data.categoryId,
+        address: parsed.data.address,
+        latitude: coordinates?.latitude,
+        longitude: coordinates?.longitude,
+        listingStatus: "draft",
         ownerUserId: parsed.data.ownerUserId,
         createdAt: new Date(),
         updatedAt: new Date(),

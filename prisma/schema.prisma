@@ -24,6 +24,12 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum BusinessListingStatus {
+  DRAFT
+  HIDDEN
+  PUBLISHED
+}
+
 model User {
   id                      String    @id @default(uuid())
   email                   String    @unique
@@ -71,6 +77,10 @@ model Business {
   name        String
   slug        String   @unique
   categoryId  String
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  listingStatus BusinessListingStatus @default(DRAFT)
   ownerUserId String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

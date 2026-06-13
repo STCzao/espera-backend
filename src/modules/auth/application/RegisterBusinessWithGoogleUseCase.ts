@@ -17,6 +17,7 @@ const registerBusinessWithGoogleSchema = z.object({
   businessName: z.string().trim().min(2, "Business name is required.").max(120),
   businessSlug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
   categoryId: z.string().uuid("Invalid category id."),
+  address: z.string().trim().min(5).max(200).optional(),
 });
 
 export type RegisterBusinessWithGoogleInput = z.infer<
@@ -51,7 +52,7 @@ export class RegisterBusinessWithGoogleUseCase
       throw AppError.badRequest(parsed.error.errors[0].message);
     }
 
-    const { code, businessName, businessSlug, categoryId } = parsed.data;
+    const { code, businessName, businessSlug, categoryId, address } = parsed.data;
 
     const existingBusiness = await this.businessRepo.findBySlug(businessSlug);
     if (existingBusiness) {
@@ -97,6 +98,8 @@ export class RegisterBusinessWithGoogleUseCase
         name: businessName,
         slug: businessSlug,
         categoryId,
+        address,
+        listingStatus: "draft",
         ownerUserId: user.id,
         createdAt: new Date(),
         updatedAt: new Date(),
