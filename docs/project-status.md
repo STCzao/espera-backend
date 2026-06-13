@@ -211,3 +211,21 @@ Pendiente para completar mejor Epica 1:
 El proyecto tiene una base tecnica valida y una direccion arquitectonica
 correcta, pero su lectura adecuada es la de una fase 1 avanzada, no la de un
 MVP de producto completo.
+
+## Siguiente epica
+
+La siguiente epica documentada es `Epica 2 - Gestion de Negocios`.
+
+Documento base:
+
+- `docs/epica-2-gestion-negocios.md`
+
+Avance actual:
+
+- `HU-2.1` implementada en backend con direccion textual.
+- Persistencia extendida en `Business` con `address`, `latitude` y `longitude`
+  opcionales.
+- Visibilidad publica separada mediante `listingStatus`.
+- Endpoint de actualizacion de perfil: `PATCH /api/business/:businessId/profile`.
+- Google Maps queda en rollover justificado hasta la experiencia mobile de
+  descubrimiento/mapa.
