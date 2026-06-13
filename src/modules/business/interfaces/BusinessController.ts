@@ -1,7 +1,9 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
+import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
 
@@ -9,7 +11,9 @@ export class BusinessController {
   public constructor(
     private readonly registerBusinessUseCase = new RegisterBusinessUseCase(),
     private readonly configureQueueUseCase = new ConfigureQueueUseCase(),
-    private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase()
+    private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
+    private readonly configureBusinessHoursUseCase = new ConfigureBusinessHoursUseCase(),
+    private readonly getBusinessHoursUseCase = new GetBusinessHoursUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -24,10 +28,28 @@ export class BusinessController {
   public updateProfile = async (request: Request, response: Response): Promise<void> => {
     const result = await this.updateBusinessProfileUseCase.execute({
       ...request.body,
-      businessId: request.params.businessId,
+      businessId: String(request.params.businessId),
       ownerUserId: request.user?.id ?? "",
     });
     logger.info({ businessId: result.businessId }, "Business profile updated");
+    response.status(200).json(result);
+  };
+
+  public getHours = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.getBusinessHoursUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.status(200).json(result);
+  };
+
+  public configureHours = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.configureBusinessHoursUseCase.execute({
+      ...request.body,
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info({ businessId: result.businessId }, "Business hours configured");
     response.status(200).json(result);
   };
 

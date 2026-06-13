@@ -138,11 +138,142 @@ Como negocio, quiero configurar mis horarios de atencion.
 ### Criterios de aceptacion
 
 - Dado que configuro horarios por dia de semana, cuando guardo, entonces el
-  sistema muestra mi negocio como disponible solo en esos horarios.
-- Dado que es fuera de mi horario de atencion, cuando un usuario intenta sacar
-  turno, entonces ve el negocio como cerrado con proximo horario disponible.
+  panel conserva la configuracion para determinar disponibilidad operativa.
+- Dado que es fuera de mi horario de atencion, cuando un usuario final busca
+  negocios disponibles, entonces mi negocio no aparece como disponible para
+  nuevos turnos.
 - Dado que configuro dias no laborables, entonces esos dias no aparezco como
   disponible para nuevos turnos.
+
+### Decision de producto
+
+Espera prioriza inmediatez: entrar en cola, reservar lugar o anticipar una
+visita mientras el usuario esta en camino. A diferencia de un catalogo de
+locales, el mapa/listado principal de la app mobile debe mostrar negocios
+accionables.
+
+Para el MVP inicial, un negocio fuera de horario no aparece en discovery
+principal. La visualizacion de negocios cerrados por busqueda directa,
+favoritos, historial o turnos programados queda fuera de alcance.
+
+### Implementacion backend
+
+Estado: `implementado`.
+
+Persistencia agregada:
+
+- `BusinessOpeningHour`: rangos recurrentes por dia de semana.
+- `BusinessNonWorkingDay`: fechas excepcionales en las que el negocio no
+  atiende.
+
+Convencion de dias:
+
+- `0`: domingo
+- `1`: lunes
+- `2`: martes
+- `3`: miercoles
+- `4`: jueves
+- `5`: viernes
+- `6`: sabado
+
+Endpoint relevante:
+
+```text
+GET /api/business/:businessId/hours
+PUT /api/business/:businessId/hours
+```
+
+`GET /api/business/:businessId/hours` permite al panel recuperar la grilla
+guardada para editarla.
+
+`PUT /api/business/:businessId/hours` reemplaza la configuracion completa de
+horarios del negocio. Valida ownership, formato horario `HH:mm`, apertura
+anterior al cierre, rangos no solapados para el mismo dia y fechas no
+laborables validas en formato `YYYY-MM-DD`.
+
+Ejemplo de body:
+
+```json
+{
+  "weeklyHours": [
+    {
+      "dayOfWeek": 1,
+      "opensAt": "09:00",
+      "closesAt": "13:00"
+    },
+    {
+      "dayOfWeek": 1,
+      "opensAt": "14:00",
+      "closesAt": "18:00"
+    }
+  ],
+  "nonWorkingDays": [
+    {
+      "date": "2026-12-25",
+      "reason": "Feriado"
+    }
+  ]
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "businessId": "uuid",
+  "weeklyHours": [
+    {
+      "dayOfWeek": 1,
+      "opensAt": "09:00",
+      "closesAt": "13:00"
+    }
+  ],
+  "nonWorkingDays": [
+    {
+      "date": "2026-12-25",
+      "reason": "Feriado"
+    }
+  ]
+}
+```
+
+### Contratos diferidos
+
+La HU queda cerrada para configuracion desde panel y regla base de
+disponibilidad. La app mobile futura debera consumir esa regla para filtrar
+negocios disponibles.
+
+Regla inicial de disponibilidad publica:
+
+- `listingStatus` debe ser `published`.
+- La fecha actual no debe ser un dia no laborable.
+- La hora actual debe caer dentro de un rango configurado para el dia actual.
+
+Por ahora no se soportan rangos nocturnos que crucen medianoche, por ejemplo
+`22:00` a `02:00`. Si el producto incorpora rubros nocturnos, esa regla debera
+ampliarse explicitamente.
+
+### Cobertura
+
+- `tests/unit/business/ConfigureBusinessHoursUseCase.test.ts`
+- `tests/unit/business/GetBusinessHoursUseCase.test.ts`
+- `tests/unit/business/BusinessAvailabilityService.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- configuracion de horarios semanales y dias no laborables
+- lectura de horarios para el panel
+- validacion de ownership
+- validacion de apertura anterior al cierre
+- validacion de rangos solapados
+- validacion de dias no laborables duplicados
+- validacion de fechas calendario invalidas
+- disponibilidad publica dentro de horario
+- ocultamiento fuera de horario
+- ocultamiento en dias no laborables
+- ocultamiento cuando el negocio no esta publicado
+- contrato HTTP de `GET` y `PUT` de horarios
 
 ## HU-2.3 - Definir ventanillas o cajas activas
 

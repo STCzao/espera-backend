@@ -15,6 +15,18 @@ businessRouter.patch(
   authorize("business:edit"),
   controller.updateProfile
 );
+businessRouter.get(
+  "/:businessId/hours",
+  authenticate,
+  authorize("business:edit"),
+  controller.getHours
+);
+businessRouter.put(
+  "/:businessId/hours",
+  authenticate,
+  authorize("business:edit"),
+  controller.configureHours
+);
 businessRouter.post(
   "/configure-queue",
   authenticate,

@@ -4,6 +4,8 @@ import type { RefreshSession } from "../../src/modules/auth/domain/RefreshSessio
 import type { User } from "../../src/modules/auth/domain/User";
 import type { IBusinessRepo } from "../../src/modules/business/domain/IBusinessRepo";
 import type { Business } from "../../src/modules/business/domain/Business";
+import type { BusinessHoursConfig } from "../../src/modules/business/domain/BusinessHours";
+import type { IBusinessHoursRepo } from "../../src/modules/business/domain/IBusinessHoursRepo";
 
 export const buildUser = (overrides: Partial<User> = {}): User => ({
   id: "user-1",
@@ -176,5 +178,32 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
 
   public all(): Business[] {
     return [...this.businesses.values()];
+  }
+}
+
+export class InMemoryBusinessHoursRepo implements IBusinessHoursRepo {
+  private readonly configs = new Map<string, BusinessHoursConfig>();
+
+  public constructor(initialConfigs: BusinessHoursConfig[] = []) {
+    initialConfigs.forEach((config) => {
+      this.configs.set(config.businessId, config);
+    });
+  }
+
+  public async findByBusinessId(businessId: string): Promise<BusinessHoursConfig> {
+    return (
+      this.configs.get(businessId) ?? {
+        businessId,
+        weeklyHours: [],
+        nonWorkingDays: [],
+      }
+    );
+  }
+
+  public async replaceForBusiness(
+    config: BusinessHoursConfig,
+  ): Promise<BusinessHoursConfig> {
+    this.configs.set(config.businessId, config);
+    return config;
   }
 }

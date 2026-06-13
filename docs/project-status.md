@@ -229,3 +229,9 @@ Avance actual:
 - Endpoint de actualizacion de perfil: `PATCH /api/business/:businessId/profile`.
 - Google Maps queda en rollover justificado hasta la experiencia mobile de
   descubrimiento/mapa.
+- `HU-2.2` implementada en backend para configurar y leer horarios semanales y
+  dias no laborables.
+- Endpoints de horarios: `GET /api/business/:businessId/hours` y
+  `PUT /api/business/:businessId/hours`.
+- Regla base de disponibilidad publica preparada para que discovery mobile
+  muestre solo negocios accionables en el MVP inicial.
