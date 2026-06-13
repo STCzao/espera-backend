@@ -86,6 +86,38 @@ model Business {
   updatedAt   DateTime @updatedAt
 
   owner       User     @relation(fields: [ownerUserId], references: [id])
+  openingHours BusinessOpeningHour[]
+  nonWorkingDays BusinessNonWorkingDay[]
 
   @@map("businesses")
+}
+
+model BusinessOpeningHour {
+  id          String   @id @default(uuid())
+  businessId  String
+  dayOfWeek   Int
+  opensAt     String
+  closesAt    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, dayOfWeek])
+  @@map("business_opening_hours")
+}
+
+model BusinessNonWorkingDay {
+  id          String   @id @default(uuid())
+  businessId  String
+  date        DateTime
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, date])
+  @@index([businessId])
+  @@map("business_non_working_days")
 }
