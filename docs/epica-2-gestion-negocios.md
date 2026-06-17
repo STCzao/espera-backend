@@ -522,6 +522,97 @@ Como negocio, quiero cambiar mi estado operativo desde el panel.
 - Dado que cambio a estado `Cerrado`, entonces todos los turnos activos reciben
   notificacion push de cierre anticipado.
 
+### Implementacion backend
+
+Estado: `implementado`.
+
+Persistencia agregada en `Business`:
+
+- `operationalStatus`: estado operativo actual del negocio.
+
+Estados:
+
+- `NORMAL`: atencion disponible segun horario, visibilidad y ventanillas.
+- `DELAYED`: acepta nuevos turnos, pero expone indicador amarillo y mensaje
+  `Con demoras`.
+- `PAUSED`: no acepta nuevos turnos temporalmente.
+- `CLOSED`: no acepta nuevos turnos y emite evento de cierre anticipado.
+
+Endpoint relevante:
+
+```text
+PATCH /api/business/:businessId/operational-status
+```
+
+El endpoint valida ownership del negocio y requiere permiso `business:edit`.
+
+Ejemplo de body:
+
+```json
+{
+  "operationalStatus": "delayed"
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "businessId": "uuid",
+  "operationalStatus": "delayed",
+  "acceptsNewTurns": true,
+  "indicator": "yellow",
+  "customerMessage": "Con demoras."
+}
+```
+
+Reglas de disponibilidad publica:
+
+- `DELAYED` mantiene el negocio disponible para nuevos turnos.
+- `PAUSED` y `CLOSED` bloquean disponibilidad para nuevos turnos.
+- Las reglas previas siguen aplicando: negocio publicado, dentro de horario, sin
+  dia no laborable y con al menos una ventanilla activa.
+
+### Contrato de cierre anticipado
+
+Cuando el negocio cambia a `CLOSED`, el backend emite el evento de dominio:
+
+```text
+business.closed
+```
+
+Payload:
+
+```json
+{
+  "businessId": "uuid",
+  "ownerUserId": "uuid",
+  "previousStatus": "delayed",
+  "reason": "Cierre anticipado",
+  "occurredAt": "2026-06-17T00:00:00.000Z"
+}
+```
+
+La notificacion push efectiva a turnos activos queda como integracion diferida
+hasta que exista cola persistida, dispositivos de usuarios y outbox funcional.
+La HU deja listo el contrato para esa integracion.
+
+### Cobertura
+
+- `tests/unit/business/UpdateBusinessOperationalStatusUseCase.test.ts`
+- `tests/unit/business/BusinessAvailabilityService.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- cambio a `DELAYED` con indicador amarillo y turnos habilitados
+- cambio a `PAUSED` con turnos bloqueados
+- cambio a `CLOSED` con turnos bloqueados
+- emision de `business.closed` al cerrar por primera vez
+- no reemitir evento si ya estaba cerrado
+- validacion de ownership
+- contrato HTTP del endpoint de estado operativo
+
 ## HU-2.6 - Editar datos del negocio
 
 Story points: `2`

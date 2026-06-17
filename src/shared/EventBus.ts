@@ -22,6 +22,13 @@ export type DomainEvents = {
     userId: string;
     email: string;
   };
+  "business.closed": {
+    businessId: string;
+    ownerUserId: string;
+    previousStatus: "normal" | "delayed" | "paused" | "closed";
+    reason?: string;
+    occurredAt: Date;
+  };
 };
 
 export class EventBus {

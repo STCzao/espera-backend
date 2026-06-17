@@ -119,6 +119,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
         address,
         listingStatus: "draft",
         activeServiceWindows: 1,
+        operationalStatus: "normal",
         ownerUserId: user.id,
         createdAt: new Date(),
         updatedAt: new Date(),

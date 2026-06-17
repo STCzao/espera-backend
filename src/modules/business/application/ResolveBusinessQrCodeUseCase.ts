@@ -30,6 +30,7 @@ export interface ResolveBusinessQrCodeOutput {
     address?: string;
     listingStatus: "draft" | "hidden" | "published";
     activeServiceWindows: number;
+    operationalStatus: "normal" | "delayed" | "paused" | "closed";
   };
 }
 
@@ -76,6 +77,7 @@ export class ResolveBusinessQrCodeUseCase
         address: business.address,
         listingStatus: business.listingStatus,
         activeServiceWindows: business.activeServiceWindows,
+        operationalStatus: business.operationalStatus,
       },
     };
   }

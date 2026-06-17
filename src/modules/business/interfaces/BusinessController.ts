@@ -9,6 +9,7 @@ import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCas
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
+import { UpdateBusinessOperationalStatusUseCase } from "../application/UpdateBusinessOperationalStatusUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
 
 export class BusinessController {
@@ -21,7 +22,8 @@ export class BusinessController {
     private readonly configureBusinessServiceWindowsUseCase = new ConfigureBusinessServiceWindowsUseCase(),
     private readonly getBusinessQrCodeUseCase = new GetBusinessQrCodeUseCase(),
     private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
-    private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase()
+    private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase(),
+    private readonly updateBusinessOperationalStatusUseCase = new UpdateBusinessOperationalStatusUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -76,6 +78,25 @@ export class BusinessController {
         activeServiceWindows: result.activeServiceWindows,
       },
       "Business service windows configured"
+    );
+    response.status(200).json(result);
+  };
+
+  public updateOperationalStatus = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.updateBusinessOperationalStatusUseCase.execute({
+      ...request.body,
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info(
+      {
+        businessId: result.businessId,
+        operationalStatus: result.operationalStatus,
+      },
+      "Business operational status updated"
     );
     response.status(200).json(result);
   };

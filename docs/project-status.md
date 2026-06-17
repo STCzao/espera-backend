@@ -248,3 +248,11 @@ Avance actual:
   `GET /api/business/:businessId/qr.png` y `GET /api/qr/:token`.
 - El QR apunta a `{APP_URL}/q/:token`, permite descarga PNG desde el panel y
   conserva el codigo anterior durante 24 horas al regenerar.
+- `HU-2.5` implementada en backend para cambiar estado operativo del negocio.
+- Endpoint de estado operativo:
+  `PATCH /api/business/:businessId/operational-status`.
+- Estados soportados: `normal`, `delayed`, `paused`, `closed`. `delayed`
+  mantiene turnos habilitados con indicador amarillo; `paused` y `closed`
+  bloquean nuevos turnos.
+- Al cambiar a `closed`, se emite el evento `business.closed` para integracion
+  posterior con notificaciones push a turnos activos.
