@@ -8,6 +8,7 @@ const businessMocks = vi.hoisted(() => ({
   configureBusinessHoursExecute: vi.fn(),
   configureBusinessServiceWindowsExecute: vi.fn(),
   generateBusinessQrPngExecute: vi.fn(),
+  getBusinessCategoryConfigExecute: vi.fn(),
   getBusinessQrCodeExecute: vi.fn(),
   getBusinessHoursExecute: vi.fn(),
   regenerateBusinessQrCodeExecute: vi.fn(),
@@ -36,6 +37,12 @@ vi.mock("../../../src/modules/business/application/GenerateBusinessQrPngUseCase"
 vi.mock("../../../src/modules/business/application/GetBusinessQrCodeUseCase", () => ({
   GetBusinessQrCodeUseCase: class {
     public execute = businessMocks.getBusinessQrCodeExecute;
+  },
+}));
+
+vi.mock("../../../src/modules/business/application/GetBusinessCategoryConfigUseCase", () => ({
+  GetBusinessCategoryConfigUseCase: class {
+    public execute = businessMocks.getBusinessCategoryConfigExecute;
   },
 }));
 
@@ -95,6 +102,7 @@ describe("business API", () => {
     businessMocks.configureBusinessHoursExecute.mockReset();
     businessMocks.configureBusinessServiceWindowsExecute.mockReset();
     businessMocks.generateBusinessQrPngExecute.mockReset();
+    businessMocks.getBusinessCategoryConfigExecute.mockReset();
     businessMocks.getBusinessQrCodeExecute.mockReset();
     businessMocks.getBusinessHoursExecute.mockReset();
     businessMocks.regenerateBusinessQrCodeExecute.mockReset();
@@ -168,6 +176,41 @@ describe("business API", () => {
       businessId,
       ownerUserId: "22222222-2222-4222-8222-222222222222",
       activeServiceWindows: 2,
+    });
+  });
+
+  it("returns category config for the owner panel", async () => {
+    const categoryId = "33333333-3333-4333-8333-333333333333";
+    businessMocks.getBusinessCategoryConfigExecute.mockResolvedValue({
+      categoryId,
+      attributes: [
+        {
+          key: "averageServiceMinutes",
+          label: "Tiempo promedio por tramite",
+          type: "number",
+          required: true,
+        },
+      ],
+    });
+
+    const response = await request(createApp())
+      .get(`/api/business/categories/${categoryId}/config`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      categoryId,
+      attributes: [
+        {
+          key: "averageServiceMinutes",
+          label: "Tiempo promedio por tramite",
+          type: "number",
+          required: true,
+        },
+      ],
+    });
+    expect(businessMocks.getBusinessCategoryConfigExecute).toHaveBeenCalledWith({
+      categoryId,
     });
   });
 

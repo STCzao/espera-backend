@@ -5,6 +5,7 @@ import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessH
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
 import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
+import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
 import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
@@ -23,7 +24,8 @@ export class BusinessController {
     private readonly getBusinessQrCodeUseCase = new GetBusinessQrCodeUseCase(),
     private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
     private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase(),
-    private readonly updateBusinessOperationalStatusUseCase = new UpdateBusinessOperationalStatusUseCase()
+    private readonly updateBusinessOperationalStatusUseCase = new UpdateBusinessOperationalStatusUseCase(),
+    private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -42,6 +44,16 @@ export class BusinessController {
       ownerUserId: request.user?.id ?? "",
     });
     logger.info({ businessId: result.businessId }, "Business profile updated");
+    response.status(200).json(result);
+  };
+
+  public getCategoryConfig = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.getBusinessCategoryConfigUseCase.execute({
+      categoryId: String(request.params.categoryId),
+    });
     response.status(200).json(result);
   };
 

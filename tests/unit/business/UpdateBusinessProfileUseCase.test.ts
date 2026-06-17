@@ -41,8 +41,33 @@ describe("UpdateBusinessProfileUseCase", () => {
 
     expect(result).toEqual({
       businessId: validInput.businessId,
+      name: validInput.name,
+      categoryId: validInput.categoryId,
       address: validInput.address,
       listingStatus: "draft",
+      categoryConfig: {
+        categoryId: validInput.categoryId,
+        attributes: [
+          {
+            key: "averageServiceMinutes",
+            label: "Tiempo promedio por tramite",
+            type: "number",
+            required: true,
+          },
+          {
+            key: "requiresDocumentation",
+            label: "Requiere documentacion",
+            type: "boolean",
+            required: false,
+          },
+          {
+            key: "serviceArea",
+            label: "Area de atencion",
+            type: "text",
+            required: false,
+          },
+        ],
+      },
     });
     expect(updatedBusiness).toMatchObject({
       name: validInput.name,
@@ -71,6 +96,8 @@ describe("UpdateBusinessProfileUseCase", () => {
 
     expect(result).toMatchObject({
       businessId: validInput.businessId,
+      name: validInput.name,
+      categoryId: validInput.categoryId,
       address: validInput.address,
       latitude: -34.6037,
       longitude: -58.3816,

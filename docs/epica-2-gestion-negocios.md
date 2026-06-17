@@ -626,6 +626,90 @@ Como negocio, quiero editar los datos de mi negocio.
 - Dado que cambio la categoria, entonces los atributos especificos de la nueva
   categoria se habilitan en el formulario de configuracion.
 
+### Implementacion backend
+
+Estado: `implementado`.
+
+La edicion de datos reutiliza el endpoint de perfil operativo ya existente:
+
+```text
+PATCH /api/business/:businessId/profile
+```
+
+Permite actualizar:
+
+- `name`
+- `categoryId`
+- `address`
+
+El endpoint valida ownership, persiste los cambios inmediatamente y devuelve la
+configuracion de atributos correspondiente a la categoria seleccionada para que
+el panel pueda actualizar el formulario sin depender de reglas hardcodeadas en
+frontend.
+
+Ejemplo de body:
+
+```json
+{
+  "name": "Cafe Espera Renovado",
+  "categoryId": "33333333-3333-4333-8333-333333333333",
+  "address": "Av. Santa Fe 1234, CABA"
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "businessId": "uuid",
+  "name": "Cafe Espera Renovado",
+  "categoryId": "33333333-3333-4333-8333-333333333333",
+  "address": "Av. Santa Fe 1234, CABA",
+  "listingStatus": "draft",
+  "categoryConfig": {
+    "categoryId": "33333333-3333-4333-8333-333333333333",
+    "attributes": [
+      {
+        "key": "averageServiceMinutes",
+        "label": "Tiempo promedio por tramite",
+        "type": "number",
+        "required": true
+      }
+    ]
+  }
+}
+```
+
+Endpoint auxiliar para consultar atributos antes de guardar:
+
+```text
+GET /api/business/categories/:categoryId/config
+```
+
+Este endpoint permite que el panel habilite atributos especificos apenas el
+usuario cambia la categoria en el formulario.
+
+### Contratos diferidos
+
+La persistencia de valores de atributos especificos por categoria queda diferida
+hasta que el producto defina cuales impactan reglas operativas reales. En esta
+HU el backend deja cerrado el contrato de metadata que habilita el formulario.
+
+### Cobertura
+
+- `tests/unit/business/UpdateBusinessProfileUseCase.test.ts`
+- `tests/unit/business/GetBusinessCategoryConfigUseCase.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- edicion de nombre, categoria y direccion
+- persistencia inmediata de cambios del perfil
+- respuesta con atributos de la categoria seleccionada
+- endpoint auxiliar de configuracion de categoria
+- fallback de atributos base para categorias no catalogadas
+- validacion de ownership
+
 ## HU-2.8 - Invitar empleados al panel
 
 Story points: `3`
