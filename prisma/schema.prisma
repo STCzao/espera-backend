@@ -81,6 +81,7 @@ model Business {
   latitude    Float?
   longitude   Float?
   listingStatus BusinessListingStatus @default(DRAFT)
+  activeServiceWindows Int @default(1)
   ownerUserId String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -288,6 +288,81 @@ Como negocio, quiero definir cuantas ventanillas o cajas tengo activas.
 - Dado que tengo `0` ventanillas activas, cuando un usuario ve mi negocio,
   entonces aparece como `Sin atencion disponible`.
 
+### Implementacion backend
+
+Estado: `implementado`.
+
+Persistencia agregada en `Business`:
+
+- `activeServiceWindows`: cantidad de ventanillas, cajas o puntos de atencion
+  activos para procesar turnos en paralelo.
+
+Reglas:
+
+- El valor inicial es `1`.
+- Se permite `0` para indicar que el negocio no tiene atencion disponible.
+- No se permiten valores negativos, decimales ni cantidades mayores a `50`.
+- Un negocio con `activeServiceWindows = 0` no se considera disponible para
+  recibir nuevos turnos aunque este publicado y dentro del horario de atencion.
+
+Endpoint relevante:
+
+```text
+PUT /api/business/:businessId/service-windows
+```
+
+El endpoint permite al panel actualizar la cantidad de ventanillas activas.
+Valida ownership del negocio y requiere permiso `business:edit`.
+
+Ejemplo de body:
+
+```json
+{
+  "activeServiceWindows": 3
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "businessId": "uuid",
+  "activeServiceWindows": 3,
+  "attentionAvailable": true
+}
+```
+
+Si el valor es `0`, `attentionAvailable` vuelve como `false`.
+
+### Contrato de estimacion inicial
+
+Como la cola persistida y el conteo real de turnos activos pertenecen a epicas
+posteriores, esta HU deja preparado un servicio puro de estimacion. La regla
+inicial calcula la espera por capacidad paralela:
+
+```text
+ceil(turnos_en_espera / ventanillas_activas) * minutos_promedio_por_turno
+```
+
+Si no hay ventanillas activas, la estimacion devuelve estado sin atencion
+disponible en lugar de minutos.
+
+### Cobertura
+
+- `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts`
+- `tests/unit/business/BusinessAvailabilityService.test.ts`
+- `tests/unit/queue/QueueWaitEstimateService.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- configuracion de ventanillas activas
+- permiso solo para owner del negocio
+- validacion de `0` como pausa operativa valida
+- rechazo de negativos y decimales
+- negocio no disponible con `0` ventanillas activas
+- estimacion de espera usando ventanillas como capacidad paralela
+
 ## HU-2.4 - Generar QR unico del negocio
 
 Story points: `3`

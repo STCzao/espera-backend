@@ -27,6 +27,12 @@ businessRouter.put(
   authorize("business:edit"),
   controller.configureHours
 );
+businessRouter.put(
+  "/:businessId/service-windows",
+  authenticate,
+  authorize("business:edit"),
+  controller.configureServiceWindows
+);
 businessRouter.post(
   "/configure-queue",
   authenticate,

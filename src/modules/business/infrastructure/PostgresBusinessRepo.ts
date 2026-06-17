@@ -22,6 +22,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           latitude: business.latitude ?? undefined,
           longitude: business.longitude ?? undefined,
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
+          activeServiceWindows: business.activeServiceWindows,
           ownerUserId: business.ownerUserId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
@@ -41,6 +42,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           latitude: business.latitude ?? undefined,
           longitude: business.longitude ?? undefined,
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
+          activeServiceWindows: business.activeServiceWindows,
           ownerUserId: business.ownerUserId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
@@ -60,6 +62,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         latitude: entity.latitude ?? null,
         longitude: entity.longitude ?? null,
         listingStatus: toListingStatusEnum(entity.listingStatus),
+        activeServiceWindows: entity.activeServiceWindows,
         ownerUserId: entity.ownerUserId
       },
       update: {
@@ -70,6 +73,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         latitude: entity.latitude ?? null,
         longitude: entity.longitude ?? null,
         listingStatus: toListingStatusEnum(entity.listingStatus),
+        activeServiceWindows: entity.activeServiceWindows,
         ownerUserId: entity.ownerUserId
       }
     });
@@ -83,6 +87,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       latitude: business.latitude ?? undefined,
       longitude: business.longitude ?? undefined,
       listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
+      activeServiceWindows: business.activeServiceWindows,
       ownerUserId: business.ownerUserId,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt
