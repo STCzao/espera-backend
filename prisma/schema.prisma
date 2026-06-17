@@ -36,6 +36,13 @@ enum BusinessQrCodeStatus {
   REVOKED
 }
 
+enum BusinessOperationalStatus {
+  NORMAL
+  DELAYED
+  PAUSED
+  CLOSED
+}
+
 model User {
   id                      String    @id @default(uuid())
   email                   String    @unique
@@ -88,6 +95,7 @@ model Business {
   longitude   Float?
   listingStatus BusinessListingStatus @default(DRAFT)
   activeServiceWindows Int @default(1)
+  operationalStatus BusinessOperationalStatus @default(NORMAL)
   ownerUserId String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

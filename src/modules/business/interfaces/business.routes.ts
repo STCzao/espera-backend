@@ -33,6 +33,12 @@ businessRouter.put(
   authorize("business:edit"),
   controller.configureServiceWindows
 );
+businessRouter.patch(
+  "/:businessId/operational-status",
+  authenticate,
+  authorize("business:edit"),
+  controller.updateOperationalStatus
+);
 businessRouter.get(
   "/:businessId/qr",
   authenticate,

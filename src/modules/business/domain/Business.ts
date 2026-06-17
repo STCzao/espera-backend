@@ -1,4 +1,5 @@
 export type BusinessListingStatus = "draft" | "hidden" | "published";
+export type BusinessOperationalStatus = "normal" | "delayed" | "paused" | "closed";
 
 export interface Business {
   id: string;
@@ -10,6 +11,7 @@ export interface Business {
   longitude?: number;
   listingStatus: BusinessListingStatus;
   activeServiceWindows: number;
+  operationalStatus: BusinessOperationalStatus;
   ownerUserId: string;
   createdAt: Date;
   updatedAt: Date;

@@ -83,6 +83,7 @@ export class RegisterBusinessUseCase
         longitude: coordinates?.longitude,
         listingStatus: "draft",
         activeServiceWindows: 1,
+        operationalStatus: "normal",
         ownerUserId: parsed.data.ownerUserId,
         createdAt: new Date(),
         updatedAt: new Date(),

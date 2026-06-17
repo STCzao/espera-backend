@@ -1,13 +1,16 @@
-import { BusinessListingStatus as PrismaBusinessListingStatus } from "@prisma/client";
-
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Business } from "../domain/Business";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 
 const toListingStatusEnum = (
   listingStatus: Business["listingStatus"],
-): PrismaBusinessListingStatus =>
-  listingStatus.toUpperCase() as PrismaBusinessListingStatus;
+): "DRAFT" | "HIDDEN" | "PUBLISHED" =>
+  listingStatus.toUpperCase() as "DRAFT" | "HIDDEN" | "PUBLISHED";
+
+const toOperationalStatusEnum = (
+  operationalStatus: Business["operationalStatus"],
+): "NORMAL" | "DELAYED" | "PAUSED" | "CLOSED" =>
+  operationalStatus.toUpperCase() as "NORMAL" | "DELAYED" | "PAUSED" | "CLOSED";
 
 export class PostgresBusinessRepo implements IBusinessRepo {
   public async findById(id: string): Promise<Business | null> {
@@ -23,6 +26,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           longitude: business.longitude ?? undefined,
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
           activeServiceWindows: business.activeServiceWindows,
+          operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
           ownerUserId: business.ownerUserId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
@@ -43,6 +47,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           longitude: business.longitude ?? undefined,
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
           activeServiceWindows: business.activeServiceWindows,
+          operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
           ownerUserId: business.ownerUserId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
@@ -63,6 +68,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         longitude: entity.longitude ?? null,
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
+        operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
         ownerUserId: entity.ownerUserId
       },
       update: {
@@ -74,6 +80,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         longitude: entity.longitude ?? null,
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
+        operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
         ownerUserId: entity.ownerUserId
       }
     });
@@ -88,6 +95,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       longitude: business.longitude ?? undefined,
       listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
       activeServiceWindows: business.activeServiceWindows,
+      operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
       ownerUserId: business.ownerUserId,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt

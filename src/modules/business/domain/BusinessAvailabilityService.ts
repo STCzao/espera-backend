@@ -66,6 +66,13 @@ export class BusinessAvailabilityService {
       return false;
     }
 
+    if (
+      business.operationalStatus === "paused" ||
+      business.operationalStatus === "closed"
+    ) {
+      return false;
+    }
+
     const localTime = getLocalTimeParts(now, timeZone);
     const isNonWorkingDay = hoursConfig.nonWorkingDays.some(
       (day) => day.date === localTime.date,

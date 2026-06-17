@@ -12,6 +12,7 @@ const businessMocks = vi.hoisted(() => ({
   getBusinessHoursExecute: vi.fn(),
   regenerateBusinessQrCodeExecute: vi.fn(),
   resolveBusinessQrCodeExecute: vi.fn(),
+  updateBusinessOperationalStatusExecute: vi.fn(),
 }));
 
 vi.mock("../../../src/modules/business/application/ConfigureBusinessHoursUseCase", () => ({
@@ -56,6 +57,12 @@ vi.mock("../../../src/modules/business/application/ResolveBusinessQrCodeUseCase"
   },
 }));
 
+vi.mock("../../../src/modules/business/application/UpdateBusinessOperationalStatusUseCase", () => ({
+  UpdateBusinessOperationalStatusUseCase: class {
+    public execute = businessMocks.updateBusinessOperationalStatusExecute;
+  },
+}));
+
 const accessToken = jwt.sign(
   {
     email: "owner@example.com",
@@ -92,6 +99,7 @@ describe("business API", () => {
     businessMocks.getBusinessHoursExecute.mockReset();
     businessMocks.regenerateBusinessQrCodeExecute.mockReset();
     businessMocks.resolveBusinessQrCodeExecute.mockReset();
+    businessMocks.updateBusinessOperationalStatusExecute.mockReset();
   });
 
   it("returns configured business hours for the owner panel", async () => {
@@ -160,6 +168,35 @@ describe("business API", () => {
       businessId,
       ownerUserId: "22222222-2222-4222-8222-222222222222",
       activeServiceWindows: 2,
+    });
+  });
+
+  it("updates operational status for the owner panel", async () => {
+    businessMocks.updateBusinessOperationalStatusExecute.mockResolvedValue({
+      businessId,
+      operationalStatus: "delayed",
+      acceptsNewTurns: true,
+      indicator: "yellow",
+      customerMessage: "Con demoras.",
+    });
+
+    const response = await request(createApp())
+      .patch(`/api/business/${businessId}/operational-status`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ operationalStatus: "delayed" });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      businessId,
+      operationalStatus: "delayed",
+      acceptsNewTurns: true,
+      indicator: "yellow",
+      customerMessage: "Con demoras.",
+    });
+    expect(businessMocks.updateBusinessOperationalStatusExecute).toHaveBeenCalledWith({
+      businessId,
+      ownerUserId: "22222222-2222-4222-8222-222222222222",
+      operationalStatus: "delayed",
     });
   });
 
@@ -257,6 +294,7 @@ describe("business API", () => {
         address: "Av. Siempre Viva 123",
         listingStatus: "published",
         activeServiceWindows: 2,
+        operationalStatus: "delayed",
       },
     });
 
@@ -277,6 +315,7 @@ describe("business API", () => {
         address: "Av. Siempre Viva 123",
         listingStatus: "published",
         activeServiceWindows: 2,
+        operationalStatus: "delayed",
       },
     });
     expect(businessMocks.resolveBusinessQrCodeExecute).toHaveBeenCalledWith({

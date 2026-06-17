@@ -42,6 +42,7 @@ describe("ResolveBusinessQrCodeUseCase", () => {
         address: business.address,
         listingStatus: "published",
         activeServiceWindows: 1,
+        operationalStatus: "normal",
       },
     });
   });

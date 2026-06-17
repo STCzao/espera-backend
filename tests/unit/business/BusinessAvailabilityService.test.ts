@@ -88,6 +88,48 @@ describe("BusinessAvailabilityService", () => {
     expect(isAvailable).toBe(false);
   });
 
+  it("marks delayed businesses as available inside opening hours", () => {
+    const service = new BusinessAvailabilityService();
+
+    const isAvailable = service.isAvailableNow({
+      business: buildBusiness({
+        listingStatus: "published",
+        operationalStatus: "delayed",
+      }),
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(isAvailable).toBe(true);
+  });
+
+  it("does not mark paused or closed businesses as available", () => {
+    const service = new BusinessAvailabilityService();
+
+    const paused = service.isAvailableNow({
+      business: buildBusiness({
+        listingStatus: "published",
+        operationalStatus: "paused",
+      }),
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+    const closed = service.isAvailableNow({
+      business: buildBusiness({
+        listingStatus: "published",
+        operationalStatus: "closed",
+      }),
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(paused).toBe(false);
+    expect(closed).toBe(false);
+  });
+
   it("does not mark a business as available on non-working days", () => {
     const service = new BusinessAvailabilityService();
 
