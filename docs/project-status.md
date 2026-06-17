@@ -241,3 +241,10 @@ Avance actual:
 - Un negocio con `0` ventanillas activas queda sin atencion disponible para
   nuevos turnos, y queda preparado un servicio puro de estimacion de espera para
   integrarse con la cola persistida en epicas posteriores.
+- `HU-2.4` implementada en backend como canal QR de entrada a Espera.
+- Endpoints de QR:
+  `GET /api/business/:businessId/qr`,
+  `POST /api/business/:businessId/qr/regenerate`,
+  `GET /api/business/:businessId/qr.png` y `GET /api/qr/:token`.
+- El QR apunta a `{APP_URL}/q/:token`, permite descarga PNG desde el panel y
+  conserva el codigo anterior durante 24 horas al regenerar.

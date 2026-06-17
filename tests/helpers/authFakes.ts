@@ -6,6 +6,8 @@ import type { IBusinessRepo } from "../../src/modules/business/domain/IBusinessR
 import type { Business } from "../../src/modules/business/domain/Business";
 import type { BusinessHoursConfig } from "../../src/modules/business/domain/BusinessHours";
 import type { IBusinessHoursRepo } from "../../src/modules/business/domain/IBusinessHoursRepo";
+import type { BusinessQrCode } from "../../src/modules/business/domain/BusinessQrCode";
+import type { IBusinessQrCodeRepo } from "../../src/modules/business/domain/IBusinessQrCodeRepo";
 
 export const buildUser = (overrides: Partial<User> = {}): User => ({
   id: "user-1",
@@ -206,5 +208,88 @@ export class InMemoryBusinessHoursRepo implements IBusinessHoursRepo {
   ): Promise<BusinessHoursConfig> {
     this.configs.set(config.businessId, config);
     return config;
+  }
+}
+
+export const buildBusinessQrCode = (
+  overrides: Partial<BusinessQrCode> = {},
+): BusinessQrCode => ({
+  id: "qr-1",
+  businessId: "business-1",
+  token: "qr-token-1234567890",
+  status: "active",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  ...overrides,
+});
+
+export class InMemoryBusinessQrCodeRepo implements IBusinessQrCodeRepo {
+  private readonly qrCodes = new Map<string, BusinessQrCode>();
+
+  public constructor(initialQrCodes: BusinessQrCode[] = []) {
+    initialQrCodes.forEach((qrCode) => {
+      this.qrCodes.set(qrCode.id, qrCode);
+    });
+  }
+
+  public async findById(id: string): Promise<BusinessQrCode | null> {
+    return this.qrCodes.get(id) ?? null;
+  }
+
+  public async findActiveByBusinessId(
+    businessId: string,
+  ): Promise<BusinessQrCode | null> {
+    return (
+      [...this.qrCodes.values()].find(
+        (qrCode) =>
+          qrCode.businessId === businessId && qrCode.status === "active",
+      ) ?? null
+    );
+  }
+
+  public async findResolvableByToken(
+    token: string,
+    now: Date,
+  ): Promise<BusinessQrCode | null> {
+    return (
+      [...this.qrCodes.values()].find((qrCode) => {
+        if (qrCode.token !== token) {
+          return false;
+        }
+
+        if (qrCode.status === "active") {
+          return true;
+        }
+
+        return (
+          qrCode.status === "retiring" &&
+          Boolean(qrCode.validUntil && qrCode.validUntil > now)
+        );
+      }) ?? null
+    );
+  }
+
+  public async save(entity: BusinessQrCode): Promise<BusinessQrCode> {
+    this.qrCodes.set(entity.id, entity);
+    return entity;
+  }
+
+  public async retireActiveForBusiness(
+    businessId: string,
+    validUntil: Date,
+  ): Promise<void> {
+    [...this.qrCodes.values()].forEach((qrCode) => {
+      if (qrCode.businessId === businessId && qrCode.status === "active") {
+        this.qrCodes.set(qrCode.id, {
+          ...qrCode,
+          status: "retiring",
+          validUntil,
+        });
+      }
+    });
+  }
+
+  public all(): BusinessQrCode[] {
+    return [...this.qrCodes.values()];
   }
 }

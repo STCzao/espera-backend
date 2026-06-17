@@ -380,6 +380,133 @@ Como negocio, quiero generar el QR unico de mi negocio para pegarlo en el local.
 - Dado que regenero el QR, entonces el QR anterior queda invalido en 24 horas,
   manteniendo una transicion para quienes lo tengan guardado.
 
+### Decision de producto
+
+El QR es un canal de entrada al ecosistema Espera. La persona que escanea suele
+estar frente al local y tiene una necesidad inmediata: anotarse o acceder al
+servicio. Por eso el primer paso no debe bloquearse con la descarga obligatoria
+de la app.
+
+Flujo deseado:
+
+```text
+Escaneo QR
+→ landing ligera / deep link
+→ negocio y disponibilidad
+→ inicio del flujo de turno
+→ invitacion a descargar la app para seguimiento y avisos
+```
+
+La descarga de la app debe aparecer como una mejora clara de experiencia:
+
+- seguir el lugar en la cola
+- recibir avisos cuando falten pocos turnos
+- salir del local sin perder visibilidad del turno
+- guardar negocios frecuentes
+- recibir cambios si el negocio pausa o cierra atencion
+
+### Implementacion backend
+
+Estado: `implementado`.
+
+Persistencia agregada:
+
+- `BusinessQrCode`: codigos QR vinculados a un negocio.
+- `BusinessQrCodeStatus`: `ACTIVE`, `RETIRING`, `REVOKED`.
+
+Reglas:
+
+- Si el negocio no tiene QR activo, el backend genera uno al consultarlo.
+- El QR embebe una URL publica de app/web:
+
+```text
+{APP_URL}/q/:token
+```
+
+- El panel puede regenerar el QR.
+- Al regenerar, el QR anterior pasa a `RETIRING` y sigue resolviendo durante 24
+  horas para mantener una transicion operativa.
+- Los QR retirados vencidos o revocados no resuelven.
+
+Endpoints panel:
+
+```text
+GET /api/business/:businessId/qr
+POST /api/business/:businessId/qr/regenerate
+GET /api/business/:businessId/qr.png
+```
+
+Todos requieren autenticacion, permiso `business:edit` y ownership del negocio.
+
+Endpoint publico:
+
+```text
+GET /api/qr/:token
+```
+
+Este endpoint resuelve un token escaneado y devuelve el contrato para abrir el
+flujo de turno del negocio en web/app.
+
+Ejemplo de respuesta para el panel:
+
+```json
+{
+  "businessId": "uuid",
+  "token": "qr-token",
+  "qrUrl": "https://espera.app/q/qr-token",
+  "downloadUrl": "/api/business/uuid/qr.png",
+  "status": "active"
+}
+```
+
+Ejemplo de respuesta publica:
+
+```json
+{
+  "token": "qr-token",
+  "qrUrl": "https://espera.app/q/qr-token",
+  "qrStatus": "active",
+  "action": "OPEN_BUSINESS_TURN_FLOW",
+  "appPath": "/business/uuid/turns/new",
+  "business": {
+    "id": "uuid",
+    "name": "Cafe Espera",
+    "slug": "cafe-espera",
+    "categoryId": "uuid",
+    "address": "Av. Corrientes 1234, CABA",
+    "listingStatus": "published",
+    "activeServiceWindows": 2
+  }
+}
+
+```
+
+### Contratos diferidos
+
+La HU deja listo el backend para la experiencia de escaneo, pero la pantalla
+publica `/q/:token`, deep links nativos y medicion de conversion a app quedan
+del lado frontend/mobile.
+
+El flujo real de sacar turno con cola persistida corresponde a epicas
+posteriores. En esta HU el backend devuelve el contrato `OPEN_BUSINESS_TURN_FLOW`
+para que esa experiencia se conecte cuando la cola este implementada.
+
+### Cobertura
+
+- `tests/unit/business/GetBusinessQrCodeUseCase.test.ts`
+- `tests/unit/business/RegenerateBusinessQrCodeUseCase.test.ts`
+- `tests/unit/business/ResolveBusinessQrCodeUseCase.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- generacion perezosa de QR activo
+- lectura del QR activo existente
+- regeneracion con transicion de 24 horas
+- resolucion de QR activo y QR en transicion
+- rechazo de QR vencido
+- contratos HTTP de panel y resolucion publica
+
 ## HU-2.5 - Cambiar estado operativo del negocio
 
 Story points: `2`

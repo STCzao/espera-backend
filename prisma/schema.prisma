@@ -30,6 +30,12 @@ enum BusinessListingStatus {
   PUBLISHED
 }
 
+enum BusinessQrCodeStatus {
+  ACTIVE
+  RETIRING
+  REVOKED
+}
+
 model User {
   id                      String    @id @default(uuid())
   email                   String    @unique
@@ -89,8 +95,24 @@ model Business {
   owner       User     @relation(fields: [ownerUserId], references: [id])
   openingHours BusinessOpeningHour[]
   nonWorkingDays BusinessNonWorkingDay[]
+  qrCodes BusinessQrCode[]
 
   @@map("businesses")
+}
+
+model BusinessQrCode {
+  id         String   @id @default(uuid())
+  businessId String
+  token      String   @unique
+  status     BusinessQrCodeStatus @default(ACTIVE)
+  validUntil DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("business_qr_codes")
 }
 
 model BusinessOpeningHour {

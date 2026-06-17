@@ -4,7 +4,10 @@ import { logger } from "@shared/infrastructure/logger";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
+import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
+import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
+import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
 
@@ -15,7 +18,10 @@ export class BusinessController {
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
     private readonly configureBusinessHoursUseCase = new ConfigureBusinessHoursUseCase(),
     private readonly getBusinessHoursUseCase = new GetBusinessHoursUseCase(),
-    private readonly configureBusinessServiceWindowsUseCase = new ConfigureBusinessServiceWindowsUseCase()
+    private readonly configureBusinessServiceWindowsUseCase = new ConfigureBusinessServiceWindowsUseCase(),
+    private readonly getBusinessQrCodeUseCase = new GetBusinessQrCodeUseCase(),
+    private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
+    private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -72,6 +78,45 @@ export class BusinessController {
       "Business service windows configured"
     );
     response.status(200).json(result);
+  };
+
+  public getQrCode = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.getBusinessQrCodeUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.status(200).json(result);
+  };
+
+  public regenerateQrCode = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.regenerateBusinessQrCodeUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info({ businessId: result.businessId }, "Business QR regenerated");
+    response.status(201).json(result);
+  };
+
+  public downloadQrPng = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.generateBusinessQrPngUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.setHeader("Content-Type", result.contentType);
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.fileName}"`
+    );
+    response.status(200).send(result.buffer);
   };
 
   public configureQueue = async (request: Request, response: Response): Promise<void> => {
