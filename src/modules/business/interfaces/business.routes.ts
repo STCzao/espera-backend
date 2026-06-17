@@ -33,6 +33,24 @@ businessRouter.put(
   authorize("business:edit"),
   controller.configureServiceWindows
 );
+businessRouter.get(
+  "/:businessId/qr",
+  authenticate,
+  authorize("business:edit"),
+  controller.getQrCode
+);
+businessRouter.post(
+  "/:businessId/qr/regenerate",
+  authenticate,
+  authorize("business:edit"),
+  controller.regenerateQrCode
+);
+businessRouter.get(
+  "/:businessId/qr.png",
+  authenticate,
+  authorize("business:edit"),
+  controller.downloadQrPng
+);
 businessRouter.post(
   "/configure-queue",
   authenticate,

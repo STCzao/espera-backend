@@ -13,6 +13,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
 import { businessRouter } from "./modules/business/interfaces/business.routes";
+import { qrRouter } from "./modules/business/interfaces/qr.routes";
 import { queueRouter } from "./modules/queue/interfaces/queue.routes";
 import { env } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
@@ -70,6 +71,7 @@ export const createApp = (): express.Express => {
   const apiPrefix = env.API_PREFIX;
   app.use(`${apiPrefix}/auth`, authRouter);
   app.use(`${apiPrefix}/business`, businessRouter);
+  app.use(`${apiPrefix}/qr`, qrRouter);
   app.use(`${apiPrefix}/queue`, queueRouter);
   app.use(errorHandler);
 
