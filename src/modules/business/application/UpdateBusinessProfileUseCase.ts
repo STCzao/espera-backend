@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { BusinessCategoryConfig } from "../domain/BusinessCategoryConfig";
+import { BusinessCategoryConfigRegistry } from "../domain/BusinessCategoryConfigRegistry";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import type { IGeocodingService } from "../domain/IGeocodingService";
 import { GoogleMapsGeocodingService } from "../infrastructure/GoogleMapsGeocodingService";
@@ -19,10 +21,13 @@ export type UpdateBusinessProfileInput = z.infer<typeof updateBusinessProfileSch
 
 export interface UpdateBusinessProfileOutput {
   businessId: string;
+  name: string;
+  categoryId: string;
   address: string;
   latitude?: number;
   longitude?: number;
   listingStatus: "draft" | "hidden" | "published";
+  categoryConfig: BusinessCategoryConfig;
 }
 
 export class UpdateBusinessProfileUseCase
@@ -31,6 +36,7 @@ export class UpdateBusinessProfileUseCase
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly geocodingService: IGeocodingService = new GoogleMapsGeocodingService(),
+    private readonly categoryConfigRegistry = new BusinessCategoryConfigRegistry(),
   ) {}
 
   public async execute(
@@ -69,10 +75,13 @@ export class UpdateBusinessProfileUseCase
 
     return {
       businessId: updatedBusiness.id,
+      name: updatedBusiness.name,
+      categoryId: updatedBusiness.categoryId,
       address: updatedBusiness.address ?? parsed.data.address,
       latitude: updatedBusiness.latitude,
       longitude: updatedBusiness.longitude,
       listingStatus: updatedBusiness.listingStatus,
+      categoryConfig: this.categoryConfigRegistry.getConfig(updatedBusiness.categoryId),
     };
   }
 }

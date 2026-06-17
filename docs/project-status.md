@@ -256,3 +256,8 @@ Avance actual:
   bloquean nuevos turnos.
 - Al cambiar a `closed`, se emite el evento `business.closed` para integracion
   posterior con notificaciones push a turnos activos.
+- `HU-2.6` implementada en backend para editar datos del negocio y exponer
+  atributos de configuracion por categoria.
+- Endpoints relacionados:
+  `PATCH /api/business/:businessId/profile` y
+  `GET /api/business/categories/:categoryId/config`.
