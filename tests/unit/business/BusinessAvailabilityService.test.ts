@@ -72,6 +72,22 @@ describe("BusinessAvailabilityService", () => {
     expect(isAvailable).toBe(false);
   });
 
+  it("does not mark businesses without active service windows as available", () => {
+    const service = new BusinessAvailabilityService();
+
+    const isAvailable = service.isAvailableNow({
+      business: buildBusiness({
+        listingStatus: "published",
+        activeServiceWindows: 0,
+      }),
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(isAvailable).toBe(false);
+  });
+
   it("does not mark a business as available on non-working days", () => {
     const service = new BusinessAvailabilityService();
 

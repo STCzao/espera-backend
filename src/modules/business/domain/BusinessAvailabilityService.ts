@@ -62,6 +62,10 @@ export class BusinessAvailabilityService {
       return false;
     }
 
+    if (business.activeServiceWindows <= 0) {
+      return false;
+    }
+
     const localTime = getLocalTimeParts(now, timeZone);
     const isNonWorkingDay = hoursConfig.nonWorkingDays.some(
       (day) => day.date === localTime.date,

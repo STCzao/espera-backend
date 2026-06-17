@@ -9,6 +9,7 @@ export interface Business {
   latitude?: number;
   longitude?: number;
   listingStatus: BusinessListingStatus;
+  activeServiceWindows: number;
   ownerUserId: string;
   createdAt: Date;
   updatedAt: Date;

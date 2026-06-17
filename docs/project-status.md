@@ -235,3 +235,9 @@ Avance actual:
   `PUT /api/business/:businessId/hours`.
 - Regla base de disponibilidad publica preparada para que discovery mobile
   muestre solo negocios accionables en el MVP inicial.
+- `HU-2.3` implementada en backend para configurar ventanillas o cajas activas.
+- Endpoint de ventanillas activas:
+  `PUT /api/business/:businessId/service-windows`.
+- Un negocio con `0` ventanillas activas queda sin atencion disponible para
+  nuevos turnos, y queda preparado un servicio puro de estimacion de espera para
+  integrarse con la cola persistida en epicas posteriores.
