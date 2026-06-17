@@ -1,14 +1,14 @@
-# Estado y Arquitectura del Proyecto
+﻿# Estado y Arquitectura del Proyecto
 
 ## Resumen ejecutivo
 
 `espera-back` es el backend principal del producto Espera. Su estado actual debe
-leerse como una primera fase de autenticacion bastante avanzada, con onboarding
-de negocios y bases iniciales para las siguientes epicas.
+leerse como una primera fase de autenticación bastante avanzada, con onboarding
+de negocios y bases iniciales para las siguientes épicas.
 
 El corte funcional real alcanzado hasta ahora llega principalmente hasta
-`HU-1.9`. A partir de Epica 2 existen contratos, rutas y piezas de
-infraestructura, pero no una implementacion funcional completa del backlog.
+`HU-1.9`. A partir de Épica 2 existen contratos, rutas y piezas de
+infraestructura, pero no una implementación funcional completa del backlog.
 
 ## Alcance real implementado
 
@@ -18,20 +18,20 @@ infraestructura, pero no una implementacion funcional completa del backlog.
 - `HU-1.3` Login con email y password
 - `HU-1.5` Refresh token
 - `HU-1.6` Logout
-- `HU-1.7` Recuperacion de password
-- `HU-1.8` Registro de negocio con aprobacion pendiente
+- `HU-1.7` Recuperación de password
+- `HU-1.8` Registro de negocio con aprobación pendiente
 - `HU-1.9` OAuth para panel de negocio
 
 ### Historias en rollover
 
-- `HU-1.2` Registro de usuario con Google en app movil
-- `HU-1.4` Login de usuario con Google en app movil
+- `HU-1.2` Registro de usuario con Google en app móvil
+- `HU-1.4` Login de usuario con Google en app móvil
 
-Estas historias quedaron diferidas por una dependencia externa valida:
-configuracion OAuth real por plataforma y despliegue o registro previo de la
-aplicacion movil.
+Estas historias quedaron diferidas por una dependencia externa válida:
+configuración OAuth real por plataforma y despliegue o registro previo de la
+aplicación móvil.
 
-## Modulos del sistema
+## Módulos del sistema
 
 ### auth
 
@@ -44,31 +44,31 @@ Responsabilidades actuales:
 - registro de negocio con Google
 - refresh token
 - logout
-- verificacion de email
+- verificación de email
 - password reset
-- aprobacion de cuenta de negocio
+- aprobación de cuenta de negocio
 
 Fortalezas:
 
-- validacion de entrada con `zod`
+- validación de entrada con `zod`
 - hashing con `bcrypt`
 - refresh tokens persistidos por hash
-- rotacion de refresh token
+- rotación de refresh token
 - bloqueo temporal por intentos fallidos
-- invalidacion de sesiones tras cambio de password
+- invalidación de sesiones tras cambio de password
 
 ### business
 
 Responsabilidades actuales:
 
 - registro base de negocio
-- configuracion inicial de cola
+- configuración inicial de cola
 
 Estado:
 
-- modulo preparado como base
-- aun no cubre direccion, geolocalizacion, horarios, estado operativo,
-  ventanillas, empleados, QR ni metricas
+- módulo preparado como base
+- aún no cubre dirección, geolocalización, horarios, estado operativo,
+  ventanillas, empleados, QR ni métricas
 
 ### queue
 
@@ -86,9 +86,9 @@ Estado:
 - contratos y rutas creadas
 - casos de uso actuales en estado base o stub
 
-## Arquitectura tecnica
+## Arquitectura técnica
 
-El proyecto sigue una estructura de `Modular Monolith` con carpetas por modulo:
+El proyecto sigue una estructura de `Modular Monolith` con carpetas por módulo:
 
 ```text
 src/
@@ -152,8 +152,8 @@ usa para loguear conexiones y desconexiones.
 
 Se usa `Resend` para:
 
-- verificacion de email
-- recuperacion de password
+- verificación de email
+- recuperación de password
 - bienvenida al negocio aprobado
 
 ## Estado de calidad actual
@@ -164,24 +164,24 @@ Comandos principales:
 - `npm run typecheck:test`: ok
 - `npm run build`: ok
 - `npm run lint`: ok
-- `npm run test:run`: ok con cobertura inicial de casos de uso de Epica 1
+- `npm run test:run`: ok con cobertura inicial de casos de uso de Épica 1
 
-Validacion manual de Epica 1:
+Validación manual de Épica 1:
 
 - registro local validado con Postman
-- verificacion de email validada con token de desarrollo
+- verificación de email validada con token de desarrollo
 - login local validado luego de verificar email
 - forgot/reset password validado con token de desarrollo
 - registro de negocio local validado con Postman
-- verificacion de email de negocio validada con token de desarrollo
-- aprobacion de negocio validada en base
-- login de negocio aprobado validado con sesion refresh activa
+- verificación de email de negocio validada con token de desarrollo
+- aprobación de negocio validada en base
+- login de negocio aprobado validado con sesión refresh activa
 - registro web de negocio con Google OAuth validado manualmente
-- login web con Google OAuth validado manualmente con sesion refresh activa
+- login web con Google OAuth validado manualmente con sesión refresh activa
 
 Cobertura automatizada actual:
 
-- tests unitarios de aplicacion sobre use cases de `auth`
+- tests unitarios de aplicación sobre use cases de `auth`
 - test unitario de permisos para `auth:read_self` y `/auth/me`
 - tests API con `supertest` para contratos HTTP base de auth y cookies
 - tests dedicados de `rateLimiter` y `errorHandler`
@@ -191,73 +191,75 @@ Cobertura automatizada actual:
 
 Casos cubiertos hasta ahora:
 
-- login local exitoso, credenciales invalidas y cuenta negocio pendiente
-- refresh token valido con rotacion y token revocado
-- forgot/reset password para cuenta local, respuesta generica y bloqueo de reset en cuentas Google
+- login local exitoso, credenciales inválidas y cuenta negocio pendiente
+- refresh token válido con rotación y token revocado
+- forgot/reset password para cuenta local, respuesta genérica y bloqueo de reset en cuentas Google
 - registro de negocio pendiente y rollback ante falla de email
-- verificacion de email, logout y aprobacion de negocio
+- verificación de email, logout y aprobación de negocio
 - registro/login Google con perfiles mockeados
 - contratos API base para registro, login, refresh, logout, `/me` y URL OAuth
-- rate limiting con Redis/fallback y serializacion de errores
+- rate limiting con Redis/fallback y serialización de errores
 
-Pendiente para completar mejor Epica 1:
+Pendiente para completar mejor Épica 1:
 
-- tests de integracion con Prisma/PostgreSQL y Redis
-- test dedicado de reenvio de verificacion
-- validacion automatizada de Resend real y Google real en staging
+- tests de integración con Prisma/PostgreSQL y Redis
+- test dedicado de reenvío de verificación
+- validación automatizada de Resend real y Google real en staging
 
 ## Conclusion
 
-El proyecto tiene una base tecnica valida y una direccion arquitectonica
+El proyecto tiene una base técnica válida y una dirección arquitectónica
 correcta, pero su lectura adecuada es la de una fase 1 avanzada, no la de un
 MVP de producto completo.
 
-## Siguiente epica
+## Siguiente épica
 
-La siguiente epica documentada es `Epica 2 - Gestion de Negocios`.
+La siguiente épica documentada es `Épica 2 - Gestión de Negocios`.
 
 Documento base:
 
+- `docs/story-documentation-standard.md`
+- `docs/epica-1-autenticacion-onboarding.md`
 - `docs/epica-2-gestion-negocios.md`
 
 Avance actual:
 
-- `HU-2.1` implementada en backend con direccion textual.
+- `HU-2.1` implementada en backend con dirección textual.
 - Persistencia extendida en `Business` con `address`, `latitude` y `longitude`
   opcionales.
-- Visibilidad publica separada mediante `listingStatus`.
-- Endpoint de actualizacion de perfil: `PATCH /api/business/:businessId/profile`.
+- Visibilidad pública separada mediante `listingStatus`.
+- Endpoint de actualización de perfil: `PATCH /api/business/:businessId/profile`.
 - Google Maps queda en rollover justificado hasta la experiencia mobile de
   descubrimiento/mapa.
 - `HU-2.2` implementada en backend para configurar y leer horarios semanales y
-  dias no laborables.
+  días no laborables.
 - Endpoints de horarios: `GET /api/business/:businessId/hours` y
   `PUT /api/business/:businessId/hours`.
-- Regla base de disponibilidad publica preparada para que discovery mobile
+- Regla base de disponibilidad pública preparada para que discovery mobile
   muestre solo negocios accionables en el MVP inicial.
 - `HU-2.3` implementada en backend para configurar ventanillas o cajas activas.
 - Endpoint de ventanillas activas:
   `PUT /api/business/:businessId/service-windows`.
-- Un negocio con `0` ventanillas activas queda sin atencion disponible para
-  nuevos turnos, y queda preparado un servicio puro de estimacion de espera para
-  integrarse con la cola persistida en epicas posteriores.
+- Un negocio con `0` ventanillas activas queda sin atención disponible para
+  nuevos turnos, y queda preparado un servicio puro de estimación de espera para
+  integrarse con la cola persistida en épicas posteriores.
 - `HU-2.4` implementada en backend como canal QR de entrada a Espera.
 - Endpoints de QR:
   `GET /api/business/:businessId/qr`,
   `POST /api/business/:businessId/qr/regenerate`,
   `GET /api/business/:businessId/qr.png` y `GET /api/qr/:token`.
 - El QR apunta a `{APP_URL}/q/:token`, permite descarga PNG desde el panel y
-  conserva el codigo anterior durante 24 horas al regenerar.
+  conserva el código anterior durante 24 horas al regenerar.
 - `HU-2.5` implementada en backend para cambiar estado operativo del negocio.
 - Endpoint de estado operativo:
   `PATCH /api/business/:businessId/operational-status`.
 - Estados soportados: `normal`, `delayed`, `paused`, `closed`. `delayed`
   mantiene turnos habilitados con indicador amarillo; `paused` y `closed`
   bloquean nuevos turnos.
-- Al cambiar a `closed`, se emite el evento `business.closed` para integracion
+- Al cambiar a `closed`, se emite el evento `business.closed` para integración
   posterior con notificaciones push a turnos activos.
 - `HU-2.6` implementada en backend para editar datos del negocio y exponer
-  atributos de configuracion por categoria.
+  atributos de configuración por categoría.
 - Endpoints relacionados:
   `PATCH /api/business/:businessId/profile` y
   `GET /api/business/categories/:categoryId/config`.

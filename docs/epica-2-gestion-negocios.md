@@ -1,46 +1,99 @@
-# Epica 2 - Gestion de Negocios
+﻿# Épica 2 - Gestión de Negocios
 
 ## Resumen
 
-La Epica 2 corresponde a la gestion operativa inicial del negocio. Su objetivo
-es que una cuenta de negocio aprobada pueda completar la informacion necesaria
+La Épica 2 corresponde a la gestión operativa inicial del negocio. Su objetivo
+es que una cuenta de negocio aprobada pueda completar la información necesaria
 para aparecer y operar dentro de Espera.
 
 Alcance total estimado: `18 pts`.
 
-## HU-2.1 - Registrar negocio con nombre, categoria y direccion
+Formato de referencia:
+
+- `docs/story-documentation-standard.md`
+
+## Estado general
+
+- Estado: `implementado parcialmente`.
+- Historias implementadas: `HU-2.1`, `HU-2.2`, `HU-2.3`, `HU-2.4`,
+  `HU-2.5`, `HU-2.6`.
+- Historia pendiente: `HU-2.8`.
+- Decisión de secuencia: antes de implementar `HU-2.8`, conviene cerrar el
+  primer corte del panel de negocio porque empleados afecta permisos,
+  ownership, sesiones, invitaciones y revocación.
+
+## Contratos principales de la épica
+
+Panel de negocio:
+
+```text
+POST /api/business
+PATCH /api/business/:businessId/profile
+GET /api/business/categories/:categoryId/config
+GET /api/business/:businessId/hours
+PUT /api/business/:businessId/hours
+PUT /api/business/:businessId/service-windows
+PATCH /api/business/:businessId/operational-status
+GET /api/business/:businessId/qr
+POST /api/business/:businessId/qr/regenerate
+GET /api/business/:businessId/qr.png
+```
+
+Público:
+
+```text
+GET /api/qr/:token
+```
+
+## Corte recomendado para panel
+
+Antes de avanzar con empleados, el panel debería cubrir:
+
+- completar y editar perfil del negocio
+- configurar horarios y días no laborables
+- configurar ventanillas activas
+- consultar y descargar QR
+- regenerar QR
+- cambiar estado operativo
+
+Este corte permite validar valor para negocios sin depender todavía de app
+mobile completa ni cola persistida.
+
+## HU-2.1 - Registrar negocio con nombre, categoría y dirección
 
 Story points: `3`
 
-Como negocio, quiero registrar mi negocio con nombre, categoria y direccion.
+Estado: `implementado`.
 
-### Criterios de aceptacion
+Como negocio, quiero registrar mi negocio con nombre, categoría y dirección.
 
-- Dado que completo nombre, categoria y direccion, cuando guardo, entonces mi
-  negocio queda registrado con estado `pendiente de aprobacion`.
-- Dado que ingreso una direccion, cuando la confirmo, entonces se almacena como
-  direccion textual del negocio.
+### Criterios de Aceptación
+
+- Dado que completo nombre, categoría y dirección, cuando guardo, entonces mi
+  negocio queda registrado con estado `pendiente de aprobación`.
+- Dado que ingreso una dirección, cuando la confirmo, entonces se almacena como
+  dirección textual del negocio.
 - Dado que no completo un campo obligatorio, cuando intento guardar, entonces
-  veo validacion especifica por campo.
+  veo validación específica por campo.
 
 ### Rollover justificado de Google Maps
 
-La geocodificacion automatica con Google Maps queda diferida. Motivo: en esta
-epica el panel del negocio necesita gestionar datos operativos, no visualizar un
-mapa. La aparicion del negocio en mapa/listado corresponde a la experiencia del
+La geocodificación automática con Google Maps queda diferida. Motivo: en esta
+épica el panel del negocio necesita gestionar datos operativos, no visualizar un
+mapa. La aparición del negocio en mapa/listado corresponde a la experiencia del
 usuario final en la app mobile.
 
 El modelo deja preparados `latitude` y `longitude`, pero son opcionales. Si
-`GOOGLE_MAPS_API_KEY` esta configurada, el backend puede enriquecer el negocio
-con coordenadas. Si no esta configurada, el guardado de la direccion textual no
+`GOOGLE_MAPS_API_KEY` está configurada, el backend puede enriquecer el negocio
+con coordenadas. Si no está configurada, el guardado de la dirección textual no
 se bloquea.
 
-La validacion completa de geocoding y mapa deberia retomarse en:
+La validación completa de geocoding y mapa debería retomarse en:
 
-- `HU-7.1` busqueda de negocios cercanos
+- `HU-7.1` búsqueda de negocios cercanos
 - `HU-7.7` mapa de negocios cercanos
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
@@ -51,20 +104,20 @@ Persistencia agregada en `Business`:
 - `longitude` opcional
 - `listingStatus`
 
-`listingStatus` separa la visibilidad publica del negocio del acceso al panel.
+`listingStatus` separa la visibilidad pública del negocio del acceso al panel.
 Estados iniciales:
 
 - `DRAFT`: el negocio puede configurarse desde el panel, pero no aparece en la
   app mobile ni en el mapa.
 - `HIDDEN`: el negocio fue ocultado voluntariamente por el owner o por una regla
   operativa, pero conserva acceso al panel.
-- `PUBLISHED`: el negocio aparece para usuarios finales en busqueda/mapa cuando
-  tambien cumple las reglas operativas correspondientes.
+- `PUBLISHED`: el negocio aparece para usuarios finales en búsqueda/mapa cuando
+  también cumple las reglas operativas correspondientes.
 
-Esta separacion evita mezclar tres conceptos distintos:
+Esta separación evita mezclar tres conceptos distintos:
 
-- aprobacion de cuenta: si el negocio puede acceder al panel
-- visibilidad publica: si aparece en la app mobile/mapa
+- aprobación de cuenta: si el negocio puede acceder al panel
+- visibilidad pública: si aparece en la app mobile/mapa
 - estado operativo: si acepta turnos en ese momento
 
 Endpoints relevantes:
@@ -74,13 +127,13 @@ POST /api/business
 PATCH /api/business/:businessId/profile
 ```
 
-`POST /api/business` permite crear un negocio con nombre, categoria, slug y
-direccion para usuarios con permiso `business:edit`. El owner queda como
-`business_admin` pendiente de aprobacion cuando corresponde.
+`POST /api/business` permite crear un negocio con nombre, categoría, slug y
+dirección para usuarios con permiso `business:edit`. El owner queda como
+`business_admin` pendiente de aprobación cuando corresponde.
 
 `PATCH /api/business/:businessId/profile` permite completar o editar el perfil
 operativo de un negocio existente. Valida ownership del negocio y guarda la
-direccion textual. Si hay API key de Google Maps configurada, tambien guarda
+dirección textual. Si hay API key de Google Maps configurada, también guarda
 coordenadas.
 
 Variable opcional para geocoding real:
@@ -120,61 +173,63 @@ Respuesta esperada:
 
 Cobertura actual:
 
-- creacion de negocio con direccion textual
-- promocion de owner a `business_admin` pendiente cuando corresponde
-- validacion de slug duplicado
-- validacion de direccion obligatoria
-- edicion de perfil con validacion de ownership
-- persistencia de direccion textual sin requerir Google Maps
+- creación de negocio con dirección textual
+- promoción de owner a `business_admin` pendiente cuando corresponde
+- validación de slug duplicado
+- validación de dirección obligatoria
+- edición de perfil con validación de ownership
+- persistencia de dirección textual sin requerir Google Maps
 - persistencia opcional de latitud/longitud cuando el geocoder devuelve datos
 - mantenimiento de `listingStatus: draft` al completar el perfil
 
-## HU-2.2 - Configurar horarios de atencion
+## HU-2.2 - Configurar horarios de atención
 
 Story points: `3`
 
-Como negocio, quiero configurar mis horarios de atencion.
+Estado: `implementado`.
 
-### Criterios de aceptacion
+Como negocio, quiero configurar mis horarios de atención.
 
-- Dado que configuro horarios por dia de semana, cuando guardo, entonces el
-  panel conserva la configuracion para determinar disponibilidad operativa.
-- Dado que es fuera de mi horario de atencion, cuando un usuario final busca
+### Criterios de Aceptación
+
+- Dado que configuro horarios por día de semana, cuando guardo, entonces el
+  panel conserva la configuración para determinar disponibilidad operativa.
+- Dado que es fuera de mi horario de atención, cuando un usuario final busca
   negocios disponibles, entonces mi negocio no aparece como disponible para
   nuevos turnos.
-- Dado que configuro dias no laborables, entonces esos dias no aparezco como
+- Dado que configuro días no laborables, entonces esos días no aparezco como
   disponible para nuevos turnos.
 
-### Decision de producto
+### Decisión de producto
 
 Espera prioriza inmediatez: entrar en cola, reservar lugar o anticipar una
-visita mientras el usuario esta en camino. A diferencia de un catalogo de
+visita mientras el usuario está en camino. A diferencia de un catálogo de
 locales, el mapa/listado principal de la app mobile debe mostrar negocios
 accionables.
 
 Para el MVP inicial, un negocio fuera de horario no aparece en discovery
-principal. La visualizacion de negocios cerrados por busqueda directa,
+principal. La visualización de negocios cerrados por búsqueda directa,
 favoritos, historial o turnos programados queda fuera de alcance.
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
 Persistencia agregada:
 
-- `BusinessOpeningHour`: rangos recurrentes por dia de semana.
+- `BusinessOpeningHour`: rangos recurrentes por día de semana.
 - `BusinessNonWorkingDay`: fechas excepcionales en las que el negocio no
   atiende.
 
-Convencion de dias:
+Convención de días:
 
 - `0`: domingo
 - `1`: lunes
 - `2`: martes
-- `3`: miercoles
+- `3`: miércoles
 - `4`: jueves
 - `5`: viernes
-- `6`: sabado
+- `6`: sábado
 
 Endpoint relevante:
 
@@ -186,10 +241,10 @@ PUT /api/business/:businessId/hours
 `GET /api/business/:businessId/hours` permite al panel recuperar la grilla
 guardada para editarla.
 
-`PUT /api/business/:businessId/hours` reemplaza la configuracion completa de
+`PUT /api/business/:businessId/hours` reemplaza la configuración completa de
 horarios del negocio. Valida ownership, formato horario `HH:mm`, apertura
-anterior al cierre, rangos no solapados para el mismo dia y fechas no
-laborables validas en formato `YYYY-MM-DD`.
+anterior al cierre, rangos no solapados para el mismo día y fechas no
+laborables válidas en formato `YYYY-MM-DD`.
 
 Ejemplo de body:
 
@@ -239,19 +294,19 @@ Respuesta esperada:
 
 ### Contratos diferidos
 
-La HU queda cerrada para configuracion desde panel y regla base de
-disponibilidad. La app mobile futura debera consumir esa regla para filtrar
+La HU queda cerrada para configuración desde panel y regla base de
+disponibilidad. La app mobile futura deberá consumir esa regla para filtrar
 negocios disponibles.
 
-Regla inicial de disponibilidad publica:
+Regla inicial de disponibilidad pública:
 
 - `listingStatus` debe ser `published`.
-- La fecha actual no debe ser un dia no laborable.
-- La hora actual debe caer dentro de un rango configurado para el dia actual.
+- La fecha actual no debe ser un día no laborable.
+- La hora actual debe caer dentro de un rango configurado para el día actual.
 
 Por ahora no se soportan rangos nocturnos que crucen medianoche, por ejemplo
-`22:00` a `02:00`. Si el producto incorpora rubros nocturnos, esa regla debera
-ampliarse explicitamente.
+`22:00` a `02:00`. Si el producto incorpora rubros nocturnos, esa regla deberá
+ampliarse explícitamente.
 
 ### Cobertura
 
@@ -262,48 +317,50 @@ ampliarse explicitamente.
 
 Cobertura actual:
 
-- configuracion de horarios semanales y dias no laborables
+- configuración de horarios semanales y días no laborables
 - lectura de horarios para el panel
-- validacion de ownership
-- validacion de apertura anterior al cierre
-- validacion de rangos solapados
-- validacion de dias no laborables duplicados
-- validacion de fechas calendario invalidas
-- disponibilidad publica dentro de horario
+- validación de ownership
+- validación de apertura anterior al cierre
+- validación de rangos solapados
+- validación de días no laborables duplicados
+- validación de fechas calendario inválidas
+- disponibilidad pública dentro de horario
 - ocultamiento fuera de horario
-- ocultamiento en dias no laborables
-- ocultamiento cuando el negocio no esta publicado
+- ocultamiento en días no laborables
+- ocultamiento cuando el negocio no está publicado
 - contrato HTTP de `GET` y `PUT` de horarios
 
 ## HU-2.3 - Definir ventanillas o cajas activas
 
 Story points: `2`
 
+Estado: `implementado`.
+
 Como negocio, quiero definir cuantas ventanillas o cajas tengo activas.
 
-### Criterios de aceptacion
+### Criterios de Aceptación
 
 - Dado que cambio la cantidad de ventanillas activas, cuando guardo, entonces el
-  tiempo estimado de espera se recalcula automaticamente.
+  tiempo estimado de espera se recalcula automáticamente.
 - Dado que tengo `0` ventanillas activas, cuando un usuario ve mi negocio,
-  entonces aparece como `Sin atencion disponible`.
+  entonces aparece como `Sin atención disponible`.
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
 Persistencia agregada en `Business`:
 
-- `activeServiceWindows`: cantidad de ventanillas, cajas o puntos de atencion
+- `activeServiceWindows`: cantidad de ventanillas, cajas o puntos de atención
   activos para procesar turnos en paralelo.
 
 Reglas:
 
 - El valor inicial es `1`.
-- Se permite `0` para indicar que el negocio no tiene atencion disponible.
+- Se permite `0` para indicar que el negocio no tiene atención disponible.
 - No se permiten valores negativos, decimales ni cantidades mayores a `50`.
 - Un negocio con `activeServiceWindows = 0` no se considera disponible para
-  recibir nuevos turnos aunque este publicado y dentro del horario de atencion.
+  recibir nuevos turnos aunque esté publicado y dentro del horario de atención.
 
 Endpoint relevante:
 
@@ -334,17 +391,17 @@ Respuesta esperada:
 
 Si el valor es `0`, `attentionAvailable` vuelve como `false`.
 
-### Contrato de estimacion inicial
+### Contrato de estimación inicial
 
-Como la cola persistida y el conteo real de turnos activos pertenecen a epicas
-posteriores, esta HU deja preparado un servicio puro de estimacion. La regla
+Como la cola persistida y el conteo real de turnos activos pertenecen a épicas
+posteriores, esta HU deja preparado un servicio puro de estimación. La regla
 inicial calcula la espera por capacidad paralela:
 
 ```text
 ceil(turnos_en_espera / ventanillas_activas) * minutos_promedio_por_turno
 ```
 
-Si no hay ventanillas activas, la estimacion devuelve estado sin atencion
+Si no hay ventanillas activas, la estimación devuelve estado sin atención
 disponible en lugar de minutos.
 
 ### Cobertura
@@ -356,31 +413,33 @@ disponible en lugar de minutos.
 
 Cobertura actual:
 
-- configuracion de ventanillas activas
+- configuración de ventanillas activas
 - permiso solo para owner del negocio
-- validacion de `0` como pausa operativa valida
+- validación de `0` como pausa operativa válida
 - rechazo de negativos y decimales
 - negocio no disponible con `0` ventanillas activas
-- estimacion de espera usando ventanillas como capacidad paralela
+- estimación de espera usando ventanillas como capacidad paralela
 
-## HU-2.4 - Generar QR unico del negocio
+## HU-2.4 - Generar QR único del negocio
 
 Story points: `3`
 
-Como negocio, quiero generar el QR unico de mi negocio para pegarlo en el local.
+Estado: `implementado`.
 
-### Criterios de aceptacion
+Como negocio, quiero generar el QR único de mi negocio para pegarlo en el local.
 
-- Dado que accedo a la seccion QR del panel, cuando solicito generarlo, entonces
-  se genera un QR unico vinculado a mi negocio.
-- Dado que escanean mi QR, cuando el usuario apunta la camara, entonces es
+### Criterios de Aceptación
+
+- Dado que accedo a la sección QR del panel, cuando solicito generarlo, entonces
+  se genera un QR único vinculado a mi negocio.
+- Dado que escanean mi QR, cuando el usuario apunta la cámara, entonces es
   redirigido al flujo de sacar turno en mi negocio.
-- Dado que descargo el QR, entonces obtengo un archivo PNG de alta resolucion
+- Dado que descargo el QR, entonces obtengo un archivo PNG de alta resolución
   listo para imprimir.
-- Dado que regenero el QR, entonces el QR anterior queda invalido en 24 horas,
-  manteniendo una transicion para quienes lo tengan guardado.
+- Dado que regenero el QR, entonces el QR anterior queda inválido en 24 horas,
+  manteniendo una transición para quienes lo tengan guardado.
 
-### Decision de producto
+### Decisión de producto
 
 El QR es un canal de entrada al ecosistema Espera. La persona que escanea suele
 estar frente al local y tiene una necesidad inmediata: anotarse o acceder al
@@ -391,10 +450,10 @@ Flujo deseado:
 
 ```text
 Escaneo QR
-→ landing ligera / deep link
-→ negocio y disponibilidad
-→ inicio del flujo de turno
-→ invitacion a descargar la app para seguimiento y avisos
+-> landing ligera / deep link
+-> negocio y disponibilidad
+-> inicio del flujo de turno
+-> invitación a descargar la app para seguimiento y avisos
 ```
 
 La descarga de la app debe aparecer como una mejora clara de experiencia:
@@ -403,21 +462,21 @@ La descarga de la app debe aparecer como una mejora clara de experiencia:
 - recibir avisos cuando falten pocos turnos
 - salir del local sin perder visibilidad del turno
 - guardar negocios frecuentes
-- recibir cambios si el negocio pausa o cierra atencion
+- recibir cambios si el negocio pausa o cierra atención
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
 Persistencia agregada:
 
-- `BusinessQrCode`: codigos QR vinculados a un negocio.
+- `BusinessQrCode`: códigos QR vinculados a un negocio.
 - `BusinessQrCodeStatus`: `ACTIVE`, `RETIRING`, `REVOKED`.
 
 Reglas:
 
 - Si el negocio no tiene QR activo, el backend genera uno al consultarlo.
-- El QR embebe una URL publica de app/web:
+- El QR embebe una URL pública de app/web:
 
 ```text
 {APP_URL}/q/:token
@@ -425,7 +484,7 @@ Reglas:
 
 - El panel puede regenerar el QR.
 - Al regenerar, el QR anterior pasa a `RETIRING` y sigue resolviendo durante 24
-  horas para mantener una transicion operativa.
+  horas para mantener una transición operativa.
 - Los QR retirados vencidos o revocados no resuelven.
 
 Endpoints panel:
@@ -436,9 +495,9 @@ POST /api/business/:businessId/qr/regenerate
 GET /api/business/:businessId/qr.png
 ```
 
-Todos requieren autenticacion, permiso `business:edit` y ownership del negocio.
+Todos requieren autenticación, permiso `business:edit` y ownership del negocio.
 
-Endpoint publico:
+Endpoint público:
 
 ```text
 GET /api/qr/:token
@@ -459,7 +518,7 @@ Ejemplo de respuesta para el panel:
 }
 ```
 
-Ejemplo de respuesta publica:
+Ejemplo de respuesta pública:
 
 ```json
 {
@@ -484,10 +543,10 @@ Ejemplo de respuesta publica:
 ### Contratos diferidos
 
 La HU deja listo el backend para la experiencia de escaneo, pero la pantalla
-publica `/q/:token`, deep links nativos y medicion de conversion a app quedan
+pública `/q/:token`, deep links nativos y medición de conversión a app quedan
 del lado frontend/mobile.
 
-El flujo real de sacar turno con cola persistida corresponde a epicas
+El flujo real de sacar turno con cola persistida corresponde a épicas
 posteriores. En esta HU el backend devuelve el contrato `OPEN_BUSINESS_TURN_FLOW`
 para que esa experiencia se conecte cuando la cola este implementada.
 
@@ -500,29 +559,31 @@ para que esa experiencia se conecte cuando la cola este implementada.
 
 Cobertura actual:
 
-- generacion perezosa de QR activo
+- generación perezosa de QR activo
 - lectura del QR activo existente
-- regeneracion con transicion de 24 horas
-- resolucion de QR activo y QR en transicion
+- regeneración con transición de 24 horas
+- resolución de QR activo y QR en transición
 - rechazo de QR vencido
-- contratos HTTP de panel y resolucion publica
+- contratos HTTP de panel y resolución pública
 
 ## HU-2.5 - Cambiar estado operativo del negocio
 
 Story points: `2`
 
+Estado: `implementado`.
+
 Como negocio, quiero cambiar mi estado operativo desde el panel.
 
-### Criterios de aceptacion
+### Criterios de Aceptación
 
 - Dado que cambio a estado `Con demoras`, cuando un usuario ve mi negocio,
   entonces ve el indicador amarillo con la leyenda correspondiente.
 - Dado que cambio a estado `Pausado`, cuando usuarios intenten sacar turno,
   entonces ven que no se aceptan nuevos turnos temporalmente.
 - Dado que cambio a estado `Cerrado`, entonces todos los turnos activos reciben
-  notificacion push de cierre anticipado.
+  notificación push de cierre anticipado.
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
@@ -532,7 +593,7 @@ Persistencia agregada en `Business`:
 
 Estados:
 
-- `NORMAL`: atencion disponible segun horario, visibilidad y ventanillas.
+- `NORMAL`: atención disponible según horario, visibilidad y ventanillas.
 - `DELAYED`: acepta nuevos turnos, pero expone indicador amarillo y mensaje
   `Con demoras`.
 - `PAUSED`: no acepta nuevos turnos temporalmente.
@@ -566,12 +627,12 @@ Respuesta esperada:
 }
 ```
 
-Reglas de disponibilidad publica:
+Reglas de disponibilidad pública:
 
 - `DELAYED` mantiene el negocio disponible para nuevos turnos.
 - `PAUSED` y `CLOSED` bloquean disponibilidad para nuevos turnos.
 - Las reglas previas siguen aplicando: negocio publicado, dentro de horario, sin
-  dia no laborable y con al menos una ventanilla activa.
+  día no laborable y con al menos una ventanilla activa.
 
 ### Contrato de cierre anticipado
 
@@ -593,9 +654,9 @@ Payload:
 }
 ```
 
-La notificacion push efectiva a turnos activos queda como integracion diferida
+La notificación push efectiva a turnos activos queda como integración diferida
 hasta que exista cola persistida, dispositivos de usuarios y outbox funcional.
-La HU deja listo el contrato para esa integracion.
+La HU deja listo el contrato para esa integración.
 
 ### Cobertura
 
@@ -608,29 +669,31 @@ Cobertura actual:
 - cambio a `DELAYED` con indicador amarillo y turnos habilitados
 - cambio a `PAUSED` con turnos bloqueados
 - cambio a `CLOSED` con turnos bloqueados
-- emision de `business.closed` al cerrar por primera vez
+- emisión de `business.closed` al cerrar por primera vez
 - no reemitir evento si ya estaba cerrado
-- validacion de ownership
+- validación de ownership
 - contrato HTTP del endpoint de estado operativo
 
 ## HU-2.6 - Editar datos del negocio
 
 Story points: `2`
 
+Estado: `implementado`.
+
 Como negocio, quiero editar los datos de mi negocio.
 
-### Criterios de aceptacion
+### Criterios de Aceptación
 
-- Dado que edito el nombre o direccion, cuando guardo, entonces los cambios se
+- Dado que edito el nombre o dirección, cuando guardo, entonces los cambios se
   reflejan inmediatamente en la app de usuarios.
-- Dado que cambio la categoria, entonces los atributos especificos de la nueva
-  categoria se habilitan en el formulario de configuracion.
+- Dado que cambio la categoría, entonces los atributos específicos de la nueva
+  categoría se habilitan en el formulario de configuración.
 
-### Implementacion backend
+### Implementación backend
 
 Estado: `implementado`.
 
-La edicion de datos reutiliza el endpoint de perfil operativo ya existente:
+La edición de datos reutiliza el endpoint de perfil operativo ya existente:
 
 ```text
 PATCH /api/business/:businessId/profile
@@ -643,7 +706,7 @@ Permite actualizar:
 - `address`
 
 El endpoint valida ownership, persiste los cambios inmediatamente y devuelve la
-configuracion de atributos correspondiente a la categoria seleccionada para que
+configuración de atributos correspondiente a la categoría seleccionada para que
 el panel pueda actualizar el formulario sin depender de reglas hardcodeadas en
 frontend.
 
@@ -686,13 +749,13 @@ Endpoint auxiliar para consultar atributos antes de guardar:
 GET /api/business/categories/:categoryId/config
 ```
 
-Este endpoint permite que el panel habilite atributos especificos apenas el
-usuario cambia la categoria en el formulario.
+Este endpoint permite que el panel habilite atributos específicos apenas el
+usuario cambia la categoría en el formulario.
 
 ### Contratos diferidos
 
-La persistencia de valores de atributos especificos por categoria queda diferida
-hasta que el producto defina cuales impactan reglas operativas reales. En esta
+La persistencia de valores de atributos específicos por categoría queda diferida
+hasta que el producto defina cuáles impactan reglas operativas reales. En esta
 HU el backend deja cerrado el contrato de metadata que habilita el formulario.
 
 ### Cobertura
@@ -703,39 +766,96 @@ HU el backend deja cerrado el contrato de metadata que habilita el formulario.
 
 Cobertura actual:
 
-- edicion de nombre, categoria y direccion
+- edición de nombre, categoría y dirección
 - persistencia inmediata de cambios del perfil
-- respuesta con atributos de la categoria seleccionada
-- endpoint auxiliar de configuracion de categoria
-- fallback de atributos base para categorias no catalogadas
-- validacion de ownership
+- respuesta con atributos de la categoría seleccionada
+- endpoint auxiliar de configuración de categoría
+- fallback de atributos base para categorías no catalogadas
+- validación de ownership
 
 ## HU-2.8 - Invitar empleados al panel
 
 Story points: `3`
 
+Estado: `pendiente`.
+
 Como negocio, quiero invitar empleados a operar mi panel con su propio acceso.
 
-### Criterios de aceptacion
+### Criterios de Aceptación
 
-- Dado que ingreso el email de un empleado y envio invitacion, cuando el
+- Dado que ingreso el email de un empleado y envío invitación, cuando el
   empleado acepta, entonces tiene acceso al panel con rol `employee`.
 - Dado que un empleado tiene rol `employee`, entonces puede operar la cola pero
-  no puede acceder a configuracion del negocio ni metricas.
-- Dado que revoco el acceso de un empleado, entonces su sesion activa se
+  no puede acceder a configuración del negocio ni métricas.
+- Dado que revoco el acceso de un empleado, entonces su sesión activa se
   invalida inmediatamente.
 
-## Observaciones tecnicas iniciales
+### Objetivo de producto
+
+Permitir que un negocio delegue la operación diaria de la cola sin compartir la
+cuenta owner/admin del negocio.
+
+### Decisiones de alcance
+
+Esta historia queda pendiente hasta cerrar el primer corte del panel. Motivo:
+requiere definir UX de invitación, aceptación, listado de empleados y
+revocación.
+
+También requiere una relación explícita entre empleado y negocio. El rol global
+`employee` existe, pero no alcanza por sí solo para saber en qué negocio puede
+operar.
+
+### Contrato backend propuesto
+
+Sin implementar aún:
+
+```text
+POST /api/business/:businessId/employees/invitations
+GET /api/business/:businessId/employees
+POST /api/business/employee-invitations/:token/accept
+DELETE /api/business/:businessId/employees/:userId
+```
+
+### Modelo y persistencia propuesta
+
+Sin implementar aún:
+
+- `BusinessEmployee`: relación entre negocio y usuario empleado.
+- `BusinessEmployeeInvitation`: invitaciones pendientes/aceptadas/revocadas.
+- Token de invitación con expiración.
+
+### Reglas de negocio propuestas
+
+- Solo `business_admin` owner del negocio puede invitar o revocar empleados.
+- El empleado puede operar cola del negocio asignado.
+- El empleado no puede editar configuración del negocio ni métricas.
+- Revocar acceso debe invalidar sesiones activas del empleado o impedir su uso
+  en el siguiente request autenticado.
+
+### Contratos diferidos
+
+- Email real de invitación.
+- Invalidación inmediata con outbox/sesión distribuida si el sistema escala a
+  múltiples procesos.
+- UI de aceptación de invitación en panel.
+
+### Cobertura esperada
+
+- Tests unitarios de invitación, aceptación y revocación.
+- Tests de permisos: empleado opera cola pero no edita negocio.
+- Tests API para contratos HTTP principales.
+
+## Observaciones técnicas iniciales
 
 - La base actual solo persiste `Business` con `name`, `slug`, `categoryId` y
   `ownerUserId`.
-- Para esta epica hacen falta nuevas entidades o campos para direccion,
-  geolocalizacion, horarios, dias no laborables, estado operativo, ventanillas,
+- Para esta épica hacen falta nuevas entidades o campos para dirección,
+  geolocalización, horarios, días no laborables, estado operativo, ventanillas,
   QR e invitaciones de empleados.
-- Algunos criterios dependen de epicas posteriores:
-  - calculo de tiempo estimado: relacionado con cola y turnos.
+- Algunos criterios dependen de épicas posteriores:
+  - cálculo de tiempo estimado: relacionado con cola y turnos.
   - notificaciones push por cierre: relacionado con notificaciones/outbox.
-  - redireccion del QR al flujo de sacar turno: relacionado con canales de
+  - redirección del QR al flujo de sacar turno: relacionado con canales de
     entrada y app/web ligera.
-- La implementacion deberia separar lo que queda completamente dentro de Epica 2
-  de lo que se deja como contrato para Epica 3, 4 o 5.
+- La implementación debería separar lo que queda completamente dentro de Épica 2
+  de lo que se deja como contrato para Épica 3, 4 o 5.
