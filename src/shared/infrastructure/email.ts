@@ -10,7 +10,7 @@ const shouldUseResend = (): boolean =>
   env.NODE_ENV === "production" || !isPlaceholderResendKey(env.RESEND_API_KEY);
 
 const logLocalEmail = (
-  kind: "verification" | "password-reset" | "business-welcome",
+  kind: "verification" | "password-reset" | "business-welcome" | "employee-invitation",
   to: string,
   url: string,
 ): void => {
@@ -101,6 +101,34 @@ export const sendBusinessWelcomeEmail = async (
       <p>Your business account has been approved and you can now access the Espera panel.</p>
       <p>You can sign in here:</p>
       <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};
+
+export const sendBusinessEmployeeInvitationEmail = async (
+  to: string,
+  token: string,
+): Promise<void> => {
+  const appUrl = env.APP_URL ?? "http://localhost:3000";
+  const url = `${appUrl}/business/employee-invitations/${token}`;
+
+  if (!shouldUseResend()) {
+    logLocalEmail("employee-invitation", to, url);
+    return;
+  }
+
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+
+  await resend.emails.send({
+    from: emailConfig.fromEmail,
+    to,
+    subject: "Te invitaron a operar un negocio en Espera",
+    html: `
+      <p>Recibiste una invitación para operar un panel de negocio en Espera.</p>
+      <p>Hacé clic en el siguiente enlace para aceptar la invitación:</p>
+      <a href="${url}">${url}</a>
+      <p>El enlace expira en 7 días.</p>
     `,
   });
 };

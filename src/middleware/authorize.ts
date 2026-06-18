@@ -25,6 +25,13 @@ const rolePermissions: Record<
   super_admin: ["*", "platform:approve_business_account"]
 };
 
+/**
+ * Coarse-grained role permission guard.
+ *
+ * Business ownership and employee membership are intentionally checked inside
+ * use cases, because permissions alone cannot prove access to a specific
+ * business instance.
+ */
 export const authorize =
   (...requiredPermissions: Permission[]) =>
   (request: Request, _response: Response, next: NextFunction): void => {

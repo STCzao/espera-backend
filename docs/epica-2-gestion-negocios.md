@@ -14,13 +14,11 @@ Formato de referencia:
 
 ## Estado general
 
-- Estado: `implementado parcialmente`.
+- Estado: `implementado`.
 - Historias implementadas: `HU-2.1`, `HU-2.2`, `HU-2.3`, `HU-2.4`,
-  `HU-2.5`, `HU-2.6`.
-- Historia pendiente: `HU-2.8`.
-- Decisión de secuencia: antes de implementar `HU-2.8`, conviene cerrar el
-  primer corte del panel de negocio porque empleados afecta permisos,
-  ownership, sesiones, invitaciones y revocación.
+  `HU-2.5`, `HU-2.6`, `HU-2.8`.
+- Historia omitida en numeración: `HU-2.7` no está definida en el backlog
+  documentado de esta épica.
 
 ## Contratos principales de la épica
 
@@ -37,17 +35,21 @@ PATCH /api/business/:businessId/operational-status
 GET /api/business/:businessId/qr
 POST /api/business/:businessId/qr/regenerate
 GET /api/business/:businessId/qr.png
+POST /api/business/:businessId/employees/invitations
+GET /api/business/:businessId/employees
+DELETE /api/business/:businessId/employees/:userId
 ```
 
 Público:
 
 ```text
 GET /api/qr/:token
+POST /api/business/employee-invitations/:token/accept
 ```
 
 ## Corte recomendado para panel
 
-Antes de avanzar con empleados, el panel debería cubrir:
+El primer corte funcional del panel debería cubrir:
 
 - completar y editar perfil del negocio
 - configurar horarios y días no laborables
@@ -55,6 +57,7 @@ Antes de avanzar con empleados, el panel debería cubrir:
 - consultar y descargar QR
 - regenerar QR
 - cambiar estado operativo
+- invitar, listar y revocar empleados
 
 Este corte permite validar valor para negocios sin depender todavía de app
 mobile completa ni cola persistida.
@@ -164,7 +167,7 @@ Respuesta esperada:
 }
 ```
 
-`latitude` y `longitude` pueden omitirse si geocoding no esta configurado.
+`latitude` y `longitude` pueden omitirse si geocoding no está configurado.
 
 ### Cobertura
 
@@ -734,7 +737,7 @@ Respuesta esperada:
     "attributes": [
       {
         "key": "averageServiceMinutes",
-        "label": "Tiempo promedio por tramite",
+        "label": "Tiempo promedio por trámite",
         "type": "number",
         "required": true
       }
@@ -777,7 +780,7 @@ Cobertura actual:
 
 Story points: `3`
 
-Estado: `pendiente`.
+Estado: `implementado`.
 
 Como negocio, quiero invitar empleados a operar mi panel con su propio acceso.
 
@@ -797,61 +800,161 @@ cuenta owner/admin del negocio.
 
 ### Decisiones de alcance
 
-Esta historia queda pendiente hasta cerrar el primer corte del panel. Motivo:
-requiere definir UX de invitación, aceptación, listado de empleados y
-revocación.
+La historia queda cerrada en backend para el corte de panel. La invitación se
+modela como un flujo por token: el owner envía una invitación al email del
+empleado, el empleado acepta con sus datos de acceso y el sistema crea o
+promueve la cuenta con rol global `employee`.
 
-También requiere una relación explícita entre empleado y negocio. El rol global
-`employee` existe, pero no alcanza por sí solo para saber en qué negocio puede
-operar.
+El rol global `employee` no alcanza por sí solo para determinar dónde puede
+operar. Por eso se agregó una relación explícita entre usuario empleado y
+negocio.
 
-### Contrato backend propuesto
+### Implementación backend
 
-Sin implementar aún:
+Estado: `implementado`.
+
+Persistencia agregada:
+
+- `BusinessEmployee`: relación entre negocio y usuario empleado.
+- `BusinessEmployeeInvitation`: invitaciones pendientes, aceptadas, revocadas o
+  expiradas.
+
+Estados de empleado:
+
+- `ACTIVE`
+- `REVOKED`
+
+Estados de invitación:
+
+- `PENDING`
+- `ACCEPTED`
+- `REVOKED`
+- `EXPIRED`
+
+Endpoints panel:
 
 ```text
 POST /api/business/:businessId/employees/invitations
 GET /api/business/:businessId/employees
-POST /api/business/employee-invitations/:token/accept
 DELETE /api/business/:businessId/employees/:userId
 ```
 
-### Modelo y persistencia propuesta
+Todos requieren autenticación, permiso `employee:manage` y ownership del
+negocio.
 
-Sin implementar aún:
+Endpoint público de aceptación:
 
-- `BusinessEmployee`: relación entre negocio y usuario empleado.
-- `BusinessEmployeeInvitation`: invitaciones pendientes/aceptadas/revocadas.
-- Token de invitación con expiración.
+```text
+POST /api/business/employee-invitations/:token/accept
+```
 
-### Reglas de negocio propuestas
+Este endpoint permite aceptar la invitación sin sesión previa. Si el email no
+existe, crea una cuenta local aprobada y verificada con rol `employee`. Si el
+usuario ya existe y su rol es compatible, lo vincula al negocio como empleado.
+
+Ejemplo de invitación:
+
+```json
+{
+  "email": "empleado@local.com"
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "invitationId": "uuid",
+  "businessId": "uuid",
+  "email": "empleado@local.com",
+  "status": "pending",
+  "expiresAt": "2026-06-24T00:00:00.000Z"
+}
+```
+
+Ejemplo de aceptación:
+
+```json
+{
+  "firstName": "Ana",
+  "lastName": "García",
+  "password": "Password123!"
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "businessId": "uuid",
+  "userId": "uuid",
+  "role": "employee",
+  "status": "active"
+}
+```
+
+### Reglas de negocio
 
 - Solo `business_admin` owner del negocio puede invitar o revocar empleados.
+- No se puede invitar al owner como empleado de su propio negocio.
+- No se puede duplicar una relación activa ni una invitación pendiente vigente.
+- Las invitaciones expiran a los 7 días.
 - El empleado puede operar cola del negocio asignado.
-- El empleado no puede editar configuración del negocio ni métricas.
-- Revocar acceso debe invalidar sesiones activas del empleado o impedir su uso
-  en el siguiente request autenticado.
+- El empleado no puede editar configuración del negocio ni acceder a métricas.
+- Revocar acceso marca la relación como `REVOKED` e invalida las refresh
+  sessions activas del empleado.
+
+### Documentación inline
+
+Se dejó contexto inline en los puntos donde la intención no es obvia solo por
+tipos o nombres:
+
+- `BusinessEmployee`: aclara la diferencia entre rol global `employee` y
+  membresía por negocio.
+- `BusinessEmployeeInvitation`: aclara el alcance del token de invitación.
+- `InviteBusinessEmployeeUseCase`: documenta ownership, invitaciones vigentes y
+  token opaco.
+- `AcceptBusinessEmployeeInvitationUseCase`: documenta expiración persistida,
+  promoción de usuarios existentes y reactivación de membresía.
+- `ListBusinessEmployeesUseCase`: documenta por qué el panel lista solo
+  membresías activas.
+- `RevokeBusinessEmployeeUseCase`: documenta el alcance de la revocación de
+  refresh sessions frente a access tokens ya emitidos.
+- Repositorios Postgres de empleados e invitaciones: documentan mapeo de enums,
+  reactivación por `upsert` y trazabilidad de membresías revocadas.
 
 ### Contratos diferidos
 
-- Email real de invitación.
-- Invalidación inmediata con outbox/sesión distribuida si el sistema escala a
-  múltiples procesos.
-- UI de aceptación de invitación en panel.
+- Diseño final del email transaccional de invitación.
+- UI de aceptación de invitación en panel o landing web.
+- Chequeo contextual de membresía por negocio al conectar la cola persistida.
+- Invalidación inmediata de access tokens ya emitidos si se requiere revocación
+  estricta antes del vencimiento natural del token.
 
-### Cobertura esperada
+### Cobertura
 
-- Tests unitarios de invitación, aceptación y revocación.
-- Tests de permisos: empleado opera cola pero no edita negocio.
-- Tests API para contratos HTTP principales.
+- `tests/unit/business/InviteBusinessEmployeeUseCase.test.ts`
+- `tests/unit/business/AcceptBusinessEmployeeInvitationUseCase.test.ts`
+- `tests/unit/business/ListBusinessEmployeesUseCase.test.ts`
+- `tests/unit/business/RevokeBusinessEmployeeUseCase.test.ts`
+- `tests/api/business/business.api.test.ts`
+
+Cobertura actual:
+
+- invitación de empleados por owner
+- rechazo de invitaciones duplicadas vigentes
+- rechazo de invitación al owner
+- aceptación de invitación vigente
+- expiración de invitaciones vencidas
+- creación de usuario empleado al aceptar
+- vinculación de usuario existente con rol compatible
+- listado de empleados activos
+- revocación de empleado
+- invalidación de refresh sessions al revocar
+- contratos HTTP de invitación, listado, aceptación y revocación
 
 ## Observaciones técnicas iniciales
 
-- La base actual solo persiste `Business` con `name`, `slug`, `categoryId` y
-  `ownerUserId`.
-- Para esta épica hacen falta nuevas entidades o campos para dirección,
-  geolocalización, horarios, días no laborables, estado operativo, ventanillas,
-  QR e invitaciones de empleados.
 - Algunos criterios dependen de épicas posteriores:
   - cálculo de tiempo estimado: relacionado con cola y turnos.
   - notificaciones push por cierre: relacionado con notificaciones/outbox.

@@ -30,6 +30,7 @@ const toMinutes = (time: string): number => {
 };
 
 const getLocalTimeParts = (now: Date, timeZone: string): LocalTimeParts => {
+  // Availability is evaluated in the business timezone, not in server time.
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     weekday: "short",
@@ -51,6 +52,13 @@ const getLocalTimeParts = (now: Date, timeZone: string): LocalTimeParts => {
   };
 };
 
+/**
+ * Pure availability policy for public discovery and turn entry.
+ *
+ * The service combines publication, capacity, operational status and calendar
+ * rules. Queue load is intentionally excluded; wait estimation lives in the
+ * queue module.
+ */
 export class BusinessAvailabilityService {
   public isAvailableNow({
     business,
@@ -73,6 +81,8 @@ export class BusinessAvailabilityService {
       return false;
     }
 
+    // `delayed` is still available; it only changes the customer-facing
+    // indicator/message handled by the operational status use case.
     const localTime = getLocalTimeParts(now, timeZone);
     const isNonWorkingDay = hoursConfig.nonWorkingDays.some(
       (day) => day.date === localTime.date,

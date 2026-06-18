@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
@@ -8,8 +9,11 @@ import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrP
 import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
 import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
+import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
+import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
+import { RevokeBusinessEmployeeUseCase } from "../application/RevokeBusinessEmployeeUseCase";
 import { UpdateBusinessOperationalStatusUseCase } from "../application/UpdateBusinessOperationalStatusUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
 
@@ -25,7 +29,11 @@ export class BusinessController {
     private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
     private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase(),
     private readonly updateBusinessOperationalStatusUseCase = new UpdateBusinessOperationalStatusUseCase(),
-    private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase()
+    private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase(),
+    private readonly inviteBusinessEmployeeUseCase = new InviteBusinessEmployeeUseCase(),
+    private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
+    private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
+    private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -62,6 +70,60 @@ export class BusinessController {
       businessId: String(request.params.businessId),
       ownerUserId: request.user?.id ?? "",
     });
+    response.status(200).json(result);
+  };
+
+  public inviteEmployee = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.inviteBusinessEmployeeUseCase.execute({
+      ...request.body,
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info(
+      { businessId: result.businessId, email: result.email },
+      "Business employee invited"
+    );
+    response.status(201).json(result);
+  };
+
+  public listEmployees = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.listBusinessEmployeesUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.status(200).json(result);
+  };
+
+  public acceptEmployeeInvitation = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.acceptBusinessEmployeeInvitationUseCase.execute({
+      ...request.body,
+      token: String(request.params.token),
+    });
+    response.status(200).json(result);
+  };
+
+  public revokeEmployee = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.revokeBusinessEmployeeUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+      userId: String(request.params.userId),
+    });
+    logger.info(
+      { businessId: result.businessId, userId: result.userId },
+      "Business employee revoked"
+    );
     response.status(200).json(result);
   };
 

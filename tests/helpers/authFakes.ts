@@ -8,6 +8,10 @@ import type { BusinessHoursConfig } from "../../src/modules/business/domain/Busi
 import type { IBusinessHoursRepo } from "../../src/modules/business/domain/IBusinessHoursRepo";
 import type { BusinessQrCode } from "../../src/modules/business/domain/BusinessQrCode";
 import type { IBusinessQrCodeRepo } from "../../src/modules/business/domain/IBusinessQrCodeRepo";
+import type { BusinessEmployee } from "../../src/modules/business/domain/BusinessEmployee";
+import type { BusinessEmployeeInvitation } from "../../src/modules/business/domain/BusinessEmployeeInvitation";
+import type { IBusinessEmployeeRepo } from "../../src/modules/business/domain/IBusinessEmployeeRepo";
+import type { IBusinessEmployeeInvitationRepo } from "../../src/modules/business/domain/IBusinessEmployeeInvitationRepo";
 
 export const buildUser = (overrides: Partial<User> = {}): User => ({
   id: "user-1",
@@ -292,5 +296,159 @@ export class InMemoryBusinessQrCodeRepo implements IBusinessQrCodeRepo {
 
   public all(): BusinessQrCode[] {
     return [...this.qrCodes.values()];
+  }
+}
+
+export const buildBusinessEmployee = (
+  overrides: Partial<BusinessEmployee> = {},
+): BusinessEmployee => ({
+  id: "employee-1",
+  businessId: "business-1",
+  userId: "employee-user-1",
+  email: "employee@example.com",
+  firstName: "Employee",
+  lastName: "User",
+  status: "active",
+  invitedByUserId: "user-1",
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  ...overrides,
+});
+
+export const buildBusinessEmployeeInvitation = (
+  overrides: Partial<BusinessEmployeeInvitation> = {},
+): BusinessEmployeeInvitation => ({
+  id: "invitation-1",
+  businessId: "business-1",
+  email: "employee@example.com",
+  token: "employee-invitation-token-1234567890",
+  status: "pending",
+  invitedByUserId: "user-1",
+  expiresAt: new Date(Date.now() + 60_000),
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  ...overrides,
+});
+
+export class InMemoryBusinessEmployeeRepo implements IBusinessEmployeeRepo {
+  private readonly employees = new Map<string, BusinessEmployee>();
+
+  public constructor(initialEmployees: BusinessEmployee[] = []) {
+    initialEmployees.forEach((employee) => {
+      this.employees.set(employee.id, employee);
+    });
+  }
+
+  public async findById(id: string): Promise<BusinessEmployee | null> {
+    return this.employees.get(id) ?? null;
+  }
+
+  public async findActiveByBusinessAndUser(
+    businessId: string,
+    userId: string,
+  ): Promise<BusinessEmployee | null> {
+    return (
+      [...this.employees.values()].find(
+        (employee) =>
+          employee.businessId === businessId &&
+          employee.userId === userId &&
+          employee.status === "active",
+      ) ?? null
+    );
+  }
+
+  public async findByBusinessId(businessId: string): Promise<BusinessEmployee[]> {
+    return [...this.employees.values()].filter(
+      (employee) => employee.businessId === businessId && employee.status === "active",
+    );
+  }
+
+  public async save(entity: BusinessEmployee): Promise<BusinessEmployee> {
+    const existing = [...this.employees.values()].find(
+      (employee) =>
+        employee.businessId === entity.businessId && employee.userId === entity.userId,
+    );
+    const saved = existing ? { ...entity, id: existing.id } : entity;
+    this.employees.set(saved.id, saved);
+    return saved;
+  }
+
+  public async revokeByBusinessAndUser(
+    businessId: string,
+    userId: string,
+    revokedAt: Date,
+  ): Promise<BusinessEmployee | null> {
+    const employee = [...this.employees.values()].find(
+      (item) =>
+        item.businessId === businessId &&
+        item.userId === userId &&
+        item.status === "active",
+    );
+    if (!employee) {
+      return null;
+    }
+
+    const revoked = {
+      ...employee,
+      status: "revoked" as const,
+      revokedAt,
+    };
+    this.employees.set(revoked.id, revoked);
+    return revoked;
+  }
+
+  public all(): BusinessEmployee[] {
+    return [...this.employees.values()];
+  }
+}
+
+export class InMemoryBusinessEmployeeInvitationRepo
+  implements IBusinessEmployeeInvitationRepo
+{
+  private readonly invitations = new Map<string, BusinessEmployeeInvitation>();
+
+  public constructor(initialInvitations: BusinessEmployeeInvitation[] = []) {
+    initialInvitations.forEach((invitation) => {
+      this.invitations.set(invitation.id, invitation);
+    });
+  }
+
+  public async findById(id: string): Promise<BusinessEmployeeInvitation | null> {
+    return this.invitations.get(id) ?? null;
+  }
+
+  public async findByToken(
+    token: string,
+  ): Promise<BusinessEmployeeInvitation | null> {
+    return (
+      [...this.invitations.values()].find(
+        (invitation) => invitation.token === token,
+      ) ?? null
+    );
+  }
+
+  public async findPendingByBusinessAndEmail(
+    businessId: string,
+    email: string,
+  ): Promise<BusinessEmployeeInvitation | null> {
+    return (
+      [...this.invitations.values()].find(
+        (invitation) =>
+          invitation.businessId === businessId &&
+          invitation.email === email &&
+          invitation.status === "pending",
+      ) ?? null
+    );
+  }
+
+  public async save(
+    entity: BusinessEmployeeInvitation,
+  ): Promise<BusinessEmployeeInvitation> {
+    this.invitations.set(entity.id, entity);
+    return entity;
+  }
+
+  public all(): BusinessEmployeeInvitation[] {
+    return [...this.invitations.values()];
   }
 }

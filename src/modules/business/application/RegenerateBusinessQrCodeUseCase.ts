@@ -31,6 +31,12 @@ export interface RegenerateBusinessQrCodeOutput {
 
 const generateQrToken = (): string => randomBytes(24).toString("base64url");
 
+/**
+ * Issues a new printable QR token without breaking scans immediately.
+ *
+ * The previous token remains resolvable for a 24-hour retirement window so a
+ * business can replace printed material without a hard cutover.
+ */
 export class RegenerateBusinessQrCodeUseCase
   implements
     UseCase<RegenerateBusinessQrCodeInput, RegenerateBusinessQrCodeOutput>
@@ -63,6 +69,8 @@ export class RegenerateBusinessQrCodeUseCase
     const previousQrValidUntil = new Date(
       Date.now() + QR_RETIREMENT_WINDOW_MS,
     );
+    // Only one QR should be active for the panel, but retiring QR codes can
+    // still resolve during the transition window.
     await this.businessQrCodeRepo.retireActiveForBusiness(
       business.id,
       previousQrValidUntil,

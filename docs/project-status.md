@@ -7,8 +7,8 @@ leerse como una primera fase de autenticación bastante avanzada, con onboarding
 de negocios y bases iniciales para las siguientes épicas.
 
 El corte funcional real alcanzado hasta ahora llega principalmente hasta
-`HU-1.9`. A partir de Épica 2 existen contratos, rutas y piezas de
-infraestructura, pero no una implementación funcional completa del backlog.
+`HU-1.9` para autenticación y onboarding. La Épica 2 ya cuenta con una primera
+implementación backend de gestión de negocios para panel.
 
 ## Alcance real implementado
 
@@ -62,21 +62,25 @@ Fortalezas:
 Responsabilidades actuales:
 
 - registro base de negocio
-- configuración inicial de cola
+- edición de perfil operativo
+- configuración de horarios y días no laborables
+- configuración de ventanillas activas
+- estado operativo del negocio
+- QR único del negocio
+- invitación, listado y revocación de empleados
 
 Estado:
 
-- módulo preparado como base
-- aún no cubre dirección, geolocalización, horarios, estado operativo,
-  ventanillas, empleados, QR ni métricas
+- módulo funcional para el primer corte de panel
+- métricas y operación real de cola quedan para épicas posteriores
 
 ### queue
 
 Responsabilidades proyectadas:
 
-- creacion de turnos
+- creación de turnos
 - llamada al siguiente
-- cancelacion
+- cancelación
 - prioridad
 - tiempo real
 - notificaciones
@@ -206,7 +210,7 @@ Pendiente para completar mejor Épica 1:
 - test dedicado de reenvío de verificación
 - validación automatizada de Resend real y Google real en staging
 
-## Conclusion
+## Conclusión
 
 El proyecto tiene una base técnica válida y una dirección arquitectónica
 correcta, pero su lectura adecuada es la de una fase 1 avanzada, no la de un
@@ -263,3 +267,11 @@ Avance actual:
 - Endpoints relacionados:
   `PATCH /api/business/:businessId/profile` y
   `GET /api/business/categories/:categoryId/config`.
+- `HU-2.8` implementada en backend para invitar empleados al panel.
+- Endpoints relacionados:
+  `POST /api/business/:businessId/employees/invitations`,
+  `GET /api/business/:businessId/employees`,
+  `POST /api/business/employee-invitations/:token/accept` y
+  `DELETE /api/business/:businessId/employees/:userId`.
+- La revocación marca la membresía como revocada e invalida las refresh
+  sessions activas del empleado.

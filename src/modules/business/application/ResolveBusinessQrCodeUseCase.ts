@@ -34,6 +34,12 @@ export interface ResolveBusinessQrCodeOutput {
   };
 }
 
+/**
+ * Public QR resolver used by lightweight web/deep-link entry points.
+ *
+ * It returns a navigation contract instead of creating a turn directly because
+ * persistent queue entry belongs to a later product flow.
+ */
 export class ResolveBusinessQrCodeUseCase
   implements UseCase<ResolveBusinessQrCodeInput, ResolveBusinessQrCodeOutput>
 {
@@ -67,6 +73,8 @@ export class ResolveBusinessQrCodeUseCase
       token: qrCode.token,
       qrUrl: buildBusinessQrUrl(qrCode.token),
       qrStatus: qrCode.status === "retiring" ? "retiring" : "active",
+      // Frontend/mobile can branch on this action while queue creation remains
+      // owned by the future turn-entry flow.
       action: "OPEN_BUSINESS_TURN_FLOW",
       appPath: `/business/${business.id}/turns/new`,
       business: {
