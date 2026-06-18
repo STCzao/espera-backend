@@ -118,6 +118,11 @@ POST /api/auth/login
 GET /api/auth/me
 ```
 
+`POST /api/auth/login` devuelve `accessToken` y `refreshToken`, y además setea
+la cookie `refreshToken` httpOnly. El frontend web debe preferir la cookie para
+rotación y logout; el `refreshToken` en body se conserva por compatibilidad con
+clientes manuales/mobile y escenarios Postman.
+
 ### Reglas de Negocio
 
 - Requiere email verificado.
@@ -167,6 +172,11 @@ Mantener sesiones activas sin pedir login constante.
 ```text
 POST /api/auth/refresh-token
 ```
+
+El endpoint lee el refresh token desde la cookie httpOnly `refreshToken` y, como
+fallback explícito, desde `body.refreshToken`. La respuesta mantiene el nuevo
+`refreshToken` en body además de actualizar la cookie; por lo tanto el contrato
+actual no es estrictamente cookie-only.
 
 ### Modelo y Persistencia
 
@@ -230,6 +240,10 @@ POST /api/auth/forgot-password
 POST /api/auth/reset-password
 ```
 
+Convención frontend: el email apunta a `/auth/reset-password?token=:token`.
+La pantalla debe extraer ese query param y enviarlo en el body de
+`POST /api/auth/reset-password` junto con la nueva password.
+
 ### Reglas de Negocio
 
 - Respuesta genérica para no revelar existencia de email.
@@ -258,6 +272,13 @@ Permitir que un negocio solicite acceso al panel y quede pendiente de revisión.
 POST /api/auth/register-business
 PATCH /api/auth/business-accounts/:userId/approve
 ```
+
+`POST /api/auth/register-business` pertenece al onboarding público del negocio.
+`PATCH /api/auth/business-accounts/:userId/approve` se documenta acá porque
+cierra el estado de la cuenta creada, pero su superficie funcional es
+`super_admin`: requiere autenticación y permiso
+`platform:approve_business_account`. No debe implementarse como paso accesible
+desde el flujo público de registro.
 
 ### Modelo y Persistencia
 

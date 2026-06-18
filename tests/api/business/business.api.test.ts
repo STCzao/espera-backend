@@ -317,7 +317,7 @@ describe("business API", () => {
       businessId,
       userId: "33333333-3333-4333-8333-333333333333",
       role: "employee",
-      invitationStatus: "accepted",
+      status: "active",
     });
 
     const response = await request(createApp())
@@ -333,7 +333,7 @@ describe("business API", () => {
       businessId,
       userId: "33333333-3333-4333-8333-333333333333",
       role: "employee",
-      invitationStatus: "accepted",
+      status: "active",
     });
     expect(businessMocks.acceptBusinessEmployeeInvitationExecute).toHaveBeenCalledWith({
       token: "token-1234567890",

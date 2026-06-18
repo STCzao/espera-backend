@@ -36,7 +36,7 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
       businessId: "business-1",
       userId: createdUser.id,
       role: "employee",
-      invitationStatus: "accepted",
+      status: "active",
     });
     expect(createdUser).toMatchObject({
       email: "employee@example.com",
