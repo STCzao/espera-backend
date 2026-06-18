@@ -31,6 +31,13 @@ export type DomainEvents = {
   };
 };
 
+/**
+ * In-process domain event bus.
+ *
+ * This keeps use cases decoupled from side effects in the MVP. Events that must
+ * survive process restarts or be delivered exactly once should later move to an
+ * outbox/worker pipeline.
+ */
 export class EventBus {
   private readonly emitter = new EventEmitter();
 

@@ -5,15 +5,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app";
 
 const businessMocks = vi.hoisted(() => ({
+  acceptBusinessEmployeeInvitationExecute: vi.fn(),
   configureBusinessHoursExecute: vi.fn(),
   configureBusinessServiceWindowsExecute: vi.fn(),
   generateBusinessQrPngExecute: vi.fn(),
   getBusinessCategoryConfigExecute: vi.fn(),
   getBusinessQrCodeExecute: vi.fn(),
   getBusinessHoursExecute: vi.fn(),
+  inviteBusinessEmployeeExecute: vi.fn(),
+  listBusinessEmployeesExecute: vi.fn(),
   regenerateBusinessQrCodeExecute: vi.fn(),
+  revokeBusinessEmployeeExecute: vi.fn(),
   resolveBusinessQrCodeExecute: vi.fn(),
   updateBusinessOperationalStatusExecute: vi.fn(),
+}));
+
+vi.mock("../../../src/modules/business/application/AcceptBusinessEmployeeInvitationUseCase", () => ({
+  AcceptBusinessEmployeeInvitationUseCase: class {
+    public execute = businessMocks.acceptBusinessEmployeeInvitationExecute;
+  },
 }));
 
 vi.mock("../../../src/modules/business/application/ConfigureBusinessHoursUseCase", () => ({
@@ -52,9 +62,27 @@ vi.mock("../../../src/modules/business/application/GetBusinessHoursUseCase", () 
   },
 }));
 
+vi.mock("../../../src/modules/business/application/InviteBusinessEmployeeUseCase", () => ({
+  InviteBusinessEmployeeUseCase: class {
+    public execute = businessMocks.inviteBusinessEmployeeExecute;
+  },
+}));
+
+vi.mock("../../../src/modules/business/application/ListBusinessEmployeesUseCase", () => ({
+  ListBusinessEmployeesUseCase: class {
+    public execute = businessMocks.listBusinessEmployeesExecute;
+  },
+}));
+
 vi.mock("../../../src/modules/business/application/RegenerateBusinessQrCodeUseCase", () => ({
   RegenerateBusinessQrCodeUseCase: class {
     public execute = businessMocks.regenerateBusinessQrCodeExecute;
+  },
+}));
+
+vi.mock("../../../src/modules/business/application/RevokeBusinessEmployeeUseCase", () => ({
+  RevokeBusinessEmployeeUseCase: class {
+    public execute = businessMocks.revokeBusinessEmployeeExecute;
   },
 }));
 
@@ -99,13 +127,17 @@ const hoursPayload = {
 
 describe("business API", () => {
   beforeEach(() => {
+    businessMocks.acceptBusinessEmployeeInvitationExecute.mockReset();
     businessMocks.configureBusinessHoursExecute.mockReset();
     businessMocks.configureBusinessServiceWindowsExecute.mockReset();
     businessMocks.generateBusinessQrPngExecute.mockReset();
     businessMocks.getBusinessCategoryConfigExecute.mockReset();
     businessMocks.getBusinessQrCodeExecute.mockReset();
     businessMocks.getBusinessHoursExecute.mockReset();
+    businessMocks.inviteBusinessEmployeeExecute.mockReset();
+    businessMocks.listBusinessEmployeesExecute.mockReset();
     businessMocks.regenerateBusinessQrCodeExecute.mockReset();
+    businessMocks.revokeBusinessEmployeeExecute.mockReset();
     businessMocks.resolveBusinessQrCodeExecute.mockReset();
     businessMocks.updateBusinessOperationalStatusExecute.mockReset();
   });
@@ -211,6 +243,127 @@ describe("business API", () => {
     });
     expect(businessMocks.getBusinessCategoryConfigExecute).toHaveBeenCalledWith({
       categoryId,
+    });
+  });
+
+  it("invites an employee for the owner panel", async () => {
+    businessMocks.inviteBusinessEmployeeExecute.mockResolvedValue({
+      invitationId: "invitation-1",
+      businessId,
+      email: "employee@example.com",
+      status: "pending",
+      expiresAt: "2026-06-24T12:00:00.000Z",
+    });
+
+    const response = await request(createApp())
+      .post(`/api/business/${businessId}/employees/invitations`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ email: "employee@example.com" });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      invitationId: "invitation-1",
+      businessId,
+      email: "employee@example.com",
+      status: "pending",
+      expiresAt: "2026-06-24T12:00:00.000Z",
+    });
+    expect(businessMocks.inviteBusinessEmployeeExecute).toHaveBeenCalledWith({
+      businessId,
+      ownerUserId: "22222222-2222-4222-8222-222222222222",
+      email: "employee@example.com",
+    });
+  });
+
+  it("lists employees for the owner panel", async () => {
+    businessMocks.listBusinessEmployeesExecute.mockResolvedValue({
+      businessId,
+      employees: [
+        {
+          userId: "33333333-3333-4333-8333-333333333333",
+          email: "employee@example.com",
+          firstName: "Employee",
+          lastName: "Person",
+          status: "active",
+        },
+      ],
+    });
+
+    const response = await request(createApp())
+      .get(`/api/business/${businessId}/employees`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      businessId,
+      employees: [
+        {
+          userId: "33333333-3333-4333-8333-333333333333",
+          email: "employee@example.com",
+          firstName: "Employee",
+          lastName: "Person",
+          status: "active",
+        },
+      ],
+    });
+    expect(businessMocks.listBusinessEmployeesExecute).toHaveBeenCalledWith({
+      businessId,
+      ownerUserId: "22222222-2222-4222-8222-222222222222",
+    });
+  });
+
+  it("accepts employee invitations without authentication", async () => {
+    businessMocks.acceptBusinessEmployeeInvitationExecute.mockResolvedValue({
+      businessId,
+      userId: "33333333-3333-4333-8333-333333333333",
+      role: "employee",
+      invitationStatus: "accepted",
+    });
+
+    const response = await request(createApp())
+      .post("/api/business/employee-invitations/token-1234567890/accept")
+      .send({
+        firstName: "Employee",
+        lastName: "Person",
+        password: "Password1",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      businessId,
+      userId: "33333333-3333-4333-8333-333333333333",
+      role: "employee",
+      invitationStatus: "accepted",
+    });
+    expect(businessMocks.acceptBusinessEmployeeInvitationExecute).toHaveBeenCalledWith({
+      token: "token-1234567890",
+      firstName: "Employee",
+      lastName: "Person",
+      password: "Password1",
+    });
+  });
+
+  it("revokes employee access for the owner panel", async () => {
+    businessMocks.revokeBusinessEmployeeExecute.mockResolvedValue({
+      businessId,
+      userId: "33333333-3333-4333-8333-333333333333",
+      revoked: true,
+    });
+
+    const response = await request(createApp())
+      .delete(`/api/business/${businessId}/employees/33333333-3333-4333-8333-333333333333`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      businessId,
+      userId: "33333333-3333-4333-8333-333333333333",
+      revoked: true,
+    });
+    expect(businessMocks.revokeBusinessEmployeeExecute).toHaveBeenCalledWith({
+      businessId,
+      ownerUserId: "22222222-2222-4222-8222-222222222222",
+      userId: "33333333-3333-4333-8333-333333333333",
     });
   });
 

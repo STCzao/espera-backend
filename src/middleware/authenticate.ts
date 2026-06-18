@@ -12,6 +12,11 @@ type AccessTokenPayload = JwtPayload & {
   businessId?: string;
 };
 
+/**
+ * Validates short-lived bearer tokens and attaches the authenticated principal
+ * to the request. Fine-grained business ownership is resolved later by the
+ * application layer.
+ */
 export const authenticate = (
   request: Request,
   _response: Response,
@@ -51,6 +56,12 @@ export const authenticate = (
   }
 };
 
+/**
+ * Reads the opaque refresh token from the HTTP-only cookie.
+ *
+ * The database lookup and rotation happen in RefreshTokenUseCase so this
+ * middleware stays transport-only.
+ */
 export const authenticateRefresh = (
   request: Request,
   response: Response,

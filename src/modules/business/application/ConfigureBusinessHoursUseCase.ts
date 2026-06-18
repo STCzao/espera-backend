@@ -55,6 +55,12 @@ const isValidDateOnly = (date: string): boolean => {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 };
 
+/**
+ * Replaces the full opening-hours configuration for a business.
+ *
+ * The panel sends the complete weekly grid so stale ranges can be removed in a
+ * single save instead of patching individual rows.
+ */
 export class ConfigureBusinessHoursUseCase
   implements UseCase<ConfigureBusinessHoursInput, ConfigureBusinessHoursOutput>
 {
@@ -133,6 +139,8 @@ export class ConfigureBusinessHoursUseCase
       const opensAt = toMinutes(hour.opensAt);
       const closesAt = toMinutes(hour.closesAt);
 
+      // MVP rules keep opening ranges within a single calendar day. Overnight
+      // ranges should be modeled explicitly when nocturnal businesses appear.
       if (opensAt >= closesAt) {
         throw AppError.badRequest(
           "Opening time must be before closing time.",
@@ -148,6 +156,7 @@ export class ConfigureBusinessHoursUseCase
     rangesByDay.forEach((ranges) => {
       const sortedRanges = [...ranges].sort((first, second) => first.opensAt - second.opensAt);
 
+      // Sorting by opening time turns overlap detection into a neighbor check.
       for (let index = 1; index < sortedRanges.length; index += 1) {
         if (sortedRanges[index].opensAt < sortedRanges[index - 1].closesAt) {
           throw AppError.badRequest(

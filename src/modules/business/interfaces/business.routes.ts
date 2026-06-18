@@ -15,6 +15,10 @@ businessRouter.get(
   authorize("business:edit"),
   controller.getCategoryConfig
 );
+businessRouter.post(
+  "/employee-invitations/:token/accept",
+  controller.acceptEmployeeInvitation
+);
 businessRouter.patch(
   "/:businessId/profile",
   authenticate,
@@ -26,6 +30,24 @@ businessRouter.get(
   authenticate,
   authorize("business:edit"),
   controller.getHours
+);
+businessRouter.post(
+  "/:businessId/employees/invitations",
+  authenticate,
+  authorize("employee:manage"),
+  controller.inviteEmployee
+);
+businessRouter.get(
+  "/:businessId/employees",
+  authenticate,
+  authorize("employee:manage"),
+  controller.listEmployees
+);
+businessRouter.delete(
+  "/:businessId/employees/:userId",
+  authenticate,
+  authorize("employee:manage"),
+  controller.revokeEmployee
 );
 businessRouter.put(
   "/:businessId/hours",

@@ -12,6 +12,12 @@ export interface CreateTurnOutput {
   queueId: string;
 }
 
+/**
+ * Placeholder turn creation flow.
+ *
+ * The real implementation must allocate sequential numbers, persist the turn,
+ * publish realtime updates and enforce business availability.
+ */
 export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOutput> {
   public async execute(input: CreateTurnInput): Promise<CreateTurnOutput> {
     return {

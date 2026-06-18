@@ -58,6 +58,12 @@ const statusPresentation: Record<
   },
 };
 
+/**
+ * Updates the manual operational switch exposed in the business panel.
+ *
+ * This status is separate from schedules: a business can be inside opening
+ * hours and still pause or close turn intake for operational reasons.
+ */
 export class UpdateBusinessOperationalStatusUseCase
   implements
     UseCase<
@@ -97,6 +103,8 @@ export class UpdateBusinessOperationalStatusUseCase
       updatedAt: new Date(),
     });
 
+    // Closing is an edge-triggered event: integrations should react only when
+    // the business transitions into closed, not on repeated closed saves.
     if (previousStatus !== "closed" && updatedBusiness.operationalStatus === "closed") {
       this.eventBus.emit("business.closed", {
         businessId: updatedBusiness.id,

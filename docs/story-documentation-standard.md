@@ -53,6 +53,20 @@ Describe validaciones, estados, cálculos, permisos y efectos de dominio.
 Documenta emails, eventos de dominio, notificaciones, OAuth, outbox, Redis,
 Socket.IO u otras integraciones.
 
+### Documentación inline
+
+Indica qué decisiones quedaron explicadas en el código y dónde. No hace falta
+listar cada comentario, pero sí mencionar los puntos donde el contexto inline es
+parte de la mantenibilidad de la historia.
+
+Ejemplos esperados:
+
+- entidades de dominio con aclaración de intención y límites
+- use cases con reglas de negocio no evidentes
+- repositorios con decisiones de persistencia, `upsert`, soft delete o mapeos
+- middleware con separación entre permisos globales y autorización contextual
+- stubs o contratos diferidos marcados explícitamente como tales
+
 ### Contratos diferidos
 
 Lista contratos preparados pero no cerrados end-to-end, sin presentarlos como
@@ -73,3 +87,8 @@ Lista tests automatizados, validación manual y riesgos residuales.
   contrato.
 - Mantener Postman como guía de validación manual, no como fuente principal de
   alcance.
+- Agregar documentación inline cuando el código contenga una decisión de
+  producto, un límite técnico, una regla temporal, un contrato diferido o una
+  separación de responsabilidades que no sea evidente por nombres y tipos.
+- Evitar comentarios inline redundantes que describan sintaxis obvia; el foco
+  es explicar intención, tradeoffs y riesgos de mantenimiento.
