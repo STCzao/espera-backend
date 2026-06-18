@@ -36,7 +36,7 @@ export interface AcceptBusinessEmployeeInvitationOutput {
   businessId: string;
   userId: string;
   role: "employee";
-  invitationStatus: "accepted";
+  status: "active";
 }
 
 export class AcceptBusinessEmployeeInvitationUseCase
@@ -145,7 +145,7 @@ export class AcceptBusinessEmployeeInvitationUseCase
       businessId: employee.businessId,
       userId: user.id,
       role: "employee",
-      invitationStatus: "accepted",
+      status: "active",
     };
   }
 }

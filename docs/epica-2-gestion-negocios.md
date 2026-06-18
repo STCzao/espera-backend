@@ -134,6 +134,15 @@ PATCH /api/business/:businessId/profile
 dirección para usuarios con permiso `business:edit`. El owner queda como
 `business_admin` pendiente de aprobación cuando corresponde.
 
+Este endpoint no reemplaza a `POST /api/auth/register-business`. La diferencia
+de producto es:
+
+- `POST /api/auth/register-business`: onboarding público que crea cuenta de
+  negocio y negocio inicial en una misma solicitud.
+- `POST /api/business`: creación desde una cuenta autenticada existente; puede
+  iniciar el onboarding de negocio para esa cuenta promoviendo al owner a
+  `business_admin` pendiente cuando corresponda.
+
 `PATCH /api/business/:businessId/profile` permite completar o editar el perfil
 operativo de un negocio existente. Valida ownership del negocio y guarda la
 dirección textual. Si hay API key de Google Maps configurada, también guarda
@@ -508,6 +517,11 @@ GET /api/qr/:token
 
 Este endpoint resuelve un token escaneado y devuelve el contrato para abrir el
 flujo de turno del negocio en web/app.
+
+Responsabilidad de módulos: `business-qr` conserva la generación, descarga,
+regeneración y resolución backend del QR. La pantalla pública frontend
+`/q/:token` puede vivir en un módulo `public-entry`; ese módulo consume
+`GET /api/qr/:token` y decide si abre web, deep link o invitación a app.
 
 Ejemplo de respuesta para el panel:
 
