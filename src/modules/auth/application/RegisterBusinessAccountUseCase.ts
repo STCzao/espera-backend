@@ -11,28 +11,36 @@ import { PostgresBusinessRepo } from "@modules/business/public-api";
 import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
-const registerBusinessAccountSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .email("Invalid email.")
-    .max(254)
-    .transform((value) => value.toLowerCase()),
-  password: z
-    .string({ required_error: "Password is required." })
-    .min(8, "Password must be at least 8 characters.")
-    .max(72, "Password must not exceed 72 characters.")
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/,
-      "Password must contain at least one uppercase letter, one lowercase letter, and one number.",
-    ),
-  firstName: z.string().trim().min(2).max(50),
-  lastName: z.string().trim().min(2).max(50),
-  businessName: z.string().trim().min(2, "Business name is required.").max(120),
-  businessSlug: z.string().trim().min(3).max(80),
-  categoryId: z.string().uuid("Invalid category id."),
-  address: z.string().trim().min(5).max(200).optional(),
-});
+const registerBusinessAccountSchema = z
+  .object({
+    email: z
+      .string()
+      .trim()
+      .email("Invalid email.")
+      .max(254)
+      .transform((value) => value.toLowerCase()),
+    password: z
+      .string({ required_error: "Password is required." })
+      .min(8, "Password must be at least 8 characters.")
+      .max(72, "Password must not exceed 72 characters.")
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/,
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number.",
+      ),
+    confirmPassword: z
+      .string({ required_error: "Password confirmation is required." })
+      .min(1, "Password confirmation is required."),
+    firstName: z.string().trim().min(2).max(50),
+    lastName: z.string().trim().min(2).max(50),
+    businessName: z.string().trim().min(2, "Business name is required.").max(120),
+    businessSlug: z.string().trim().min(3).max(80),
+    categoryId: z.string().uuid("Invalid category id."),
+    address: z.string().trim().min(5).max(200).optional(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmPassword"],
+  });
 
 export type RegisterBusinessAccountInput = z.infer<
   typeof registerBusinessAccountSchema
