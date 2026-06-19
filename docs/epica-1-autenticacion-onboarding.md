@@ -270,26 +270,26 @@ Permitir que un negocio solicite acceso al panel y quede pendiente de revisión.
 
 ```text
 POST /api/auth/register-business
-PATCH /api/auth/business-accounts/:userId/approve
+PATCH /api/business/:businessId/approve
 ```
 
 `POST /api/auth/register-business` pertenece al onboarding público del negocio.
-`PATCH /api/auth/business-accounts/:userId/approve` se documenta acá porque
-cierra el estado de la cuenta creada, pero su superficie funcional es
+`PATCH /api/business/:businessId/approve` se documenta acá porque cierra el
+estado comercial del negocio creado, pero su superficie funcional es
 `super_admin`: requiere autenticación y permiso
-`platform:approve_business_account`. No debe implementarse como paso accesible
+`platform:approve_business`. No debe implementarse como paso accesible
 desde el flujo público de registro.
 
 ### Modelo y Persistencia
 
 - `User.role: BUSINESS_ADMIN`
-- `User.approvalStatus: PENDING | APPROVED | REJECTED`
-- `Business`
+- `Business.approvalStatus: PENDING | APPROVED | REJECTED`
 
 ### Reglas de Negocio
 
-- La cuenta negocio pendiente no puede iniciar sesión operativa.
-- La aprobación requiere permiso `platform:approve_business_account`.
+- El owner puede iniciar sesión aunque alguno de sus negocios siga pendiente.
+- Un negocio pendiente no puede considerarse disponible públicamente.
+- La aprobación requiere permiso `platform:approve_business`.
 - La aprobación envía email de bienvenida best-effort.
 
 ### Cobertura

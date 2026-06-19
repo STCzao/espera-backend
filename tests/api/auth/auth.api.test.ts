@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app";
 
 const authMocks = vi.hoisted(() => ({
-  approveBusinessAccountExecute: vi.fn(),
   googleGetAuthorizationUrl: vi.fn(),
   loginExecute: vi.fn(),
   loginWithGoogleExecute: vi.fn(),
@@ -18,12 +17,6 @@ const authMocks = vi.hoisted(() => ({
   resendVerificationExecute: vi.fn(),
   resetPasswordExecute: vi.fn(),
   verifyEmailExecute: vi.fn(),
-}));
-
-vi.mock("../../../src/modules/auth/application/ApproveBusinessAccountUseCase", () => ({
-  ApproveBusinessAccountUseCase: class {
-    public execute = authMocks.approveBusinessAccountExecute;
-  },
 }));
 
 vi.mock("../../../src/modules/auth/application/LoginUseCase", () => ({
@@ -100,7 +93,6 @@ vi.mock("../../../src/modules/auth/infrastructure/GoogleOAuthService", () => ({
 
 describe("auth API", () => {
   beforeEach(() => {
-    authMocks.approveBusinessAccountExecute.mockReset();
     authMocks.googleGetAuthorizationUrl.mockReset();
     authMocks.loginExecute.mockReset();
     authMocks.loginWithGoogleExecute.mockReset();
@@ -198,7 +190,6 @@ describe("auth API", () => {
       {
         email: "owner@example.com",
         role: "business_admin",
-        approvalStatus: "approved",
       },
       process.env.JWT_ACCESS_SECRET ?? "test-access-secret",
       { subject: "business-user-1", expiresIn: "15m" },
@@ -213,7 +204,6 @@ describe("auth API", () => {
       id: "business-user-1",
       email: "owner@example.com",
       role: "business_admin",
-      approvalStatus: "approved",
     });
   });
 

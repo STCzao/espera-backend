@@ -6,6 +6,7 @@ import { createApp } from "../../../src/app";
 
 const businessMocks = vi.hoisted(() => ({
   acceptBusinessEmployeeInvitationExecute: vi.fn(),
+  approveBusinessExecute: vi.fn(),
   configureBusinessHoursExecute: vi.fn(),
   configureBusinessServiceWindowsExecute: vi.fn(),
   generateBusinessQrPngExecute: vi.fn(),
@@ -15,9 +16,16 @@ const businessMocks = vi.hoisted(() => ({
   inviteBusinessEmployeeExecute: vi.fn(),
   listBusinessEmployeesExecute: vi.fn(),
   regenerateBusinessQrCodeExecute: vi.fn(),
+  registerBusinessExecute: vi.fn(),
   revokeBusinessEmployeeExecute: vi.fn(),
   resolveBusinessQrCodeExecute: vi.fn(),
   updateBusinessOperationalStatusExecute: vi.fn(),
+}));
+
+vi.mock("../../../src/modules/business/application/ApproveBusinessUseCase", () => ({
+  ApproveBusinessUseCase: class {
+    public execute = businessMocks.approveBusinessExecute;
+  },
 }));
 
 vi.mock("../../../src/modules/business/application/AcceptBusinessEmployeeInvitationUseCase", () => ({
@@ -80,6 +88,12 @@ vi.mock("../../../src/modules/business/application/RegenerateBusinessQrCodeUseCa
   },
 }));
 
+vi.mock("../../../src/modules/business/application/RegisterBusinessUseCase", () => ({
+  RegisterBusinessUseCase: class {
+    public execute = businessMocks.registerBusinessExecute;
+  },
+}));
+
 vi.mock("../../../src/modules/business/application/RevokeBusinessEmployeeUseCase", () => ({
   RevokeBusinessEmployeeUseCase: class {
     public execute = businessMocks.revokeBusinessEmployeeExecute;
@@ -102,7 +116,6 @@ const accessToken = jwt.sign(
   {
     email: "owner@example.com",
     role: "business_admin",
-    approvalStatus: "approved",
   },
   process.env.JWT_ACCESS_SECRET ?? "test-access-secret",
   { subject: "22222222-2222-4222-8222-222222222222", expiresIn: "15m" },
@@ -128,6 +141,7 @@ const hoursPayload = {
 describe("business API", () => {
   beforeEach(() => {
     businessMocks.acceptBusinessEmployeeInvitationExecute.mockReset();
+    businessMocks.approveBusinessExecute.mockReset();
     businessMocks.configureBusinessHoursExecute.mockReset();
     businessMocks.configureBusinessServiceWindowsExecute.mockReset();
     businessMocks.generateBusinessQrPngExecute.mockReset();
@@ -137,9 +151,62 @@ describe("business API", () => {
     businessMocks.inviteBusinessEmployeeExecute.mockReset();
     businessMocks.listBusinessEmployeesExecute.mockReset();
     businessMocks.regenerateBusinessQrCodeExecute.mockReset();
+    businessMocks.registerBusinessExecute.mockReset();
     businessMocks.revokeBusinessEmployeeExecute.mockReset();
     businessMocks.resolveBusinessQrCodeExecute.mockReset();
     businessMocks.updateBusinessOperationalStatusExecute.mockReset();
+  });
+
+  it("allows an authenticated user to create their first business", async () => {
+    businessMocks.registerBusinessExecute.mockResolvedValue({ businessId });
+    const userToken = jwt.sign(
+      { email: "user@example.com", role: "user" },
+      process.env.JWT_ACCESS_SECRET ?? "test-access-secret",
+      { subject: "33333333-3333-4333-8333-333333333333", expiresIn: "15m" },
+    );
+    const payload = {
+      name: "Cafe Espera",
+      slug: "cafe-espera",
+      categoryId: "44444444-4444-4444-8444-444444444444",
+      address: "Av. Corrientes 1234, CABA",
+    };
+
+    const response = await request(createApp())
+      .post("/api/business")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send(payload);
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ businessId });
+    expect(businessMocks.registerBusinessExecute).toHaveBeenCalledWith({
+      ...payload,
+      ownerUserId: "33333333-3333-4333-8333-333333333333",
+    });
+  });
+
+  it("approves a business by business id", async () => {
+    businessMocks.approveBusinessExecute.mockResolvedValue({
+      businessId,
+      approvalStatus: "approved",
+    });
+    const superAdminToken = jwt.sign(
+      { email: "admin@example.com", role: "super_admin" },
+      process.env.JWT_ACCESS_SECRET ?? "test-access-secret",
+      { subject: "super-admin-1", expiresIn: "15m" },
+    );
+
+    const response = await request(createApp())
+      .patch(`/api/business/${businessId}/approve`)
+      .set("Authorization", `Bearer ${superAdminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      businessId,
+      approvalStatus: "approved",
+    });
+    expect(businessMocks.approveBusinessExecute).toHaveBeenCalledWith({
+      businessId,
+    });
   });
 
   it("returns configured business hours for the owner panel", async () => {

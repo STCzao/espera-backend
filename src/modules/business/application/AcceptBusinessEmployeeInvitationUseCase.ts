@@ -103,7 +103,6 @@ export class AcceptBusinessEmployeeInvitationUseCase
           lastName: parsed.data.lastName,
           passwordHash: existingUser.passwordHash ?? passwordHash,
           role: "employee",
-          approvalStatus: "approved",
           isEmailVerified: true,
           updatedAt: new Date(),
         })
@@ -114,7 +113,6 @@ export class AcceptBusinessEmployeeInvitationUseCase
           lastName: parsed.data.lastName,
           passwordHash,
           role: "employee",
-          approvalStatus: "approved",
           authProvider: "local",
           isEmailVerified: true,
           createdAt: new Date(),

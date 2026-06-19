@@ -119,7 +119,7 @@ Estados iniciales:
 
 Esta separación evita mezclar tres conceptos distintos:
 
-- aprobación de cuenta: si el negocio puede acceder al panel
+- aprobación comercial: si el negocio puede operar públicamente
 - visibilidad pública: si aparece en la app mobile/mapa
 - estado operativo: si acepta turnos en ese momento
 
@@ -131,8 +131,9 @@ PATCH /api/business/:businessId/profile
 ```
 
 `POST /api/business` permite crear un negocio con nombre, categoría, slug y
-dirección para usuarios con permiso `business:edit`. El owner queda como
-`business_admin` pendiente de aprobación cuando corresponde.
+dirección para cualquier usuario autenticado que no sea empleado. El owner se
+promueve a `business_admin` cuando corresponde y el negocio queda pendiente de
+aprobación.
 
 Este endpoint no reemplaza a `POST /api/auth/register-business`. La diferencia
 de producto es:
@@ -140,8 +141,8 @@ de producto es:
 - `POST /api/auth/register-business`: onboarding público que crea cuenta de
   negocio y negocio inicial en una misma solicitud.
 - `POST /api/business`: creación desde una cuenta autenticada existente; puede
-  iniciar el onboarding de negocio para esa cuenta promoviendo al owner a
-  `business_admin` pendiente cuando corresponda.
+  iniciar el onboarding promoviendo al owner a `business_admin`. La aprobación
+  queda asociada al nuevo negocio, no al usuario.
 
 `PATCH /api/business/:businessId/profile` permite completar o editar el perfil
 operativo de un negocio existente. Valida ownership del negocio y guarda la

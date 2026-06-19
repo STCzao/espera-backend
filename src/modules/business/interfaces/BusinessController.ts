@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
+import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
@@ -19,6 +20,7 @@ import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfi
 
 export class BusinessController {
   public constructor(
+    private readonly approveBusinessUseCase = new ApproveBusinessUseCase(),
     private readonly registerBusinessUseCase = new RegisterBusinessUseCase(),
     private readonly configureQueueUseCase = new ConfigureQueueUseCase(),
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
@@ -35,6 +37,14 @@ export class BusinessController {
     private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
     private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase()
   ) {}
+
+  public approve = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.approveBusinessUseCase.execute({
+      businessId: String(request.params.businessId),
+    });
+    logger.info({ businessId: result.businessId }, "Business approved");
+    response.status(200).json(result);
+  };
 
   public register = async (request: Request, response: Response): Promise<void> => {
     const result = await this.registerBusinessUseCase.execute({

@@ -379,6 +379,7 @@ Body:
 {
   "email": "owner@example.com",
   "password": "Password1",
+  "confirmPassword": "Password1",
   "firstName": "Owner",
   "lastName": "Demo",
   "businessName": "Cafe Espera",
@@ -390,11 +391,11 @@ Body:
 Resultado esperado:
 
 - `201`
-- `approvalStatus`: `pending`
+- `businessApprovalStatus`: `pending`
 - `userId`
 - `businessId`
 
-### 12. Login de negocio pendiente
+### 12. Login del owner con negocio pendiente
 
 Request:
 
@@ -413,8 +414,10 @@ Body:
 
 Resultado esperado:
 
-- `403`
-- codigo funcional `ACCOUNT_PENDING_REVIEW`
+- `200`
+- `accessToken`
+- `refreshToken`
+- el negocio conserva `approvalStatus: pending`
 
 ### 13. Aprobacion de negocio
 
@@ -423,7 +426,7 @@ Requiere un usuario autenticado con rol `SUPER_ADMIN`.
 Request:
 
 ```text
-PATCH {{baseUrl}}/auth/business-accounts/{{businessUserId}}/approve
+PATCH {{baseUrl}}/business/{{businessId}}/approve
 Authorization: Bearer {{accessToken}}
 ```
 
@@ -552,18 +555,13 @@ Body:
 }
 ```
 
-Resultado esperado si la cuenta negocio ya esta aprobada:
+Resultado esperado para una cuenta Google valida:
 
 - `200`
 - `accessToken`
 - `refreshToken`
 - cookie `refreshToken` seteada
 - sesion persistida en `refresh_sessions`
-
-Resultado esperado si la cuenta negocio sigue pendiente:
-
-- `403`
-- codigo funcional `ACCOUNT_PENDING_REVIEW`
 
 Resultado esperado si el email existe pero pertenece a una cuenta local:
 
@@ -651,11 +649,11 @@ Las cuentas locales se guardan con `authProvider: LOCAL` y si requieren:
 - verificacion de email por token de Espera
 - recuperacion de password por token de Espera
 
-### `The column users.approvalStatus does not exist`
+### Errores de columna `approvalStatus`
 
-Significa que el Prisma Client espera el esquema actual, pero la base de datos
-esta en una version anterior. En este proyecto esa columna se agrega en la
-migracion `20260602130000_expand_auth_and_business_schema`.
+La aprobacion comercial pertenece a `businesses.approvalStatus`. La migracion
+`20260619173000_move_approval_status_to_business` copia el estado previo del
+owner a sus negocios y luego elimina `users.approvalStatus`.
 
 Acciones:
 

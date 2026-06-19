@@ -7,6 +7,11 @@ const toListingStatusEnum = (
 ): "DRAFT" | "HIDDEN" | "PUBLISHED" =>
   listingStatus.toUpperCase() as "DRAFT" | "HIDDEN" | "PUBLISHED";
 
+const toApprovalStatusEnum = (
+  approvalStatus: Business["approvalStatus"],
+): "PENDING" | "APPROVED" | "REJECTED" =>
+  approvalStatus.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED";
+
 const toOperationalStatusEnum = (
   operationalStatus: Business["operationalStatus"],
 ): "NORMAL" | "DELAYED" | "PAUSED" | "CLOSED" =>
@@ -24,6 +29,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           address: business.address ?? undefined,
           latitude: business.latitude ?? undefined,
           longitude: business.longitude ?? undefined,
+          approvalStatus: business.approvalStatus.toLowerCase() as Business["approvalStatus"],
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
           activeServiceWindows: business.activeServiceWindows,
           operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
@@ -45,6 +51,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           address: business.address ?? undefined,
           latitude: business.latitude ?? undefined,
           longitude: business.longitude ?? undefined,
+          approvalStatus: business.approvalStatus.toLowerCase() as Business["approvalStatus"],
           listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
           activeServiceWindows: business.activeServiceWindows,
           operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
@@ -66,6 +73,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         address: entity.address ?? null,
         latitude: entity.latitude ?? null,
         longitude: entity.longitude ?? null,
+        approvalStatus: toApprovalStatusEnum(entity.approvalStatus),
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
         operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
@@ -78,6 +86,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         address: entity.address ?? null,
         latitude: entity.latitude ?? null,
         longitude: entity.longitude ?? null,
+        approvalStatus: toApprovalStatusEnum(entity.approvalStatus),
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
         operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
@@ -93,6 +102,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       address: business.address ?? undefined,
       latitude: business.latitude ?? undefined,
       longitude: business.longitude ?? undefined,
+      approvalStatus: business.approvalStatus.toLowerCase() as Business["approvalStatus"],
       listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
       activeServiceWindows: business.activeServiceWindows,
       operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],

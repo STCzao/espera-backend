@@ -49,7 +49,7 @@ export type RegisterBusinessAccountInput = z.infer<
 export interface RegisterBusinessAccountOutput {
   userId: string;
   businessId: string;
-  approvalStatus: "pending";
+  businessApprovalStatus: "pending";
 }
 
 // Business accounts can verify their email before platform approval, but panel access
@@ -108,7 +108,6 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       lastName,
       passwordHash,
       role: "business_admin",
-      approvalStatus: "pending",
       authProvider: "local",
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
@@ -125,6 +124,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
         slug: businessSlug,
         categoryId,
         address,
+        approvalStatus: "pending",
         listingStatus: "draft",
         activeServiceWindows: 1,
         operationalStatus: "normal",
@@ -139,7 +139,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       return {
         userId: user.id,
         businessId: business.id,
-        approvalStatus: "pending",
+        businessApprovalStatus: "pending",
       };
     } catch {
       if (createdBusinessId) {

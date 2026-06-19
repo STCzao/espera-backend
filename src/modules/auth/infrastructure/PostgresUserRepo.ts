@@ -1,5 +1,4 @@
 import {
-  ApprovalStatus,
   AuthProvider,
   Role,
   type User as PrismaUser,
@@ -11,10 +10,6 @@ import type { User } from "../domain/User";
 
 const toRoleEnum = (role: User["role"]): Role =>
   role.toUpperCase() as Role;
-
-const toApprovalStatusEnum = (
-  approvalStatus: User["approvalStatus"],
-): ApprovalStatus => approvalStatus.toUpperCase() as ApprovalStatus;
 
 const toAuthProviderEnum = (authProvider: User["authProvider"]): AuthProvider =>
   authProvider.toUpperCase() as AuthProvider;
@@ -73,7 +68,6 @@ export class PostgresUserRepo implements IUserRepo {
         locality: user.locality ?? null,
         passwordHash: user.passwordHash ?? null,
         role: toRoleEnum(user.role),
-        approvalStatus: toApprovalStatusEnum(user.approvalStatus),
         authProvider: toAuthProviderEnum(user.authProvider),
         googleId: user.googleId ?? null,
         isEmailVerified: user.isEmailVerified,
@@ -92,7 +86,6 @@ export class PostgresUserRepo implements IUserRepo {
         locality: user.locality ?? null,
         passwordHash: user.passwordHash ?? null,
         role: toRoleEnum(user.role),
-        approvalStatus: toApprovalStatusEnum(user.approvalStatus),
         authProvider: toAuthProviderEnum(user.authProvider),
         googleId: user.googleId ?? null,
         isEmailVerified: user.isEmailVerified,
@@ -128,8 +121,6 @@ export class PostgresUserRepo implements IUserRepo {
       locality: raw.locality ?? undefined,
       passwordHash: raw.passwordHash ?? undefined,
       role: raw.role.toLowerCase() as User["role"],
-      approvalStatus:
-        raw.approvalStatus.toLowerCase() as User["approvalStatus"],
       authProvider: raw.authProvider.toLowerCase() as User["authProvider"],
       googleId: raw.googleId ?? undefined,
       isEmailVerified: raw.isEmailVerified,

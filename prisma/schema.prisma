@@ -64,7 +64,6 @@ model User {
   locality                String?
   passwordHash            String?
   role                    Role      @default(USER)
-  approvalStatus          ApprovalStatus  @default(APPROVED)
   authProvider            AuthProvider    @default(LOCAL)
   googleId                String?   @unique
   isEmailVerified         Boolean   @default(false)
@@ -106,6 +105,7 @@ model Business {
   address     String?
   latitude    Float?
   longitude   Float?
+  approvalStatus ApprovalStatus @default(PENDING)
   listingStatus BusinessListingStatus @default(DRAFT)
   activeServiceWindows Int @default(1)
   operationalStatus BusinessOperationalStatus @default(NORMAL)

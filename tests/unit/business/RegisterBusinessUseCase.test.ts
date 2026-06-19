@@ -24,7 +24,7 @@ const geocodingService = {
 };
 
 describe("RegisterBusinessUseCase", () => {
-  it("registers a business with address and pending owner approval", async () => {
+  it("registers a pending business and promotes its owner", async () => {
     const noGeocodingService = {
       geocode: vi.fn().mockResolvedValue(null),
     };
@@ -32,7 +32,6 @@ describe("RegisterBusinessUseCase", () => {
       buildUser({
         id: validInput.ownerUserId,
         role: "user",
-        approvalStatus: "approved",
       }),
     ]);
     const businessRepo = new InMemoryBusinessRepo();
@@ -54,12 +53,12 @@ describe("RegisterBusinessUseCase", () => {
       address: validInput.address,
       latitude: undefined,
       longitude: undefined,
+      approvalStatus: "pending",
       listingStatus: "draft",
       ownerUserId: validInput.ownerUserId,
     });
     expect(owner).toMatchObject({
       role: "business_admin",
-      approvalStatus: "pending",
     });
     expect(noGeocodingService.geocode).toHaveBeenCalledWith(validInput.address);
   });
@@ -69,7 +68,6 @@ describe("RegisterBusinessUseCase", () => {
       buildUser({
         id: validInput.ownerUserId,
         role: "business_admin",
-        approvalStatus: "approved",
       }),
     ]);
     const businessRepo = new InMemoryBusinessRepo();

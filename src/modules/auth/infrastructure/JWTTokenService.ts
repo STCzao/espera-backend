@@ -20,7 +20,6 @@ export class JWTTokenService {
         role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
-        approvalStatus: user.approvalStatus,
       },
       getAccessTokenSecret(),
       {

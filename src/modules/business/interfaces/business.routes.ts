@@ -8,7 +8,13 @@ const controller = new BusinessController();
 
 export const businessRouter = Router();
 
-businessRouter.post("/", authenticate, authorize("business:edit"), controller.register);
+businessRouter.post("/", authenticate, controller.register);
+businessRouter.patch(
+  "/:businessId/approve",
+  authenticate,
+  authorize("platform:approve_business"),
+  controller.approve,
+);
 businessRouter.get(
   "/categories/:categoryId/config",
   authenticate,

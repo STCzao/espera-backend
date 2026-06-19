@@ -64,20 +64,6 @@ export class LoginWithGoogleUseCase
       throw AppError.unauthorized("Invalid Google account.", "GOOGLE_ACCOUNT_MISMATCH");
     }
 
-    if (user.role === "business_admin" && user.approvalStatus === "pending") {
-      throw AppError.forbidden(
-        "Your account is still under review.",
-        "ACCOUNT_PENDING_REVIEW",
-      );
-    }
-
-    if (user.role === "business_admin" && user.approvalStatus === "rejected") {
-      throw AppError.forbidden(
-        "Your account approval request was rejected.",
-        "ACCOUNT_REJECTED",
-      );
-    }
-
     if (!user.googleId) {
       await this.userRepo.save({
         ...user,

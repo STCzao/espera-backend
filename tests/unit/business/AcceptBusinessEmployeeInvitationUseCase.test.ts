@@ -41,7 +41,6 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
     expect(createdUser).toMatchObject({
       email: "employee@example.com",
       role: "employee",
-      approvalStatus: "approved",
       isEmailVerified: true,
     });
     expect(employeeRepo.all()[0]).toMatchObject({

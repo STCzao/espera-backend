@@ -101,13 +101,12 @@ describe("LoginUseCase", () => {
     );
   });
 
-  it("blocks pending business admins before issuing a session", async () => {
+  it("allows verified business admins to login while businesses are reviewed", async () => {
     const passwordHash = await bcrypt.hash("Password1", 12);
     const userRepo = new InMemoryUserRepo([
       buildUser({
         passwordHash,
         role: "business_admin",
-        approvalStatus: "pending",
       }),
     ]);
     const refreshSessionRepo = new InMemoryRefreshSessionRepo();
@@ -117,16 +116,14 @@ describe("LoginUseCase", () => {
       tokenService,
     );
 
-    await expect(
-      useCase.execute({
-        email: "user@example.com",
-        password: "Password1",
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 403,
-      code: "ACCOUNT_PENDING_REVIEW",
+    await expect(useCase.execute({
+      email: "user@example.com",
+      password: "Password1",
+    })).resolves.toEqual({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
     });
 
-    expect(refreshSessionRepo.all()).toHaveLength(0);
+    expect(refreshSessionRepo.all()).toHaveLength(1);
   });
 });

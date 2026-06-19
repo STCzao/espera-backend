@@ -21,12 +21,6 @@ authRouter.post(
   rateLimiter,
   controller.registerBusinessWithGoogle,
 );
-authRouter.patch(
-  "/business-accounts/:userId/approve",
-  authenticate,
-  authorize("platform:approve_business_account"),
-  controller.approveBusinessAccount,
-);
 authRouter.get("/verify-email", controller.verifyEmail);
 authRouter.post(
   "/resend-verification",

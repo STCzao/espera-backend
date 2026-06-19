@@ -32,13 +32,12 @@ const tokenService = {
 };
 
 describe("LoginWithGoogleUseCase", () => {
-  it("issues tokens for an approved Google business admin", async () => {
+  it("issues tokens for a Google business admin", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({
         id: "google-user-1",
         email: "owner.google@example.com",
         role: "business_admin",
-        approvalStatus: "approved",
         authProvider: "google",
         googleId: "google-1",
         isEmailVerified: true,
@@ -64,31 +63,6 @@ describe("LoginWithGoogleUseCase", () => {
     expect(refreshSessionRepo.all()[0]).toMatchObject({
       userId: "google-user-1",
       tokenHash: "google-refresh-token-hash",
-    });
-  });
-
-  it("blocks pending Google business admins", async () => {
-    const userRepo = new InMemoryUserRepo([
-      buildUser({
-        email: "owner.google@example.com",
-        role: "business_admin",
-        approvalStatus: "pending",
-        authProvider: "google",
-        googleId: "google-1",
-      }),
-    ]);
-    const useCase = new LoginWithGoogleUseCase(
-      userRepo,
-      new InMemoryRefreshSessionRepo(),
-      tokenService,
-      buildGoogleOAuthService(),
-    );
-
-    await expect(
-      useCase.execute({ code: "google-code", state: "oauth-state" }),
-    ).rejects.toMatchObject({
-      statusCode: 403,
-      code: "ACCOUNT_PENDING_REVIEW",
     });
   });
 

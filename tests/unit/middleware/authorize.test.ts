@@ -11,7 +11,6 @@ const buildRequest = (role?: UserRole): Request =>
           id: "user-1",
           email: "user@example.com",
           role,
-          approvalStatus: "approved",
         }
       : undefined,
   }) as Request;

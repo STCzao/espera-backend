@@ -42,17 +42,17 @@ describe("RegisterBusinessAccountUseCase", () => {
     expect(result).toMatchObject({
       userId: createdUser.id,
       businessId: createdBusiness.id,
-      approvalStatus: "pending",
+      businessApprovalStatus: "pending",
     });
     expect(createdUser).toMatchObject({
       email: "owner@example.com",
       role: "business_admin",
-      approvalStatus: "pending",
       isEmailVerified: false,
     });
     expect(createdBusiness).toMatchObject({
       name: "Cafe Espera",
       slug: "cafe-espera",
+      approvalStatus: "pending",
       listingStatus: "draft",
       ownerUserId: createdUser.id,
     });

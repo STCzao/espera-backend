@@ -66,6 +66,10 @@ export class BusinessAvailabilityService {
     now,
     timeZone = "America/Argentina/Buenos_Aires",
   }: BusinessAvailabilityInput): boolean {
+    if (business.approvalStatus !== "approved") {
+      return false;
+    }
+
     if (business.listingStatus !== "published") {
       return false;
     }

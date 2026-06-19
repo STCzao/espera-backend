@@ -56,8 +56,7 @@ export class RegisterBusinessUseCase
       );
     }
 
-    const requiresBusinessAdminPromotion =
-      user.role !== "business_admin" || user.approvalStatus === "rejected";
+    const requiresBusinessAdminPromotion = user.role !== "business_admin";
 
     try {
       if (requiresBusinessAdminPromotion) {
@@ -65,7 +64,6 @@ export class RegisterBusinessUseCase
         await this.userRepo.save({
           ...user,
           role: "business_admin",
-          approvalStatus: "pending",
         });
       }
 
@@ -81,6 +79,7 @@ export class RegisterBusinessUseCase
         address: parsed.data.address,
         latitude: coordinates?.latitude,
         longitude: coordinates?.longitude,
+        approvalStatus: "pending",
         listingStatus: "draft",
         activeServiceWindows: 1,
         operationalStatus: "normal",

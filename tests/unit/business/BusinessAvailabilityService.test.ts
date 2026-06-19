@@ -72,6 +72,22 @@ describe("BusinessAvailabilityService", () => {
     expect(isAvailable).toBe(false);
   });
 
+  it("does not mark pending businesses as publicly available", () => {
+    const service = new BusinessAvailabilityService();
+
+    const isAvailable = service.isAvailableNow({
+      business: buildBusiness({
+        approvalStatus: "pending",
+        listingStatus: "published",
+      }),
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(isAvailable).toBe(false);
+  });
+
   it("does not mark businesses without active service windows as available", () => {
     const service = new BusinessAvailabilityService();
 

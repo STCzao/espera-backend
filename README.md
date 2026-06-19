@@ -67,6 +67,7 @@ src/
 Documentacion adicional:
 
 - [Estado y arquitectura](D:/Programacion/SaaS/Espera/espera-back/docs/project-status.md)
+- [ADR-0001 - Aprobacion comercial en Business](D:/Programacion/SaaS/Espera/espera-back/docs/adr/0001-business-owns-commercial-approval.md)
 - [Epica 2 - Gestion de Negocios](D:/Programacion/SaaS/Espera/espera-back/docs/epica-2-gestion-negocios.md)
 - [Estrategia de calidad y testing](D:/Programacion/SaaS/Espera/espera-back/docs/quality-and-testing.md)
 - [Pruebas manuales con Postman - Epica 1](D:/Programacion/SaaS/Espera/espera-back/docs/postman-epica-1.md)
@@ -150,7 +151,7 @@ Auth:
 - `POST /api/auth/register-business`
 - `GET /api/auth/google/url`
 - `POST /api/auth/register-business/google`
-- `PATCH /api/auth/business-accounts/:userId/approve`
+- `PATCH /api/business/:businessId/approve`
 - `GET /api/auth/verify-email`
 - `POST /api/auth/resend-verification`
 - `POST /api/auth/forgot-password`

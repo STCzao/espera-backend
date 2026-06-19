@@ -46,7 +46,7 @@ Responsabilidades actuales:
 - logout
 - verificación de email
 - password reset
-- aprobación de cuenta de negocio
+- aprobación comercial por negocio
 
 Fortalezas:
 
@@ -195,7 +195,7 @@ Cobertura automatizada actual:
 
 Casos cubiertos hasta ahora:
 
-- login local exitoso, credenciales inválidas y cuenta negocio pendiente
+- login local exitoso, credenciales inválidas y owner con negocio pendiente
 - refresh token válido con rotación y token revocado
 - forgot/reset password para cuenta local, respuesta genérica y bloqueo de reset en cuentas Google
 - registro de negocio pendiente y rollback ante falla de email

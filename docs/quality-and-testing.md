@@ -468,13 +468,13 @@ de integracion ni de API.
 
 | Area | Archivo | Comportamiento cubierto | Tipo |
 | --- | --- | --- | --- |
-| Login local | `tests/unit/auth/LoginUseCase.test.ts` | Login exitoso de usuario verificado, rechazo de credenciales invalidas, bloqueo de cuenta negocio pendiente | Unitario de aplicacion |
+| Login local | `tests/unit/auth/LoginUseCase.test.ts` | Login exitoso de usuario verificado, rechazo de credenciales invalidas y acceso del owner durante revision comercial | Unitario de aplicacion |
 | Refresh token | `tests/unit/auth/RefreshTokenUseCase.test.ts` | Rotacion de refresh token valido, rechazo de token revocado | Unitario de aplicacion |
 | Reset password | `tests/unit/auth/ResetPasswordUseCase.test.ts` | Cambio de password, revocacion de sesiones activas, rechazo de token expirado | Unitario de aplicacion |
 | Forgot password | `tests/unit/auth/RequestPasswordResetUseCase.test.ts` | Token para cuentas locales, respuesta generica para emails inexistentes, bloqueo silencioso de recuperacion para cuentas Google | Unitario de aplicacion |
 | Verificacion de email | `tests/unit/auth/VerifyEmailUseCase.test.ts` | Verificacion con token valido y rechazo de token expirado | Unitario de aplicacion |
 | Logout | `tests/unit/auth/LogoutUseCase.test.ts` | Revocacion de sesion refresh e idempotencia cuando el token no existe | Unitario de aplicacion |
-| Aprobacion de negocio | `tests/unit/auth/ApproveBusinessAccountUseCase.test.ts` | Aprobacion de `business_admin` y rechazo de cuentas no negocio | Unitario de aplicacion |
+| Aprobacion de negocio | `tests/unit/business/ApproveBusinessUseCase.test.ts` | Aprobacion por `businessId` sin modificar otros negocios del owner | Unitario de aplicacion |
 | Registro de negocio | `tests/unit/auth/RegisterBusinessAccountUseCase.test.ts` | Creacion de usuario `business_admin` pendiente, creacion de negocio, envio de verificacion, rollback ante falla de email | Unitario de aplicacion |
 | Registro negocio Google | `tests/unit/auth/RegisterBusinessWithGoogleUseCase.test.ts` | Creacion de negocio Google pendiente, cuenta existente y rechazo de email Google no verificado | Unitario de aplicacion |
 | Login Google | `tests/unit/auth/LoginWithGoogleUseCase.test.ts` | Login exitoso aprobado, bloqueo pendiente y rechazo de cuenta local | Unitario de aplicacion |
@@ -487,7 +487,7 @@ de integracion ni de API.
 
 | Historia | Cobertura actual | Estado |
 | --- | --- | --- |
-| `HU-1.3` Login con email y password | Casos principales de credenciales, usuario verificado y cuenta negocio pendiente | Parcial |
+| `HU-1.3` Login con email y password | Casos principales de credenciales, usuario verificado y owner con negocio pendiente | Parcial |
 | `HU-1.5` Refresh token | Rotacion y rechazo de token revocado | Parcial |
 | `HU-1.7` Recuperacion de password | Solicitud para cuenta local, respuesta generica, bloqueo de cuenta Google, reset con token valido, token expirado e invalidacion de sesiones | Parcial |
 | `HU-1.8` Registro de negocio con cuenta pendiente | Creacion feliz y rollback ante falla de email | Parcial |

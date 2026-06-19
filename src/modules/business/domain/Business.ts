@@ -1,5 +1,6 @@
 export type BusinessListingStatus = "draft" | "hidden" | "published";
 export type BusinessOperationalStatus = "normal" | "delayed" | "paused" | "closed";
+export type BusinessApprovalStatus = "pending" | "approved" | "rejected";
 
 /**
  * Business aggregate snapshot used by the panel.
@@ -15,6 +16,7 @@ export interface Business {
   address?: string;
   latitude?: number;
   longitude?: number;
+  approvalStatus: BusinessApprovalStatus;
   listingStatus: BusinessListingStatus;
   activeServiceWindows: number;
   operationalStatus: BusinessOperationalStatus;
