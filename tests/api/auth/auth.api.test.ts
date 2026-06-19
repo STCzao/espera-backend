@@ -123,6 +123,7 @@ describe("auth API", () => {
       .send({
         email: "cliente@example.com",
         password: "Password1",
+        confirmPassword: "Password1",
         firstName: "Cliente",
         lastName: "Demo",
       });
@@ -132,6 +133,7 @@ describe("auth API", () => {
     expect(authMocks.registerExecute).toHaveBeenCalledWith({
       email: "cliente@example.com",
       password: "Password1",
+      confirmPassword: "Password1",
       firstName: "Cliente",
       lastName: "Demo",
     });

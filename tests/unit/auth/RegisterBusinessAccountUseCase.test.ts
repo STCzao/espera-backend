@@ -17,6 +17,7 @@ vi.mock("../../../src/shared/infrastructure/email", () => ({
 const validInput = {
   email: "OWNER@example.com",
   password: "Password1",
+  confirmPassword: "Password1",
   firstName: "Owner",
   lastName: "Person",
   businessName: "Cafe Espera",
@@ -78,5 +79,25 @@ describe("RegisterBusinessAccountUseCase", () => {
     expect(businessRepo.all()).toHaveLength(0);
     expect(userRepo.deletedIds).toHaveLength(1);
     expect(businessRepo.deletedIds).toHaveLength(1);
+  });
+
+  it("rejects registration when password confirmation does not match", async () => {
+    const userRepo = new InMemoryUserRepo();
+    const businessRepo = new InMemoryBusinessRepo();
+    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo);
+
+    await expect(
+      useCase.execute({
+        ...validInput,
+        confirmPassword: "Different1",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Passwords do not match.",
+    });
+
+    expect(userRepo.all()).toHaveLength(0);
+    expect(businessRepo.all()).toHaveLength(0);
+    expect(emailMocks.sendVerificationEmail).not.toHaveBeenCalled();
   });
 });
