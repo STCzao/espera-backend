@@ -30,6 +30,12 @@ Motivo: dependen de configuracion real de OAuth por plataforma (`iOS` y
 Desde Epica 2 en adelante, el repositorio contiene base tecnica y contratos
 iniciales, pero no debe interpretarse como implementacion funcional cerrada.
 
+La Epica 2.5 - Cuentas y Organizaciones (`HU-2.5.1` a `HU-2.5.4`) ya esta
+implementada en backend: introduce `Organization`, `Membership` y
+`Subscription` para que una cuenta pueda agrupar varias sucursales segun su
+plan (Basic/Pro/Premium), sin romper el modelo de `Business` de Epica 2.
+Bloqueaba la Epica 3 (Queue), que ahora puede arrancar.
+
 ## Stack
 
 - Node.js + TypeScript
@@ -44,11 +50,13 @@ iniciales, pero no debe interpretarse como implementacion funcional cerrada.
 
 ## Arquitectura
 
-El proyecto esta organizado como un `Modular Monolith` con tres modulos
+El proyecto esta organizado como un `Modular Monolith` con cuatro modulos
 principales:
 
 - `auth`: registro, login, refresh token, recuperacion de password, RBAC
-- `business`: registro y configuracion base de negocios
+- `business`: registro y configuracion base de negocios (sucursales)
+- `organization`: cuentas multi-sucursal (`Organization`, `Membership`,
+  `Subscription` y limites por plan)
 - `queue`: base inicial para turnos y cola
 
 Estructura principal:
@@ -60,6 +68,7 @@ src/
   modules/
     auth/
     business/
+    organization/
     queue/
   shared/
 ```
@@ -68,6 +77,8 @@ Documentacion adicional:
 
 - [Estado y arquitectura](D:/Programacion/SaaS/Espera/espera-back/docs/project-status.md)
 - [Epica 2 - Gestion de Negocios](D:/Programacion/SaaS/Espera/espera-back/docs/epica-2-gestion-negocios.md)
+- [Epica 2.5 - Cuentas y Organizaciones](D:/Programacion/SaaS/Espera/espera-back/docs/epica-2-5-cuentas-organizaciones.md)
+- [Decision de modelo de cuentas y negocios](D:/Programacion/SaaS/Espera/espera-back/docs/decision-modelo-cuentas-negocios.md)
 - [Estrategia de calidad y testing](D:/Programacion/SaaS/Espera/espera-back/docs/quality-and-testing.md)
 - [Pruebas manuales con Postman - Epica 1](D:/Programacion/SaaS/Espera/espera-back/docs/postman-epica-1.md)
 - [Roadmap de implementacion](D:/Programacion/SaaS/Espera/espera-back/docs/implementation-roadmap.md)

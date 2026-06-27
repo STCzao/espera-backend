@@ -7,6 +7,7 @@ import { sendVerificationEmail } from "@shared/infrastructure/email";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
+import { CreateOrganizationForOwnerUseCase } from "@modules/organization/public-api";
 
 import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
@@ -62,6 +63,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly createOrganizationForOwnerUseCase: CreateOrganizationForOwnerUseCase = new CreateOrganizationForOwnerUseCase(),
   ) {}
 
   public async execute(
@@ -119,6 +121,13 @@ export class RegisterBusinessAccountUseCase implements UseCase<
     });
 
     try {
+      // Brand-new account: it never has a prior Organization, so this always
+      // creates one transparently (HU-2.5.1) instead of reusing an existing one.
+      const { organizationId } = await this.createOrganizationForOwnerUseCase.execute({
+        ownerUserId: user.id,
+        organizationName: businessName,
+      });
+
       const business = await this.businessRepo.save({
         id: randomUUID(),
         name: businessName,
@@ -129,6 +138,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
         activeServiceWindows: 1,
         operationalStatus: "normal",
         ownerUserId: user.id,
+        organizationId,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
