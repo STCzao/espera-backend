@@ -4,6 +4,10 @@ import { z } from "zod";
 import { AppError } from "@shared/kernel/AppError";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
+import {
+  CreateOrganizationForOwnerUseCase,
+  EnsureBusinessCreationAllowedUseCase,
+} from "@modules/organization/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import type { IGeocodingService } from "../domain/IGeocodingService";
@@ -31,6 +35,8 @@ export class RegisterBusinessUseCase
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly geocodingService: IGeocodingService = new GoogleMapsGeocodingService(),
+    private readonly createOrganizationForOwnerUseCase: CreateOrganizationForOwnerUseCase = new CreateOrganizationForOwnerUseCase(),
+    private readonly ensureBusinessCreationAllowedUseCase: EnsureBusinessCreationAllowedUseCase = new EnsureBusinessCreationAllowedUseCase(),
   ) {}
 
   public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
@@ -69,6 +75,20 @@ export class RegisterBusinessUseCase
         });
       }
 
+      // Organization creation is transparent (HU-2.5.1): an owner without one
+      // yet gets one on their first business; existing accounts already have
+      // one from the backfill migration.
+      const { organizationId } = await this.createOrganizationForOwnerUseCase.execute({
+        ownerUserId: parsed.data.ownerUserId,
+        organizationName: parsed.data.name,
+      });
+
+      const currentBusinessCount = await this.businessRepo.countByOrganizationId(organizationId);
+      await this.ensureBusinessCreationAllowedUseCase.execute({
+        organizationId,
+        currentBusinessCount,
+      });
+
       // Maps is a later discovery concern, so geocoding enriches the record when available
       // but does not block the business profile from saving its textual address.
       const coordinates = await this.geocodingService.geocode(parsed.data.address);
@@ -85,6 +105,7 @@ export class RegisterBusinessUseCase
         activeServiceWindows: 1,
         operationalStatus: "normal",
         ownerUserId: parsed.data.ownerUserId,
+        organizationId,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -92,9 +113,13 @@ export class RegisterBusinessUseCase
       return {
         businessId: business.id,
       };
-    } catch {
+    } catch (error) {
       if (requiresBusinessAdminPromotion) {
         await this.userRepo.save(user);
+      }
+
+      if (error instanceof AppError) {
+        throw error;
       }
 
       throw AppError.internal(

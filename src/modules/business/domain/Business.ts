@@ -19,6 +19,7 @@ export interface Business {
   activeServiceWindows: number;
   operationalStatus: BusinessOperationalStatus;
   ownerUserId: string;
+  organizationId: string;
   createdAt: Date;
   updatedAt: Date;
 }

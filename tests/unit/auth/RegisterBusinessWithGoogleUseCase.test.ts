@@ -1,11 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { RegisterBusinessWithGoogleUseCase } from "../../../src/modules/auth/application/RegisterBusinessWithGoogleUseCase";
+import { CreateOrganizationForOwnerUseCase } from "../../../src/modules/organization/application/CreateOrganizationForOwnerUseCase";
 import {
   buildUser,
   InMemoryBusinessRepo,
   InMemoryUserRepo,
 } from "../../helpers/authFakes";
+import {
+  InMemoryMembershipRepo,
+  InMemoryOrganizationRepo,
+  InMemorySubscriptionRepo,
+} from "../../helpers/organizationFakes";
+
+const buildCreateOrganizationForOwnerUseCase = () =>
+  new CreateOrganizationForOwnerUseCase(
+    new InMemoryOrganizationRepo(),
+    new InMemoryMembershipRepo(),
+    new InMemorySubscriptionRepo(),
+  );
 
 const validInput = {
   code: "google-code",
@@ -36,6 +49,7 @@ describe("RegisterBusinessWithGoogleUseCase", () => {
       userRepo,
       businessRepo,
       googleOAuthService,
+      buildCreateOrganizationForOwnerUseCase(),
     );
 
     const result = await useCase.execute(validInput);
@@ -76,6 +90,7 @@ describe("RegisterBusinessWithGoogleUseCase", () => {
       userRepo,
       businessRepo,
       buildGoogleOAuthService(),
+      buildCreateOrganizationForOwnerUseCase(),
     );
 
     const result = await useCase.execute(validInput);
@@ -92,6 +107,7 @@ describe("RegisterBusinessWithGoogleUseCase", () => {
       new InMemoryUserRepo(),
       new InMemoryBusinessRepo(),
       buildGoogleOAuthService({ emailVerified: false }),
+      buildCreateOrganizationForOwnerUseCase(),
     );
 
     await expect(useCase.execute(validInput)).rejects.toMatchObject({

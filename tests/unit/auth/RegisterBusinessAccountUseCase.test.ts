@@ -1,10 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RegisterBusinessAccountUseCase } from "../../../src/modules/auth/application/RegisterBusinessAccountUseCase";
+import { CreateOrganizationForOwnerUseCase } from "../../../src/modules/organization/application/CreateOrganizationForOwnerUseCase";
 import {
   InMemoryBusinessRepo,
   InMemoryUserRepo,
 } from "../../helpers/authFakes";
+import {
+  InMemoryMembershipRepo,
+  InMemoryOrganizationRepo,
+  InMemorySubscriptionRepo,
+} from "../../helpers/organizationFakes";
+
+const buildCreateOrganizationForOwnerUseCase = () =>
+  new CreateOrganizationForOwnerUseCase(
+    new InMemoryOrganizationRepo(),
+    new InMemoryMembershipRepo(),
+    new InMemorySubscriptionRepo(),
+  );
 
 const emailMocks = vi.hoisted(() => ({
   sendVerificationEmail: vi.fn(),
@@ -33,7 +46,7 @@ describe("RegisterBusinessAccountUseCase", () => {
   it("creates a pending business admin and its business", async () => {
     const userRepo = new InMemoryUserRepo();
     const businessRepo = new InMemoryBusinessRepo();
-    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo);
+    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo, buildCreateOrganizationForOwnerUseCase());
 
     const result = await useCase.execute(validInput);
 
@@ -68,7 +81,7 @@ describe("RegisterBusinessAccountUseCase", () => {
     );
     const userRepo = new InMemoryUserRepo();
     const businessRepo = new InMemoryBusinessRepo();
-    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo);
+    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo, buildCreateOrganizationForOwnerUseCase());
 
     await expect(useCase.execute(validInput)).rejects.toMatchObject({
       statusCode: 500,
@@ -84,7 +97,7 @@ describe("RegisterBusinessAccountUseCase", () => {
   it("rejects registration when password confirmation does not match", async () => {
     const userRepo = new InMemoryUserRepo();
     const businessRepo = new InMemoryBusinessRepo();
-    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo);
+    const useCase = new RegisterBusinessAccountUseCase(userRepo, businessRepo, buildCreateOrganizationForOwnerUseCase());
 
     await expect(
       useCase.execute({

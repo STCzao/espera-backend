@@ -54,6 +54,7 @@ export const buildBusiness = (
   activeServiceWindows: 1,
   operationalStatus: "normal",
   ownerUserId: "user-1",
+  organizationId: "organization-1",
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   ...overrides,
@@ -182,6 +183,12 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
   public async delete(id: string): Promise<void> {
     this.deletedIds.push(id);
     this.businesses.delete(id);
+  }
+
+  public async countByOrganizationId(organizationId: string): Promise<number> {
+    return [...this.businesses.values()].filter(
+      (business) => business.organizationId === organizationId,
+    ).length;
   }
 
   public all(): Business[] {

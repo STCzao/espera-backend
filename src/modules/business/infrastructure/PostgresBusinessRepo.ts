@@ -28,6 +28,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           activeServiceWindows: business.activeServiceWindows,
           operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
           ownerUserId: business.ownerUserId,
+          organizationId: business.organizationId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
         }
@@ -49,6 +50,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           activeServiceWindows: business.activeServiceWindows,
           operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
           ownerUserId: business.ownerUserId,
+          organizationId: business.organizationId,
           createdAt: business.createdAt,
           updatedAt: business.updatedAt
         }
@@ -69,7 +71,8 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
         operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
-        ownerUserId: entity.ownerUserId
+        ownerUserId: entity.ownerUserId,
+        organizationId: entity.organizationId
       },
       update: {
         name: entity.name,
@@ -81,7 +84,8 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         listingStatus: toListingStatusEnum(entity.listingStatus),
         activeServiceWindows: entity.activeServiceWindows,
         operationalStatus: toOperationalStatusEnum(entity.operationalStatus),
-        ownerUserId: entity.ownerUserId
+        ownerUserId: entity.ownerUserId,
+        organizationId: entity.organizationId
       }
     });
 
@@ -97,6 +101,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       activeServiceWindows: business.activeServiceWindows,
       operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
       ownerUserId: business.ownerUserId,
+      organizationId: business.organizationId,
       createdAt: business.createdAt,
       updatedAt: business.updatedAt
     };
@@ -104,5 +109,9 @@ export class PostgresBusinessRepo implements IBusinessRepo {
 
   public async delete(id: string): Promise<void> {
     await prisma.business.delete({ where: { id } });
+  }
+
+  public async countByOrganizationId(organizationId: string): Promise<number> {
+    return await prisma.business.count({ where: { organizationId } });
   }
 }

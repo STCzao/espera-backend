@@ -216,15 +216,54 @@ El proyecto tiene una base técnica válida y una dirección arquitectónica
 correcta, pero su lectura adecuada es la de una fase 1 avanzada, no la de un
 MVP de producto completo.
 
+## Épica 2.5 — Cuentas y Organizaciones (implementada en backend)
+
+El backlog v2.1 formalizó como épica propia (9 pts, HU-2.5.1 a HU-2.5.4) lo
+que antes era solo un documento de decisión. Bloqueaba la Fase 2 (Queue)
+porque la Épica 3 necesita conocer cuántos `Business`/`Queue` habilita el
+plan de una cuenta antes de operar.
+
+Implementado:
+
+- Nuevo módulo `src/modules/organization/` (`domain/`, `application/`,
+  `infrastructure/`, `public-api.ts`) con `Organization`, `Membership`,
+  `Subscription` y la grilla de planes (`PLAN_LIMITS`).
+- Migración `20260627100000_add_organizations_memberships_subscriptions`:
+  agrega las tres tablas y `businesses.organizationId`, con backfill 1:1 de
+  Organization/Subscription BASIC/Membership ADMIN para todo `Business`
+  existente, y rollback manual documentado en el propio `migration.sql`
+  (HU-2.5.1).
+- `Membership` resuelve rol por Organization (`ResolveEffectiveRoleUseCase`),
+  sin tocar el campo `role` global del `User` (HU-2.5.2, HU-2.5.3).
+- `EnsureBusinessCreationAllowedUseCase` aplica el límite de negocios por
+  plan; está conectado en `RegisterBusinessUseCase`,
+  `RegisterBusinessAccountUseCase` y `RegisterBusinessWithGoogleUseCase`, que
+  ahora también crean la `Organization` del owner de forma transparente vía
+  `CreateOrganizationForOwnerUseCase` (HU-2.5.4).
+- `EnsureQueueCreationAllowedUseCase` y `UpdateOrganizationSubscriptionUseCase`
+  (downgrade bloqueado si hay más `Business` que el límite nuevo) quedan
+  implementados como piezas de dominio listas para que la Épica 3 y un futuro
+  flujo de billing las consuman; no se exponen por HTTP en este pase.
+
+Explícitamente fuera de alcance (así lo documenta el backlog): dónde vive la
+aprobación comercial (Organization vs Business) y migrar
+`middleware/authorize.ts` / los use cases de `business/` al rol efectivo de
+`Membership`. Ver `docs/decision-modelo-cuentas-negocios.md`.
+
 ## Siguiente épica
 
-La siguiente épica documentada es `Épica 2 - Gestión de Negocios`.
+La siguiente épica documentada es `Épica 3 — Cola (Queue)`. `Queue`/`Turn`
+todavía no tienen persistencia en Postgres (solo contratos de dominio stub);
+crear el primer `CreateQueueUseCase` real debe llamar a
+`EnsureQueueCreationAllowedUseCase` (`@modules/organization/public-api`)
+antes de insertar, pasándole el conteo de queues activas del `Business`.
 
 Documento base:
 
 - `docs/story-documentation-standard.md`
 - `docs/epica-1-autenticacion-onboarding.md`
 - `docs/epica-2-gestion-negocios.md`
+- `docs/decision-modelo-cuentas-negocios.md`
 
 Avance actual:
 
