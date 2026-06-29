@@ -985,10 +985,15 @@ la relación real `User -> Business` es `1:N` vía `Business.ownerUserId` (no
 GET /api/business/me
 ```
 
-Requiere autenticación y permiso `business:edit`. Devuelve los negocios donde
-el usuario autenticado es `ownerUserId`, resueltos en cada request (no
-embebidos en el JWT) para evitar que el token quede desactualizado si el
-usuario crea un negocio después de loguearse.
+Requiere solo autenticación (sin `authorize("business:edit")`): es un endpoint
+de descubrimiento, no de edición. Una cuenta con rol `user` que todavía no
+creó un negocio debe recibir `200 { businesses: [] }`, no `403`, porque el
+caso de uso ya scopea por `ownerUserId = request.user.id` — el gate de rol no
+agregaba ninguna protección real y mezclaba "sin negocio" con "sin permiso".
+
+Devuelve los negocios donde el usuario autenticado es `ownerUserId`, resueltos
+en cada request (no embebidos en el JWT) para evitar que el token quede
+desactualizado si el usuario crea un negocio después de loguearse.
 
 Respuesta esperada:
 
