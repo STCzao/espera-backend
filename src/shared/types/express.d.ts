@@ -9,7 +9,6 @@ declare module "express-serve-static-core" {
       id: string;
       email: string;
       role: UserRole;
-      businessId?: string;
       approvalStatus: ApprovalStatus;
     };
     refreshToken?: string;
