@@ -9,7 +9,6 @@ type AccessTokenPayload = JwtPayload & {
   email: string;
   role: "user" | "employee" | "business_admin" | "super_admin";
   approvalStatus: "pending" | "approved" | "rejected";
-  businessId?: string;
 };
 
 /**
@@ -46,7 +45,6 @@ export const authenticate = (
       id: decoded.sub,
       email: decoded.email,
       role: decoded.role,
-      businessId: decoded.businessId,
       approvalStatus: decoded.approvalStatus,
     };
 

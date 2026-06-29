@@ -11,6 +11,7 @@ import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCas
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
 import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
+import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
 import { RevokeBusinessEmployeeUseCase } from "../application/RevokeBusinessEmployeeUseCase";
@@ -32,6 +33,7 @@ export class BusinessController {
     private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase(),
     private readonly inviteBusinessEmployeeUseCase = new InviteBusinessEmployeeUseCase(),
     private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
+    private readonly listMyBusinessesUseCase = new ListMyBusinessesUseCase(),
     private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
     private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase()
   ) {}
@@ -212,6 +214,13 @@ export class BusinessController {
       `attachment; filename="${result.fileName}"`
     );
     response.status(200).send(result.buffer);
+  };
+
+  public listMine = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.listMyBusinessesUseCase.execute({
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.status(200).json(result);
   };
 
   public configureQueue = async (request: Request, response: Response): Promise<void> => {

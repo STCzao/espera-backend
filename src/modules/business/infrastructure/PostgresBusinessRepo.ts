@@ -57,6 +57,26 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       : null;
   }
 
+  public async findByOwnerUserId(ownerUserId: string): Promise<Business[]> {
+    const businesses = await prisma.business.findMany({ where: { ownerUserId } });
+    return businesses.map((business) => ({
+      id: business.id,
+      name: business.name,
+      slug: business.slug,
+      categoryId: business.categoryId,
+      address: business.address ?? undefined,
+      latitude: business.latitude ?? undefined,
+      longitude: business.longitude ?? undefined,
+      listingStatus: business.listingStatus.toLowerCase() as Business["listingStatus"],
+      activeServiceWindows: business.activeServiceWindows,
+      operationalStatus: business.operationalStatus.toLowerCase() as Business["operationalStatus"],
+      ownerUserId: business.ownerUserId,
+      organizationId: business.organizationId,
+      createdAt: business.createdAt,
+      updatedAt: business.updatedAt
+    }));
+  }
+
   public async save(entity: Business): Promise<Business> {
     const business = await prisma.business.upsert({
       where: { id: entity.id },

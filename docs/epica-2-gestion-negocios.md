@@ -26,6 +26,7 @@ Panel de negocio:
 
 ```text
 POST /api/business
+GET /api/business/me
 PATCH /api/business/:businessId/profile
 GET /api/business/categories/:categoryId/config
 GET /api/business/:businessId/hours
@@ -966,6 +967,60 @@ Cobertura actual:
 - revocación de empleado
 - invalidación de refresh sessions al revocar
 - contratos HTTP de invitación, listado, aceptación y revocación
+
+## Bugfix - Resolución del negocio del usuario autenticado
+
+Estado: `implementado`.
+
+### Problema
+
+`GET /api/auth/me` nunca devolvía el negocio del usuario autenticado: el JWT no
+firmaba `businessId` y el modelo `User` no tiene esa relación directa. Además,
+la relación real `User -> Business` es `1:N` vía `Business.ownerUserId` (no
+`1:1`), por lo que un campo único en el token no podía representarla.
+
+### Contrato backend
+
+```text
+GET /api/business/me
+```
+
+Requiere autenticación y permiso `business:edit`. Devuelve los negocios donde
+el usuario autenticado es `ownerUserId`, resueltos en cada request (no
+embebidos en el JWT) para evitar que el token quede desactualizado si el
+usuario crea un negocio después de loguearse.
+
+Respuesta esperada:
+
+```json
+{
+  "businesses": [
+    {
+      "id": "uuid",
+      "name": "Cafe Espera",
+      "slug": "cafe-espera",
+      "organizationId": "uuid",
+      "listingStatus": "draft",
+      "operationalStatus": "normal"
+    }
+  ]
+}
+```
+
+### Decisión de alcance
+
+Se eliminó el campo `businessId` del payload de `request.user`
+(`middleware/authenticate.ts`, `shared/types/express.d.ts`): nunca se firmaba
+en el JWT y ningún código lo leía, por lo que mantenerlo perpetuaba la
+confusión que originó este bug. `GET /api/auth/me` sigue devolviendo solo
+identidad (`id`, `email`, `role`, `approvalStatus`); la resolución de negocios
+queda exclusivamente en `GET /api/business/me`.
+
+### Cobertura
+
+- Validado con `npm run typecheck`, `npm run lint` y `npm run test:run`
+  (suite existente, sin tests nuevos: el módulo `business` no tiene tests
+  unitarios para use cases todavía).
 
 ## Observaciones técnicas iniciales
 

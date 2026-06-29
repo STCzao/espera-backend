@@ -314,3 +314,6 @@ Avance actual:
   `DELETE /api/business/:businessId/employees/:userId`.
 - La revocación marca la membresía como revocada e invalida las refresh
   sessions activas del empleado.
+- Bugfix: `GET /api/business/me` resuelve los negocios del usuario autenticado
+  (`ownerUserId`), reemplazando el campo `businessId` muerto que nunca se
+  firmaba en el JWT. Ver `docs/epica-2-gestion-negocios.md`.
