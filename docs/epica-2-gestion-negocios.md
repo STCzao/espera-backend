@@ -132,8 +132,13 @@ PATCH /api/business/:businessId/profile
 ```
 
 `POST /api/business` permite crear un negocio con nombre, categoría, slug y
-dirección para usuarios con permiso `business:edit`. El owner queda como
-`business_admin` pendiente de aprobación cuando corresponde.
+dirección para cualquier usuario autenticado (sin `authorize("business:edit")`:
+ese permiso solo lo tiene `business_admin`, y el propósito del endpoint es
+justamente promover a `business_admin` a un usuario que todavía no lo es). El
+use case rechaza internamente cuentas con rol `employee`
+(`EMPLOYEE_CANNOT_CREATE_BUSINESS`), que es el único caso que necesita
+bloquearse. El owner queda como `business_admin` pendiente de aprobación
+cuando corresponde.
 
 Este endpoint no reemplaza a `POST /api/auth/register-business`. La diferencia
 de producto es:
@@ -1026,6 +1031,38 @@ queda exclusivamente en `GET /api/business/me`.
 - Validado con `npm run typecheck`, `npm run lint` y `npm run test:run`
   (suite existente, sin tests nuevos: el módulo `business` no tiene tests
   unitarios para use cases todavía).
+
+## Bugfix - Permiso incorrecto en POST /api/business
+
+Estado: `implementado`.
+
+### Problema
+
+`POST /api/business` (`RegisterBusinessUseCase`) existe para que una cuenta ya
+autenticada con rol `user` inicie el onboarding de negocio, promoviéndose a
+`business_admin` `pending` en el proceso. La ruta exigía
+`authorize("business:edit")`, permiso que solo tiene `business_admin`
+(`middleware/authorize.ts`) — bloqueaba exactamente al actor para el que el
+endpoint fue diseñado, con `403`, antes de llegar al use case. Mismo patrón
+que el bug de `GET /api/business/me` corregido arriba.
+
+### Fix
+
+Se quitó `authorize("business:edit")` de la ruta. El use case ya valida
+internamente el único caso que debe bloquearse (`user.role === "employee"` →
+`EMPLOYEE_CANNOT_CREATE_BUSINESS`), así que el gate de rol en la ruta no
+aportaba protección adicional.
+
+```text
+POST /api/business
+```
+
+Ahora requiere solo autenticación.
+
+### Cobertura
+
+- Validado con `npm run typecheck`, `npm run lint` y `npm run test:run`
+  (suite existente).
 
 ## Observaciones técnicas iniciales
 

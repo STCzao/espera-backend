@@ -8,7 +8,7 @@ const controller = new BusinessController();
 
 export const businessRouter = Router();
 
-businessRouter.post("/", authenticate, authorize("business:edit"), controller.register);
+businessRouter.post("/", authenticate, controller.register);
 businessRouter.get("/me", authenticate, controller.listMine);
 businessRouter.get(
   "/categories/:categoryId/config",
