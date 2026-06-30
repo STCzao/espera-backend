@@ -25,7 +25,7 @@ export const sendVerificationEmail = async (
   token: string,
 ): Promise<void> => {
   const appUrl = env.APP_URL ?? "http://localhost:3000";
-  const url = `${appUrl}/auth/verify-email?token=${token}`;
+  const url = `${appUrl}/verify-email?token=${token}`;
 
   if (!shouldUseResend()) {
     logLocalEmail("verification", to, url);
@@ -53,7 +53,7 @@ export const sendPasswordResetEmail = async (
   token: string,
 ): Promise<void> => {
   const appUrl = env.APP_URL ?? "http://localhost:3000";
-  const url = `${appUrl}/auth/reset-password?token=${token}`;
+  const url = `${appUrl}/reset-password?token=${token}`;
 
   if (!shouldUseResend()) {
     logLocalEmail("password-reset", to, url);
