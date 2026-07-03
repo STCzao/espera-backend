@@ -4,6 +4,8 @@ import type { RefreshSession } from "../../src/modules/auth/domain/RefreshSessio
 import type { User } from "../../src/modules/auth/domain/User";
 import type { IBusinessRepo } from "../../src/modules/business/domain/IBusinessRepo";
 import type { Business } from "../../src/modules/business/domain/Business";
+import type { BusinessCategory } from "../../src/modules/business/domain/BusinessCategory";
+import type { IBusinessCategoryRepo } from "../../src/modules/business/domain/IBusinessCategoryRepo";
 import type { BusinessHoursConfig } from "../../src/modules/business/domain/BusinessHours";
 import type { IBusinessHoursRepo } from "../../src/modules/business/domain/IBusinessHoursRepo";
 import type { BusinessQrCode } from "../../src/modules/business/domain/BusinessQrCode";
@@ -47,6 +49,7 @@ export const buildBusiness = (
   name: "Cafe Espera",
   slug: "cafe-espera",
   categoryId: "11111111-1111-4111-8111-111111111111",
+  status: "pending",
   address: "Av. Siempre Viva 123",
   latitude: -34.6037,
   longitude: -58.3816,
@@ -59,6 +62,33 @@ export const buildBusiness = (
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   ...overrides,
 });
+
+export const buildBusinessCategory = (
+  overrides: Partial<BusinessCategory> = {},
+): BusinessCategory => ({
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "Cafetería",
+  slug: "cafeteria",
+  ...overrides,
+});
+
+export class InMemoryBusinessCategoryRepo implements IBusinessCategoryRepo {
+  private readonly categories = new Map<string, BusinessCategory>();
+
+  public constructor(initialCategories: BusinessCategory[] = [buildBusinessCategory()]) {
+    initialCategories.forEach((category) => {
+      this.categories.set(category.id, category);
+    });
+  }
+
+  public async findAll(): Promise<BusinessCategory[]> {
+    return [...this.categories.values()];
+  }
+
+  public async findById(id: string): Promise<BusinessCategory | null> {
+    return this.categories.get(id) ?? null;
+  }
+}
 
 export class InMemoryUserRepo implements IUserRepo {
   public readonly deletedIds: string[] = [];
@@ -183,6 +213,12 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
   public async delete(id: string): Promise<void> {
     this.deletedIds.push(id);
     this.businesses.delete(id);
+  }
+
+  public async findByOwnerUserId(ownerUserId: string): Promise<Business[]> {
+    return [...this.businesses.values()].filter(
+      (business) => business.ownerUserId === ownerUserId,
+    );
   }
 
   public async countByOrganizationId(organizationId: string): Promise<number> {
