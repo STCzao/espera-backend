@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
+import { generateUniqueSlug } from "@shared/utils/slug";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
@@ -16,7 +17,6 @@ const registerBusinessWithGoogleSchema = z.object({
   code: z.string().min(1, "Google authorization code is required."),
   state: z.string().min(1, "Google OAuth state is required."),
   businessName: z.string().trim().min(2, "Business name is required.").max(120),
-  businessSlug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
   categoryId: z.string().uuid("Invalid category id."),
   address: z.string().trim().min(5).max(200).optional(),
 });
@@ -54,12 +54,12 @@ export class RegisterBusinessWithGoogleUseCase
       throw AppError.badRequest(parsed.error.errors[0].message);
     }
 
-    const { code, businessName, businessSlug, categoryId, address } = parsed.data;
+    const { code, businessName, categoryId, address } = parsed.data;
 
-    const existingBusiness = await this.businessRepo.findBySlug(businessSlug);
-    if (existingBusiness) {
-      throw AppError.conflict("Business slug already in use.", "BUSINESS_SLUG_IN_USE");
-    }
+    const slug = await generateUniqueSlug(
+      businessName,
+      (s) => this.businessRepo.findBySlug(s),
+    );
 
     const profile = await this.googleOAuthService.exchangeCodeForProfile(code);
 
@@ -105,8 +105,9 @@ export class RegisterBusinessWithGoogleUseCase
       const business = await this.businessRepo.save({
         id: randomUUID(),
         name: businessName,
-        slug: businessSlug,
+        slug,
         categoryId,
+        status: "pending",
         address,
         listingStatus: "draft",
         activeServiceWindows: 1,

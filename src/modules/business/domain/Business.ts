@@ -1,3 +1,4 @@
+export type BusinessStatus = "pending" | "approved" | "rejected" | "suspended";
 export type BusinessListingStatus = "draft" | "hidden" | "published";
 export type BusinessOperationalStatus = "normal" | "delayed" | "paused" | "closed";
 
@@ -12,6 +13,7 @@ export interface Business {
   name: string;
   slug: string;
   categoryId: string;
+  status: BusinessStatus;
   address?: string;
   latitude?: number;
   longitude?: number;
