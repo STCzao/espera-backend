@@ -46,7 +46,7 @@ Responsabilidades actuales:
 - logout
 - verificación de email
 - password reset
-- aprobación de cuenta de negocio
+- aprobación de cuenta de negocio (activa `Business.status → approved` y arranca trial de 30 días en `Subscription`)
 
 Fortalezas:
 
@@ -61,18 +61,41 @@ Fortalezas:
 
 Responsabilidades actuales:
 
-- registro base de negocio
+- registro base de negocio (con slug autogenerado desde el nombre)
 - edición de perfil operativo
 - configuración de horarios y días no laborables
 - configuración de ventanillas activas
 - estado operativo del negocio
 - QR único del negocio
 - invitación, listado y revocación de empleados
+- listado de categorías de negocio (`GET /api/business/categories`, público)
 
 Estado:
 
 - módulo funcional para el primer corte de panel
+- `Business.status` (`pending | approved | rejected | suspended`) actúa como
+  compuerta de aprobación; `pending` por defecto al crear
+- `categoryId` FK a `business_categories` con 9 categorías sembradas
 - métricas y operación real de cola quedan para épicas posteriores
+
+### organization
+
+Responsabilidades actuales:
+
+- creación transparente de `Organization` al registrar el primer negocio
+- `Subscription` con ciclo de vida completo:
+  `pending → trial → active → expired → cancelled`
+- `Membership` por Organization con `role: admin | employee`
+- límites de plan (`PLAN_LIMITS`): Basic (1 negocio/1 cola), Pro (1/ilimitado),
+  Premium (10/20 por negocio)
+- `ResolveEffectiveRoleUseCase`: resuelve el rol de un usuario en una
+  Organization; no está conectado a `authorize.ts` aún (diferido a Épica 6)
+
+Estado:
+
+- módulo funcional; `Organization` y `Membership` son transparentes en UI para
+  usuarios Basic/Pro; solo relevantes para Premium (multi-sucursal)
+- `ResolveEffectiveRoleUseCase` implementado pero no wired en middleware
 
 ### queue
 
@@ -109,6 +132,11 @@ src/
       domain/
       infrastructure/
       interfaces/
+    organization/
+      application/
+      domain/
+      infrastructure/
+      public-api.ts
     queue/
       application/
       domain/
@@ -123,6 +151,7 @@ Capas transversales relevantes:
 - `shared/infrastructure/redis.ts`
 - `shared/infrastructure/email.ts`
 - `shared/infrastructure/logger.ts`
+- `shared/utils/slug.ts` — `toBaseSlug` + `generateUniqueSlug` (autogenera slug kebab-case con fallback anti-colisión)
 - `shared/EventBus.ts`
 - `middleware/authenticate.ts`
 - `middleware/authorize.ts`
@@ -250,19 +279,62 @@ aprobación comercial (Organization vs Business) y migrar
 `middleware/authorize.ts` / los use cases de `business/` al rol efectivo de
 `Membership`. Ver `docs/decision-modelo-cuentas-negocios.md`.
 
+## Bugfixes pre-Épica 3 (2026-07-03)
+
+Dos ramas fusionadas a `develop` antes de arrancar Épica 3:
+
+### bugfix/h-2.1-business-category-entity (PR #26)
+
+- `BusinessCategory` promovida a entidad real en Postgres
+  (`business_categories`), reemplazando el mapa hardcodeado.
+- Migración `20260703100000_add_business_categories`: crea tabla, siembra 9
+  categorías conservando los UUIDs legacy, agrega FK `businesses.categoryId`.
+- `GET /api/business/categories` — endpoint público, sin auth, devuelve el
+  listado ordenado por nombre.
+- `POST /api/business` y flujos de registro ahora validan que `categoryId`
+  exista en la tabla.
+- Endpoint de config de atributos `GET /api/business/categories/:categoryId/config`
+  queda diferido a E8 (Backoffice).
+
+### bugfix/pre-e3-schema-debt (PR #27)
+
+- **Slug autogenerado**: los tres flujos de creación de negocio dejan de pedir
+  `slug` / `businessSlug`; la lógica de generación vive en
+  `src/shared/utils/slug.ts`.
+- **`Business.status`** (`pending | approved | rejected | suspended`): nuevo
+  campo con `pending` por defecto; actúa como compuerta de aprobación del
+  equipo antes de habilitar el negocio.
+- **`Subscription.status`** (`pending | trial | active | expired | cancelled`):
+  ciclo de vida completo, con campos `trialEndsAt`, `cancellationReason` y
+  `cancelledAt`.
+- **`ApproveBusinessAccountUseCase`** reescrito: al aprobar el usuario, busca
+  todos sus negocios pendientes, los marca `approved`, y arranca un trial de
+  30 días en sus `Subscription` (`status → trial`, `trialEndsAt = now + 30d`).
+- **Links de email corregidos**: `email.ts` usaba rutas con prefijo `/auth/`
+  que no existían en el frontend; también se corrigió el puerto default de
+  `APP_URL` en `.env.example` (`3000 → 5173`).
+
 ## Siguiente épica
 
-La siguiente épica documentada es `Épica 3 — Cola (Queue)`. `Queue`/`Turn`
-todavía no tienen persistencia en Postgres (solo contratos de dominio stub);
-crear el primer `CreateQueueUseCase` real debe llamar a
-`EnsureQueueCreationAllowedUseCase` (`@modules/organization/public-api`)
-antes de insertar, pasándole el conteo de queues activas del `Business`.
+La siguiente épica es `Épica 3 — Cola (Queue)`. El schema y los límites de
+plan ya están listos. Puntos de entrada clave:
 
-Documento base:
+- `Queue`/`Turn` no tienen persistencia real en Postgres aún (solo domain
+  stubs); el primer `CreateQueueUseCase` debe llamar a
+  `EnsureQueueCreationAllowedUseCase` de `@modules/organization/public-api`
+  antes de insertar.
+- `Business.status` debe verificarse antes de permitir operaciones de cola;
+  el check de ownership en use cases ya existe — solo hay que sumar la
+  comprobación de `status === "approved"`.
+- `ListMyBusinessesUseCase` no expone `Business.status` todavía; debe
+  agregarse al output para que el panel frontend sepa el estado de aprobación.
+
+Documentación de referencia:
 
 - `docs/story-documentation-standard.md`
 - `docs/epica-1-autenticacion-onboarding.md`
 - `docs/epica-2-gestion-negocios.md`
+- `docs/epica-2-5-cuentas-organizaciones.md`
 - `docs/decision-modelo-cuentas-negocios.md`
 
 Avance actual:
