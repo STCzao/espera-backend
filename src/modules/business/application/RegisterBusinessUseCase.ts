@@ -9,8 +9,10 @@ import {
   EnsureBusinessCreationAllowedUseCase,
 } from "@modules/organization/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
+import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import type { IGeocodingService } from "../domain/IGeocodingService";
+import { PostgresBusinessCategoryRepo } from "../infrastructure/PostgresBusinessCategoryRepo";
 import { GoogleMapsGeocodingService } from "../infrastructure/GoogleMapsGeocodingService";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
@@ -37,12 +39,18 @@ export class RegisterBusinessUseCase
     private readonly geocodingService: IGeocodingService = new GoogleMapsGeocodingService(),
     private readonly createOrganizationForOwnerUseCase: CreateOrganizationForOwnerUseCase = new CreateOrganizationForOwnerUseCase(),
     private readonly ensureBusinessCreationAllowedUseCase: EnsureBusinessCreationAllowedUseCase = new EnsureBusinessCreationAllowedUseCase(),
+    private readonly categoryRepo: IBusinessCategoryRepo = new PostgresBusinessCategoryRepo(),
   ) {}
 
   public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
     const parsed = registerBusinessSchema.safeParse(input);
     if (!parsed.success) {
       throw AppError.badRequest(parsed.error.errors[0].message);
+    }
+
+    const category = await this.categoryRepo.findById(parsed.data.categoryId);
+    if (!category) {
+      throw AppError.badRequest("Invalid category id.", "INVALID_CATEGORY");
     }
 
     const existingBusiness = await this.businessRepo.findBySlug(parsed.data.slug);

@@ -18,9 +18,10 @@ const defaultCategoryConfig = (categoryId: string): BusinessCategoryConfig => ({
   ],
 });
 
+// IDs match the seeded rows in business_categories (migration 20260703100000).
 const categoryConfigs = new Map<string, BusinessCategoryConfig>([
   [
-    "11111111-1111-4111-8111-111111111111",
+    "11111111-1111-4111-8111-111111111111", // Gastronomía
     {
       categoryId: "11111111-1111-4111-8111-111111111111",
       attributes: [
@@ -41,7 +42,7 @@ const categoryConfigs = new Map<string, BusinessCategoryConfig>([
     },
   ],
   [
-    "33333333-3333-4333-8333-333333333333",
+    "33333333-3333-4333-8333-333333333333", // Tramites y Oficinas
     {
       categoryId: "33333333-3333-4333-8333-333333333333",
       attributes: [
