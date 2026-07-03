@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import { sendVerificationEmail } from "@shared/infrastructure/email";
+import { generateUniqueSlug } from "@shared/utils/slug";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
@@ -34,7 +35,6 @@ const registerBusinessAccountSchema = z
     firstName: z.string().trim().min(2).max(50),
     lastName: z.string().trim().min(2).max(50),
     businessName: z.string().trim().min(2, "Business name is required.").max(120),
-    businessSlug: z.string().trim().min(3).max(80),
     categoryId: z.string().uuid("Invalid category id."),
     address: z.string().trim().min(5).max(200).optional(),
   })
@@ -80,7 +80,6 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       firstName,
       lastName,
       businessName,
-      businessSlug,
       categoryId,
       address,
     } = parsed.data;
@@ -90,10 +89,10 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       throw AppError.conflict("Email already in use.");
     }
 
-    const existingBusiness = await this.businessRepo.findBySlug(businessSlug);
-    if (existingBusiness) {
-      throw AppError.conflict("Business slug already in use.");
-    }
+    const slug = await generateUniqueSlug(
+      businessName,
+      (s) => this.businessRepo.findBySlug(s),
+    );
 
     const passwordHash = await bcrypt.hash(password, 12);
     const verificationToken = randomUUID();
@@ -131,8 +130,9 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       const business = await this.businessRepo.save({
         id: randomUUID(),
         name: businessName,
-        slug: businessSlug,
+        slug,
         categoryId,
+        status: "pending",
         address,
         listingStatus: "draft",
         activeServiceWindows: 1,

@@ -19,6 +19,21 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
 enum AuthProvider {
   LOCAL
   GOOGLE
@@ -135,6 +150,7 @@ model Business {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  status      BusinessStatus @default(PENDING)
   category    BusinessCategory @relation(fields: [categoryId], references: [id])
   owner       User     @relation(fields: [ownerUserId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -162,13 +178,17 @@ model Organization {
 }
 
 model Subscription {
-  id             String   @id @default(uuid())
-  organizationId String   @unique
-  plan           SubscriptionPlan @default(BASIC)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String             @id @default(uuid())
+  organizationId     String             @unique
+  plan               SubscriptionPlan   @default(BASIC)
+  status             SubscriptionStatus @default(PENDING)
+  trialEndsAt        DateTime?
+  cancellationReason String?
+  cancelledAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("subscriptions")
 }

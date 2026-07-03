@@ -8,6 +8,7 @@ import {
   CreateOrganizationForOwnerUseCase,
   EnsureBusinessCreationAllowedUseCase,
 } from "@modules/organization/public-api";
+import { generateUniqueSlug } from "../../../shared/utils/slug";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
@@ -18,7 +19,6 @@ import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
 const registerBusinessSchema = z.object({
   name: z.string().trim().min(2, "Business name is required.").max(120),
-  slug: z.string().trim().min(3, "Business slug must be at least 3 characters.").max(80),
   categoryId: z.string().uuid("Invalid category id."),
   address: z.string().trim().min(5, "Business address is required.").max(200),
   ownerUserId: z.string().uuid("Invalid owner user id."),
@@ -53,10 +53,10 @@ export class RegisterBusinessUseCase
       throw AppError.badRequest("Invalid category id.", "INVALID_CATEGORY");
     }
 
-    const existingBusiness = await this.businessRepo.findBySlug(parsed.data.slug);
-    if (existingBusiness) {
-      throw AppError.conflict("Business slug already in use.", "BUSINESS_SLUG_IN_USE");
-    }
+    const slug = await generateUniqueSlug(
+      parsed.data.name,
+      (s) => this.businessRepo.findBySlug(s),
+    );
 
     const user = await this.userRepo.findById(parsed.data.ownerUserId);
     if (!user) {
@@ -104,8 +104,9 @@ export class RegisterBusinessUseCase
       const business = await this.businessRepo.save({
         id: randomUUID(),
         name: parsed.data.name,
-        slug: parsed.data.slug,
+        slug,
         categoryId: parsed.data.categoryId,
+        status: "pending",
         address: parsed.data.address,
         latitude: coordinates?.latitude,
         longitude: coordinates?.longitude,

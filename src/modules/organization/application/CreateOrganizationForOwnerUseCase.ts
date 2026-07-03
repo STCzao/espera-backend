@@ -59,6 +59,10 @@ export class CreateOrganizationForOwnerUseCase
       id: randomUUID(),
       organizationId: organization.id,
       plan: "basic",
+      status: "pending",
+      trialEndsAt: null,
+      cancellationReason: null,
+      cancelledAt: null,
       createdAt: now,
       updatedAt: now,
     });
