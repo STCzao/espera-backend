@@ -325,3 +325,94 @@ Cobertura actual:
 - `IBusinessRepo.countByOrganizationId` ya existe y puede reutilizarse como
   referencia para un método equivalente en el futuro `IQueueRepo`
   (`countActiveByBusinessId`).
+
+## Bugfix pre-E3 — Business.status y Subscription.status (2026-07-03)
+
+Rama: `bugfix/pre-e3-schema-debt` (PR #27, fusionado a `develop`).
+
+### Motivación
+
+La Épica 2.5 introdujo `Organization` y `Subscription`, pero la suscripción
+nacía sin un campo de estado formal. Tampoco existía una compuerta de
+aprobación en `Business` (el campo `User.approvalStatus` que se usaba era
+semánticamente incorrecto: un usuario puede tener varios negocios). Antes de
+arrancar Épica 3, estas dos deudas de schema se resuelven.
+
+### Cambios en schema
+
+Migración `20260703110000_add_business_status_and_subscription_status`:
+
+- Enum `BusinessStatus`: `PENDING | APPROVED | REJECTED | SUSPENDED`
+- `businesses.status`: `BusinessStatus NOT NULL DEFAULT 'PENDING'`; backfill:
+  negocios de usuarios con `approvalStatus = 'approved'` → `APPROVED`;
+  el resto → `PENDING`.
+- Enum `SubscriptionStatus`: `PENDING | TRIAL | ACTIVE | EXPIRED | CANCELLED`
+- `subscriptions.status`: `SubscriptionStatus NOT NULL DEFAULT 'PENDING'`;
+  backfill: suscripciones de negocios ya aprobados → `ACTIVE`.
+- `subscriptions.trialEndsAt`: `TIMESTAMPTZ NULL`
+- `subscriptions.cancellationReason`: `TEXT NULL`
+- `subscriptions.cancelledAt`: `TIMESTAMPTZ NULL`
+
+### Ciclo de vida de Subscription
+
+```
+Creación del primer negocio → status: pending
+         ↓
+Aprobación por el equipo → status: trial, trialEndsAt = now + 30d
+         ↓ (pasados 30 días, cron futuro)
+         ↓ active  ←── pago confirmado
+         ↓
+expired (sin renovar) | cancelled (baja voluntaria)
+```
+
+### ApproveBusinessAccountUseCase (reescrito)
+
+Antes: solo marcaba `User.approvalStatus = approved` y enviaba email.
+
+Ahora (en orden):
+
+1. Marca `User.approvalStatus = approved`.
+2. Busca todos los `Business` del usuario con `status = pending`.
+3. Los marca `status = approved`.
+4. Para cada `organizationId` único, busca la `Subscription` y la actualiza:
+   `status = trial`, `trialEndsAt = now + 30 days`.
+5. Envía email de bienvenida (best-effort; un fallo no revierta el approve).
+
+### CreateOrganizationForOwnerUseCase (ajuste menor)
+
+La `Subscription` se crea ahora con `status: "pending"`, `trialEndsAt: null`,
+`cancellationReason: null`, `cancelledAt: null`. Antes el campo no existía;
+`pending` es el estado correcto hasta que el equipo aprueba el negocio.
+
+### PLAN_LIMITS — reglas consensuadas (código pendiente)
+
+Se establecieron los límites definitivos para cada plan:
+
+| Plan    | Negocios | Colas por negocio |
+|---------|----------|-------------------|
+| Basic   | 1        | 1                 |
+| Pro     | 1        | ilimitado         |
+| Premium | 10       | 20                |
+
+El código en `src/modules/organization/domain/PlanLimits.ts` todavía usa
+`Infinity` para `premium.maxBusinesses` y `premium.maxQueuesPerBusiness`.
+**Pendiente**: cambiar a `10` y `20` respectivamente antes de conectar billing.
+
+### Reglas de negocio establecidas
+
+1. `User.role = business_admin` es permanente una vez asignado; no revierte
+   al cancelar ni al expirar.
+2. El trial arranca en el momento de la aprobación manual del equipo (no en el
+   registro). Duración: 30 días.
+3. El plan durante el trial es siempre `BASIC`.
+4. Un `Business` rechazado o suspendido no puede generar colas ni turnos.
+5. La re-suscripción reactiva el mismo `Business` existente; no se crea uno
+   nuevo.
+6. La cancelación tiene un campo de feedback (`cancellationReason`).
+7. Post-expiración, el negocio queda en modo lectura (sin nuevos turnos).
+8. La `Organization` es una entidad técnica transparente para Basic/Pro;
+   solo tiene relevancia en UI para Premium (multi-sucursal).
+9. Somos nosotros (el equipo) quienes verificamos el pago y disparamos la
+   aprobación/activación; no hay flujo de billing automático en MVP.
+10. El RBAC por `Membership` (diferido a Épica 6) no bloquea el avance de
+    Épica 3.

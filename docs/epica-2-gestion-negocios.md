@@ -1064,6 +1064,50 @@ Ahora requiere solo autenticación.
 - Validado con `npm run typecheck`, `npm run lint` y `npm run test:run`
   (suite existente).
 
+## Bugfix - Slug autogenerado en registro de negocio (HU-2.1)
+
+Estado: `implementado`.
+
+Rama: `bugfix/pre-e3-schema-debt`.
+
+### Problema
+
+Los tres flujos de creación de negocio (`POST /api/business`,
+`POST /api/auth/register-business` y `POST /api/auth/register-business/google`)
+requerían que el cliente enviara un campo `slug` / `businessSlug` en el body.
+El formulario de registro lo exponía como "Identificador del negocio" sin
+contexto de que era una URL pública única, generando fricciones y slugs
+inconsistentes.
+
+### Solución
+
+Se introduce `src/shared/utils/slug.ts` con `generateUniqueSlug(name, findBySlug)`:
+
+- Convierte el nombre del negocio a slug kebab-case sin tildes ni caracteres
+  especiales (`toBaseSlug`).
+- Si el slug base ya existe, intenta con sufijo numérico (`-2`, `-3` … `-10`).
+- Si los diez intentos colisionan, añade un sufijo alfanumérico aleatorio de
+  4 caracteres como fallback.
+
+Los tres use cases de creación de negocio dejan de aceptar `slug` /
+`businessSlug` como campo de entrada y lo generan internamente.
+
+### Contratos actualizados
+
+`POST /api/business` — ya no acepta `slug` en el body:
+
+```json
+{
+  "name": "Cafe Espera",
+  "categoryId": "11111111-1111-4111-8111-111111111111",
+  "address": "Av. Corrientes 1234, CABA"
+}
+```
+
+`POST /api/auth/register-business` — ya no acepta `businessSlug`.
+
+`POST /api/auth/register-business/google` — ya no acepta `businessSlug`.
+
 ## Bugfix - Catálogo de categorías de negocio (HU-2.1)
 
 Estado: `implementado`.
