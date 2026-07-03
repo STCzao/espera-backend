@@ -10,6 +10,7 @@ export const businessRouter = Router();
 
 businessRouter.post("/", authenticate, controller.register);
 businessRouter.get("/me", authenticate, controller.listMine);
+businessRouter.get("/categories", controller.listCategories);
 businessRouter.get(
   "/categories/:categoryId/config",
   authenticate,

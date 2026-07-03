@@ -1064,6 +1064,75 @@ Ahora requiere solo autenticación.
 - Validado con `npm run typecheck`, `npm run lint` y `npm run test:run`
   (suite existente).
 
+## Bugfix - Catálogo de categorías de negocio (HU-2.1)
+
+Estado: `implementado`.
+
+Rama: `bugfix/h-2.1-business-category-entity`.
+
+### Problema
+
+`Business.categoryId` era un `String` libre sin FK ni entidad de respaldo.
+`BusinessCategoryConfigRegistry` usaba un `Map` hardcodeado con UUIDs literales
+(`11111111-1111-...`, `33333333-3333-...`) sin nombre ni descripción. No
+existía ningún endpoint que listara las categorías disponibles, por lo que el
+formulario de alta pedía al usuario escribir el UUID de categoría en texto libre.
+
+### Solución
+
+Se introduce `BusinessCategory` como entidad real en el módulo `business`.
+
+Persistencia agregada:
+
+- `BusinessCategory`: tabla `business_categories` con `id`, `name`, `slug`.
+- FK `Business.categoryId → business_categories.id`.
+- Seed con 9 categorías. Los dos UUIDs legacy del registry se conservan como IDs
+  reales para no romper registros existentes en desarrollo.
+
+Categorías iniciales:
+
+| id (primeros 8 chars) | name | slug |
+|---|---|---|
+| 11111111 | Gastronomía | gastronomia |
+| 22222222 | Peluquería y Estética | peluqueria-y-estetica |
+| 33333333 | Trámites y Oficinas | tramites-y-oficinas |
+| 44444444 | Salud | salud |
+| 55555555 | Comercio y Tiendas | comercio-y-tiendas |
+| 66666666 | Farmacia y Óptica | farmacia-y-optica |
+| 77777777 | Veterinaria | veterinaria |
+| 88888888 | Taller y Servicios | taller-y-servicios |
+| 99999999 | Otro | otro |
+
+Endpoint nuevo (público, sin auth):
+
+```text
+GET /api/business/categories
+```
+
+Respuesta:
+
+```json
+{
+  "categories": [
+    { "id": "uuid", "name": "Gastronomía", "slug": "gastronomia" },
+    { "id": "uuid", "name": "Peluquería y Estética", "slug": "peluqueria-y-estetica" }
+  ]
+}
+```
+
+Cambios en use cases existentes:
+
+- `RegisterBusinessUseCase`: valida que `categoryId` exista en la tabla antes
+  de guardar el negocio (error `INVALID_CATEGORY`). Antes aceptaba cualquier UUID.
+- `BusinessCategoryConfigRegistry`: los dos keys del `Map` ahora apuntan a los
+  IDs reales del seed, eliminando los UUIDs arbitrarios.
+
+### Contratos diferidos
+
+La configuración de atributos por categoría (`BusinessCategoryConfig`) sigue
+viviendo en código (`BusinessCategoryConfigRegistry`). Llevarla a la DB queda
+para cuando el producto defina atributos que impacten reglas operativas reales.
+
 ## Observaciones técnicas iniciales
 
 - Algunos criterios dependen de épicas posteriores:

@@ -6,6 +6,7 @@ import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessH
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
 import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
+import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategoriesUseCase";
 import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
 import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
@@ -30,6 +31,7 @@ export class BusinessController {
     private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
     private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase(),
     private readonly updateBusinessOperationalStatusUseCase = new UpdateBusinessOperationalStatusUseCase(),
+    private readonly getBusinessCategoriesUseCase = new GetBusinessCategoriesUseCase(),
     private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase(),
     private readonly inviteBusinessEmployeeUseCase = new InviteBusinessEmployeeUseCase(),
     private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
@@ -54,6 +56,14 @@ export class BusinessController {
       ownerUserId: request.user?.id ?? "",
     });
     logger.info({ businessId: result.businessId }, "Business profile updated");
+    response.status(200).json(result);
+  };
+
+  public listCategories = async (
+    _request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.getBusinessCategoriesUseCase.execute();
     response.status(200).json(result);
   };
 

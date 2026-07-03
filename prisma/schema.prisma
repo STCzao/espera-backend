@@ -110,6 +110,15 @@ model RefreshSession {
   @@map("refresh_sessions")
 }
 
+model BusinessCategory {
+  id         String     @id
+  name       String
+  slug       String     @unique
+  businesses Business[]
+
+  @@map("business_categories")
+}
+
 model Business {
   id          String   @id @default(uuid())
   name        String
@@ -126,6 +135,7 @@ model Business {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  category    BusinessCategory @relation(fields: [categoryId], references: [id])
   owner       User     @relation(fields: [ownerUserId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
   openingHours BusinessOpeningHour[]
