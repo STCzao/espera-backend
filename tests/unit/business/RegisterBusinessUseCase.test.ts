@@ -4,10 +4,11 @@ import { RegisterBusinessUseCase } from "../../../src/modules/business/applicati
 import { CreateOrganizationForOwnerUseCase } from "../../../src/modules/organization/application/CreateOrganizationForOwnerUseCase";
 import { EnsureBusinessCreationAllowedUseCase } from "../../../src/modules/organization/application/EnsureBusinessCreationAllowedUseCase";
 import {
-  buildBusiness,
-  buildUser,
+  InMemoryBusinessCategoryRepo,
   InMemoryBusinessRepo,
   InMemoryUserRepo,
+  buildBusiness,
+  buildUser,
 } from "../../helpers/authFakes";
 import {
   InMemoryMembershipRepo,
@@ -17,29 +18,27 @@ import {
   buildSubscription,
 } from "../../helpers/organizationFakes";
 
+const CATEGORY_ID = "11111111-1111-4111-8111-111111111111";
+const OWNER_ID = "11111111-1111-4111-8111-111111111111";
+
 const validInput = {
   name: "Cafe Espera",
-  slug: "cafe-espera",
-  categoryId: "11111111-1111-4111-8111-111111111111",
+  categoryId: CATEGORY_ID,
   address: "Av. Corrientes 1234, CABA",
-  ownerUserId: "11111111-1111-4111-8111-111111111111",
+  ownerUserId: OWNER_ID,
 };
 
 const geocodingService = {
-  geocode: vi.fn().mockResolvedValue({
-    latitude: -34.6037,
-    longitude: -58.3816,
-  }),
+  geocode: vi.fn().mockResolvedValue({ latitude: -34.6037, longitude: -58.3816 }),
 };
 
-const buildOrganizationUseCases = (options: {
+const buildUseCases = (options: {
   membershipRepo?: InMemoryMembershipRepo;
   subscriptionRepo?: InMemorySubscriptionRepo;
 } = {}) => {
   const organizationRepo = new InMemoryOrganizationRepo();
   const membershipRepo = options.membershipRepo ?? new InMemoryMembershipRepo();
   const subscriptionRepo = options.subscriptionRepo ?? new InMemorySubscriptionRepo();
-
   return {
     membershipRepo,
     subscriptionRepo,
@@ -54,101 +53,124 @@ const buildOrganizationUseCases = (options: {
   };
 };
 
-describe("RegisterBusinessUseCase", () => {
-  it("registers a business with address and pending owner approval", async () => {
-    const noGeocodingService = {
-      geocode: vi.fn().mockResolvedValue(null),
-    };
-    const userRepo = new InMemoryUserRepo([
-      buildUser({
-        id: validInput.ownerUserId,
-        role: "user",
-        approvalStatus: "approved",
-      }),
-    ]);
-    const businessRepo = new InMemoryBusinessRepo();
-    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases();
-    const useCase = new RegisterBusinessUseCase(
-      businessRepo,
-      userRepo,
-      noGeocodingService,
-      createOrganizationForOwnerUseCase,
-      ensureBusinessCreationAllowedUseCase,
-    );
-
-    const result = await useCase.execute(validInput);
-    const createdBusiness = businessRepo.all()[0];
-    const owner = await userRepo.findById(validInput.ownerUserId);
-
-    expect(result).toEqual({ businessId: createdBusiness.id });
-    expect(createdBusiness).toMatchObject({
-      name: "Cafe Espera",
-      slug: "cafe-espera",
-      categoryId: validInput.categoryId,
-      address: validInput.address,
-      latitude: undefined,
-      longitude: undefined,
-      listingStatus: "draft",
-      ownerUserId: validInput.ownerUserId,
-      organizationId: expect.any(String),
-    });
-    expect(owner).toMatchObject({
-      role: "business_admin",
-      approvalStatus: "pending",
-    });
-    expect(noGeocodingService.geocode).toHaveBeenCalledWith(validInput.address);
-  });
-
-  it("creates an Organization with a BASIC Subscription and an ADMIN Membership transparently", async () => {
-    const userRepo = new InMemoryUserRepo([buildUser({ id: validInput.ownerUserId })]);
-    const businessRepo = new InMemoryBusinessRepo();
-    const { membershipRepo, subscriptionRepo, createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases();
-    const useCase = new RegisterBusinessUseCase(
-      businessRepo,
-      userRepo,
+const buildUseCase = (options: {
+  userRepo?: InMemoryUserRepo;
+  businessRepo?: InMemoryBusinessRepo;
+  membershipRepo?: InMemoryMembershipRepo;
+  subscriptionRepo?: InMemorySubscriptionRepo;
+} = {}) => {
+  const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase, ...rest } =
+    buildUseCases(options);
+  return {
+    ...rest,
+    useCase: new RegisterBusinessUseCase(
+      options.businessRepo ?? new InMemoryBusinessRepo(),
+      options.userRepo ?? new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "business_admin" })]),
       geocodingService,
       createOrganizationForOwnerUseCase,
       ensureBusinessCreationAllowedUseCase,
-    );
+      new InMemoryBusinessCategoryRepo(),
+    ),
+    businessRepo: options.businessRepo ?? new InMemoryBusinessRepo(),
+  };
+};
 
-    const { businessId } = await useCase.execute(validInput);
-    const createdBusiness = await businessRepo.findById(businessId);
+describe("RegisterBusinessUseCase", () => {
+  it("rejects users that are not business_admin", async () => {
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ id: OWNER_ID, role: "user" }),
+    ]);
+    const { useCase } = buildUseCase({ userRepo });
 
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 403,
+      code: "NOT_BUSINESS_ADMIN",
+    });
+  });
+
+  it("registers a business and creates Organization transparently", async () => {
+    const businessRepo = new InMemoryBusinessRepo();
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ id: OWNER_ID, role: "business_admin" }),
+    ]);
+    const { useCase, membershipRepo, subscriptionRepo } = buildUseCase({ businessRepo, userRepo });
+
+    const result = await useCase.execute(validInput);
+    const created = businessRepo.all()[0];
+
+    expect(result).toEqual({ businessId: created.id });
+    expect(created).toMatchObject({
+      name: "Cafe Espera",
+      categoryId: CATEGORY_ID,
+      address: validInput.address,
+      status: "pending",
+      listingStatus: "draft",
+      ownerUserId: OWNER_ID,
+      organizationId: expect.any(String),
+    });
     expect(subscriptionRepo.all()).toMatchObject([
-      { organizationId: createdBusiness?.organizationId, plan: "basic" },
+      { organizationId: created.organizationId, plan: "basic" },
     ]);
     expect(membershipRepo.all()).toMatchObject([
-      {
-        userId: validInput.ownerUserId,
-        organizationId: createdBusiness?.organizationId,
-        role: "admin",
-      },
+      { userId: OWNER_ID, organizationId: created.organizationId, role: "admin" },
     ]);
   });
 
-  it("rejects a second business when the account's plan only allows one", async () => {
-    const organizationId = "organization-1";
-    const userRepo = new InMemoryUserRepo([buildUser({ id: validInput.ownerUserId })]);
+  it("persists coordinates when geocoding succeeds", async () => {
+    const businessRepo = new InMemoryBusinessRepo();
+    const { useCase } = buildUseCase({ businessRepo });
+
+    await useCase.execute(validInput);
+
+    expect(businessRepo.all()[0]).toMatchObject({
+      latitude: -34.6037,
+      longitude: -58.3816,
+    });
+  });
+
+  it("saves business without coordinates when geocoding returns null", async () => {
+    const noGeocodingService = { geocode: vi.fn().mockResolvedValue(null) };
+    const businessRepo = new InMemoryBusinessRepo();
+    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
+      buildUseCases();
+    const useCase = new RegisterBusinessUseCase(
+      businessRepo,
+      new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "business_admin" })]),
+      noGeocodingService,
+      createOrganizationForOwnerUseCase,
+      ensureBusinessCreationAllowedUseCase,
+      new InMemoryBusinessCategoryRepo(),
+    );
+
+    await useCase.execute(validInput);
+
+    expect(businessRepo.all()[0]).toMatchObject({ latitude: undefined, longitude: undefined });
+  });
+
+  it("auto-generates a unique slug when base slug is already taken", async () => {
     const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ id: "existing-business", slug: "existing-business-slug", organizationId }),
+      buildBusiness({ slug: "cafe-espera" }),
     ]);
+    const { useCase } = buildUseCase({ businessRepo });
+
+    await useCase.execute(validInput);
+
+    const slugs = businessRepo.all().map((b) => b.slug);
+    expect(slugs).toContain("cafe-espera-2");
+  });
+
+  it("rejects a second business when the plan only allows one", async () => {
+    const organizationId = "organization-1";
     const membershipRepo = new InMemoryMembershipRepo([
-      buildMembership({ userId: validInput.ownerUserId, organizationId, role: "admin" }),
+      buildMembership({ userId: OWNER_ID, organizationId, role: "admin" }),
     ]);
     const subscriptionRepo = new InMemorySubscriptionRepo([
       buildSubscription({ organizationId, plan: "basic" }),
     ]);
-    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases({ membershipRepo, subscriptionRepo });
-    const useCase = new RegisterBusinessUseCase(
-      businessRepo,
-      userRepo,
-      geocodingService,
-      createOrganizationForOwnerUseCase,
-      ensureBusinessCreationAllowedUseCase,
-    );
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: "existing", slug: "existing-slug", organizationId, ownerUserId: OWNER_ID }),
+    ]);
+    const { useCase } = buildUseCase({ businessRepo, membershipRepo, subscriptionRepo });
 
     await expect(useCase.execute(validInput)).rejects.toMatchObject({
       statusCode: 403,
@@ -157,76 +179,19 @@ describe("RegisterBusinessUseCase", () => {
     expect(businessRepo.all()).toHaveLength(1);
   });
 
-  it("persists coordinates when optional geocoding succeeds", async () => {
-    const userRepo = new InMemoryUserRepo([
-      buildUser({
-        id: validInput.ownerUserId,
-        role: "business_admin",
-        approvalStatus: "approved",
-      }),
-    ]);
-    const businessRepo = new InMemoryBusinessRepo();
-    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases();
-    const useCase = new RegisterBusinessUseCase(
-      businessRepo,
-      userRepo,
-      geocodingService,
-      createOrganizationForOwnerUseCase,
-      ensureBusinessCreationAllowedUseCase,
-    );
-
-    await useCase.execute(validInput);
-
-    expect(businessRepo.all()[0]).toMatchObject({
-      address: validInput.address,
-      latitude: -34.6037,
-      longitude: -58.3816,
-    });
-  });
-
-  it("rejects duplicated business slugs", async () => {
-    const userRepo = new InMemoryUserRepo([
-      buildUser({ id: validInput.ownerUserId }),
-    ]);
-    const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ slug: validInput.slug }),
-    ]);
-    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases();
-    const useCase = new RegisterBusinessUseCase(
-      businessRepo,
-      userRepo,
-      geocodingService,
-      createOrganizationForOwnerUseCase,
-      ensureBusinessCreationAllowedUseCase,
-    );
-
-    await expect(useCase.execute(validInput)).rejects.toMatchObject({
-      statusCode: 409,
-      code: "BUSINESS_SLUG_IN_USE",
-    });
-  });
-
-  it("validates required address", async () => {
-    const { createOrganizationForOwnerUseCase, ensureBusinessCreationAllowedUseCase } =
-      buildOrganizationUseCases();
-    const useCase = new RegisterBusinessUseCase(
-      new InMemoryBusinessRepo(),
-      new InMemoryUserRepo(),
-      geocodingService,
-      createOrganizationForOwnerUseCase,
-      ensureBusinessCreationAllowedUseCase,
-    );
+  it("rejects an invalid category id", async () => {
+    const { useCase } = buildUseCase();
 
     await expect(
-      useCase.execute({
-        ...validInput,
-        address: "",
-      }),
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      message: "Business address is required.",
-    });
+      useCase.execute({ ...validInput, categoryId: "00000000-0000-4000-8000-000000000000" }),
+    ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_CATEGORY" });
+  });
+
+  it("rejects missing address", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ ...validInput, address: "" }),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Business address is required." });
   });
 });

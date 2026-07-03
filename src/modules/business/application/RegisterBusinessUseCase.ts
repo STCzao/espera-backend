@@ -63,26 +63,14 @@ export class RegisterBusinessUseCase
       throw AppError.notFound("User not found.", "OWNER_NOT_FOUND");
     }
 
-    if (user.role === "employee") {
+    if (user.role !== "business_admin") {
       throw AppError.forbidden(
-        "Employee accounts cannot register businesses.",
-        "EMPLOYEE_CANNOT_CREATE_BUSINESS",
+        "Only approved business admin accounts can create businesses.",
+        "NOT_BUSINESS_ADMIN",
       );
     }
 
-    const requiresBusinessAdminPromotion =
-      user.role !== "business_admin" || user.approvalStatus === "rejected";
-
     try {
-      if (requiresBusinessAdminPromotion) {
-        // Existing accounts can start the business onboarding flow by creating a business.
-        await this.userRepo.save({
-          ...user,
-          role: "business_admin",
-          approvalStatus: "pending",
-        });
-      }
-
       // Organization creation is transparent (HU-2.5.1): an owner without one
       // yet gets one on their first business; existing accounts already have
       // one from the backfill migration.
@@ -123,10 +111,6 @@ export class RegisterBusinessUseCase
         businessId: business.id,
       };
     } catch (error) {
-      if (requiresBusinessAdminPromotion) {
-        await this.userRepo.save(user);
-      }
-
       if (error instanceof AppError) {
         throw error;
       }
