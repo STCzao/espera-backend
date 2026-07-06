@@ -10,6 +10,9 @@ const controller = new AuthController();
 export const authRouter = Router();
 
 authRouter.post("/register", rateLimiter, controller.register);
+// @deprecated — backlog v2.2 removed the one-step signup flow (HU-1.8).
+// New flow: POST /api/auth/register → verify email → login → POST /api/business.
+// These routes remain until the frontend migrates.
 authRouter.post(
   "/register-business",
   rateLimiter,

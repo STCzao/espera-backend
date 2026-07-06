@@ -73,14 +73,6 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       throw AppError.unauthorized("Invalid credentials.");
     }
 
-    // Business admins should always see their review state before any other access hint.
-    if (user.role === "business_admin" && user.approvalStatus === "pending") {
-      throw AppError.forbidden(
-        "Your account is still under review.",
-        "ACCOUNT_PENDING_REVIEW",
-      );
-    }
-
     if (user.role === "business_admin" && user.approvalStatus === "rejected") {
       throw AppError.forbidden(
         "Your account approval request was rejected.",
