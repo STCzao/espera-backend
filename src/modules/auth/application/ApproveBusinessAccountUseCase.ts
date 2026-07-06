@@ -48,6 +48,7 @@ export class ApproveBusinessAccountUseCase implements UseCase<
     const updatedUser = await this.userRepo.save({
       ...user,
       approvalStatus: "approved",
+      isEmailVerified: true,
     });
 
     const businesses = await this.businessRepo.findByOwnerUserId(input.userId);

@@ -99,6 +99,17 @@ describe("ApproveBusinessAccountUseCase", () => {
     expect(subscriptionRepo.all()[0].status).toBe("active");
   });
 
+  it("marks email as verified so the user can login even if they never clicked the link", async () => {
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ role: "business_admin", approvalStatus: "pending", isEmailVerified: false }),
+    ]);
+    const { useCase } = buildUseCase({ userRepo });
+
+    await useCase.execute({ userId: "user-1" });
+
+    expect((await userRepo.findById("user-1"))?.isEmailVerified).toBe(true);
+  });
+
   it("sends welcome email after approval", async () => {
     const { useCase } = buildUseCase();
 
