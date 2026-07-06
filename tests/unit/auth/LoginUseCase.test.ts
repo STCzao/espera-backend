@@ -101,7 +101,7 @@ describe("LoginUseCase", () => {
     );
   });
 
-  it("blocks pending business admins before issuing a session", async () => {
+  it("allows pending business admins to login so they can see their review state in the panel", async () => {
     const passwordHash = await bcrypt.hash("Password1", 12);
     const userRepo = new InMemoryUserRepo([
       buildUser({
@@ -122,11 +122,34 @@ describe("LoginUseCase", () => {
         email: "user@example.com",
         password: "Password1",
       }),
+    ).resolves.toEqual({ accessToken: "access-token", refreshToken: "refresh-token" });
+
+    expect(refreshSessionRepo.all()).toHaveLength(1);
+  });
+
+  it("blocks rejected business admins from logging in", async () => {
+    const passwordHash = await bcrypt.hash("Password1", 12);
+    const userRepo = new InMemoryUserRepo([
+      buildUser({
+        passwordHash,
+        role: "business_admin",
+        approvalStatus: "rejected",
+      }),
+    ]);
+    const useCase = new LoginUseCase(
+      userRepo,
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+    );
+
+    await expect(
+      useCase.execute({
+        email: "user@example.com",
+        password: "Password1",
+      }),
     ).rejects.toMatchObject({
       statusCode: 403,
-      code: "ACCOUNT_PENDING_REVIEW",
+      code: "ACCOUNT_REJECTED",
     });
-
-    expect(refreshSessionRepo.all()).toHaveLength(0);
   });
 });

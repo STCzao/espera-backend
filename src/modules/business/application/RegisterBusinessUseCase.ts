@@ -63,12 +63,14 @@ export class RegisterBusinessUseCase
       throw AppError.notFound("User not found.", "OWNER_NOT_FOUND");
     }
 
-    if (user.role !== "business_admin") {
+    if (user.role !== "user" && user.role !== "business_admin") {
       throw AppError.forbidden(
-        "Only approved business admin accounts can create businesses.",
-        "NOT_BUSINESS_ADMIN",
+        "Only authenticated user accounts can register a business.",
+        "NOT_ELIGIBLE_FOR_BUSINESS",
       );
     }
+
+    const requiresPromotion = user.role === "user";
 
     try {
       // Organization creation is transparent (HU-2.5.1): an owner without one
@@ -106,6 +108,14 @@ export class RegisterBusinessUseCase
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+
+      if (requiresPromotion) {
+        await this.userRepo.save({
+          ...user,
+          role: "business_admin",
+          approvalStatus: "pending",
+        });
+      }
 
       return {
         businessId: business.id,

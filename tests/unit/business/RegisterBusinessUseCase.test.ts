@@ -65,7 +65,7 @@ const buildUseCase = (options: {
     ...rest,
     useCase: new RegisterBusinessUseCase(
       options.businessRepo ?? new InMemoryBusinessRepo(),
-      options.userRepo ?? new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "business_admin" })]),
+      options.userRepo ?? new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "user" })]),
       geocodingService,
       createOrganizationForOwnerUseCase,
       ensureBusinessCreationAllowedUseCase,
@@ -76,22 +76,35 @@ const buildUseCase = (options: {
 };
 
 describe("RegisterBusinessUseCase", () => {
-  it("rejects users that are not business_admin", async () => {
+  it("promotes a role:user to business_admin with pending status on first registration", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({ id: OWNER_ID, role: "user" }),
     ]);
     const { useCase } = buildUseCase({ userRepo });
 
+    await useCase.execute(validInput);
+
+    const updated = await userRepo.findById(OWNER_ID);
+    expect(updated?.role).toBe("business_admin");
+    expect(updated?.approvalStatus).toBe("pending");
+  });
+
+  it("rejects accounts with ineligible roles", async () => {
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ id: OWNER_ID, role: "super_admin" as never }),
+    ]);
+    const { useCase } = buildUseCase({ userRepo });
+
     await expect(useCase.execute(validInput)).rejects.toMatchObject({
       statusCode: 403,
-      code: "NOT_BUSINESS_ADMIN",
+      code: "NOT_ELIGIBLE_FOR_BUSINESS",
     });
   });
 
   it("registers a business and creates Organization transparently", async () => {
     const businessRepo = new InMemoryBusinessRepo();
     const userRepo = new InMemoryUserRepo([
-      buildUser({ id: OWNER_ID, role: "business_admin" }),
+      buildUser({ id: OWNER_ID, role: "user" }),
     ]);
     const { useCase, membershipRepo, subscriptionRepo } = buildUseCase({ businessRepo, userRepo });
 
@@ -135,7 +148,7 @@ describe("RegisterBusinessUseCase", () => {
       buildUseCases();
     const useCase = new RegisterBusinessUseCase(
       businessRepo,
-      new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "business_admin" })]),
+      new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "user" })]),
       noGeocodingService,
       createOrganizationForOwnerUseCase,
       ensureBusinessCreationAllowedUseCase,
