@@ -170,7 +170,19 @@ Ejemplo de body para completar perfil:
 }
 ```
 
-Respuesta esperada:
+Respuesta esperada de `POST /api/business`:
+
+```json
+{
+  "businessId": "uuid",
+  "businessSlug": "cafe-espera",
+  "status": "pending"
+}
+```
+
+Usar `businessId` para llamadas subsiguientes a `/:businessId/*`. Usar `businessSlug` para navegación y display. Llamar `POST /api/auth/refresh-token` inmediatamente después para obtener un JWT con `role: business_admin`.
+
+Respuesta esperada de `PATCH /api/business/:businessId/profile`:
 
 ```json
 {
@@ -1009,7 +1021,7 @@ Respuesta esperada:
       "id": "uuid",
       "name": "Cafe Espera",
       "slug": "cafe-espera",
-      "organizationId": "uuid",
+      "status": "pending",
       "listingStatus": "draft",
       "operationalStatus": "normal"
     }

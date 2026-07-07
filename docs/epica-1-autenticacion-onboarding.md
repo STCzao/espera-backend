@@ -126,7 +126,8 @@ clientes manuales/mobile y escenarios Postman.
 ### Reglas de Negocio
 
 - Requiere email verificado.
-- Bloquea cuentas de negocio pendientes de aprobación.
+- Permite login a `business_admin` con `approvalStatus: pending` — el usuario ve su negocio en revisión desde el panel.
+- Bloquea `business_admin` con `approvalStatus: rejected`.
 - Valida credenciales con hash.
 - Registra intentos fallidos con Redis/fallback.
 
@@ -256,7 +257,7 @@ La pantalla debe extraer ese query param y enviarlo en el body de
 - Tests unitarios de request/reset.
 - Escenarios manuales en Postman.
 
-## HU-1.8 - Registro de Negocio con Cuenta Pendiente
+## HU-1.8 - Registro de Negocio desde Cuenta Autenticada
 
 Story points: no normalizado en backlog actual.
 
@@ -264,40 +265,52 @@ Estado: `implementado`.
 
 ### Objetivo de Producto
 
-Permitir que un negocio solicite acceso al panel y quede pendiente de revisión.
+Permitir que un usuario autenticado registre su negocio desde el panel. El
+negocio queda pendiente de revisión; el usuario conserva acceso normal a su
+cuenta durante la espera.
+
+### Flujo
+
+```text
+1. POST /api/auth/register          → crea cuenta (role: user), envía email de verificación
+2. GET  /api/auth/verify-email      → verifica email
+3. POST /api/auth/login             → tokens (JWT role: user)
+4. POST /api/business               → crea negocio; promueve usuario a business_admin + pending
+                                      devuelve { businessId, businessSlug, status: "pending" }
+5. POST /api/auth/refresh-token     → llamar inmediatamente; nuevo JWT refleja role: business_admin
+```
 
 ### Contrato Backend
 
 ```text
-POST /api/auth/register-business
-PATCH /api/auth/business-accounts/:userId/approve
+POST /api/business                                        ← requiere autenticación
+PATCH /api/auth/business-accounts/:userId/approve         ← requiere platform:approve_business_account
 ```
 
-`POST /api/auth/register-business` pertenece al onboarding público del negocio.
-`PATCH /api/auth/business-accounts/:userId/approve` se documenta acá porque
-cierra el estado de la cuenta creada, pero su superficie funcional es
-`super_admin`: requiere autenticación y permiso
-`platform:approve_business_account`. No debe implementarse como paso accesible
-desde el flujo público de registro.
+`POST /api/auth/register-business` está **deprecado** (flujo anterior a
+backlog v2.2). Permanece activo hasta que el frontend complete la migración.
 
 ### Modelo y Persistencia
 
-- `User.role: BUSINESS_ADMIN`
-- `User.approvalStatus: PENDING | APPROVED | REJECTED`
-- `Business`
+- `User.role: user → business_admin` (en el momento del registro del negocio)
+- `User.approvalStatus: pending → approved`
+- `Business.status: pending → approved`
+- `Subscription.status: pending → trial` (al aprobar, trial de 30 días)
 
 ### Reglas de Negocio
 
-- La cuenta negocio pendiente no puede iniciar sesión operativa.
+- El usuario con negocio pendiente **puede iniciar sesión** y ver el estado de revisión en el panel.
+- Solo `role: user` o `role: business_admin` pueden llamar `POST /api/business`.
 - La aprobación requiere permiso `platform:approve_business_account`.
-- La aprobación envía email de bienvenida best-effort.
+- La aprobación fuerza `isEmailVerified: true` y envía email de bienvenida best-effort.
+- La aprobación inicia un trial de 30 días en la `Subscription`.
 
 ### Cobertura
 
-- Tests unitarios de registro, rollback y aprobación.
+- Tests unitarios de registro, promoción de rol y aprobación.
 - Escenarios manuales en Postman.
 
-## HU-1.9 - OAuth para Negocio en Panel Web
+## HU-1.9 - OAuth para Panel Web
 
 Story points: no normalizado en backlog actual.
 
@@ -305,27 +318,50 @@ Estado: `implementado`.
 
 ### Objetivo de Producto
 
-Permitir registro y login de negocios desde el panel web usando Google OAuth.
+Permitir login y registro de usuarios desde el panel web usando Google OAuth.
+Un solo botón de Google sirve para ambos casos — el backend crea la cuenta si
+no existe (find-or-create).
+
+### Flujo
+
+```text
+1. GET  /api/auth/google/url        → devuelve { url, state }; redirigir al usuario
+2. Google callback → frontend recibe code + state en /oauth/google/callback
+3. POST /api/auth/login/google      → { code, state }
+                                      si el email no existe: crea cuenta (role: user)
+                                      si existe: login normal
+                                      devuelve { accessToken, refreshToken }
+4. POST /api/business               → (si quiere registrar negocio) igual que HU-1.8 paso 4
+```
 
 ### Contrato Backend
 
 ```text
-GET /api/auth/google/url
-POST /api/auth/register-business/google
+GET  /api/auth/google/url
 POST /api/auth/login/google
 ```
+
+`POST /api/auth/register-business/google` está **deprecado** (flujo anterior a
+backlog v2.2). Permanece activo hasta que el frontend complete la migración.
+
+`GOOGLE_CALLBACK_URL` en `.env` debe apuntar al frontend
+(`http://localhost:5173/oauth/google/callback`), no al backend. El backend no
+implementa ni debe implementar `GET /auth/google/callback`.
 
 ### Reglas de Negocio
 
 - Usa cookie firmada `googleOAuthState` para validar CSRF.
-- Requiere email verificado por Google.
-- Distingue cuenta existente, cuenta pendiente y mismatch de proveedor.
-- El callback visual pertenece al frontend, no al backend.
+- Requiere email verificado por Google (`emailVerified: true`).
+- Si el email no tiene cuenta: la crea con `role: user`, `authProvider: google`, `isEmailVerified: true`.
+- Si el email ya tiene cuenta con `authProvider: local`: rechaza con `AUTH_PROVIDER_MISMATCH`.
+- Si el `googleId` no coincide con el registrado: rechaza con `GOOGLE_ACCOUNT_MISMATCH`.
+- `business_admin` con `approvalStatus: rejected`: rechaza con `ACCOUNT_REJECTED`.
+- `business_admin` con `approvalStatus: pending`: permite login (ve el panel con estado de revisión).
 
 ### Cobertura
 
-- Tests unitarios con perfiles Google mockeados.
-- Escenarios manuales en Postman para URL OAuth, registro y login.
+- Tests unitarios con perfiles Google mockeados, incluyendo caso find-or-create.
+- Escenarios manuales en Postman para URL OAuth y login/registro.
 
 ## Riesgos y Pendientes Transversales
 
