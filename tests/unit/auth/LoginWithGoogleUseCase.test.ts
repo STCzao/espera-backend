@@ -67,7 +67,7 @@ describe("LoginWithGoogleUseCase", () => {
     });
   });
 
-  it("blocks pending Google business admins", async () => {
+  it("allows pending Google business admins to login so they can see their review state", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({
         email: "owner.google@example.com",
@@ -75,21 +75,22 @@ describe("LoginWithGoogleUseCase", () => {
         approvalStatus: "pending",
         authProvider: "google",
         googleId: "google-1",
+        isEmailVerified: true,
       }),
     ]);
+    const refreshSessionRepo = new InMemoryRefreshSessionRepo();
     const useCase = new LoginWithGoogleUseCase(
       userRepo,
-      new InMemoryRefreshSessionRepo(),
+      refreshSessionRepo,
       tokenService,
       buildGoogleOAuthService(),
     );
 
     await expect(
       useCase.execute({ code: "google-code", state: "oauth-state" }),
-    ).rejects.toMatchObject({
-      statusCode: 403,
-      code: "ACCOUNT_PENDING_REVIEW",
-    });
+    ).resolves.toEqual({ accessToken: "google-access-token", refreshToken: "google-refresh-token" });
+
+    expect(refreshSessionRepo.all()).toHaveLength(1);
   });
 
   it("rejects local accounts on Google login", async () => {

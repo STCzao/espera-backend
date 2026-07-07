@@ -12,20 +12,20 @@ import { JWTTokenService } from "../infrastructure/JWTTokenService";
 import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
-const loginWithGoogleSchema = z.object({
+const registerWithGoogleSchema = z.object({
   code: z.string().min(1, "Google authorization code is required."),
   state: z.string().min(1, "Google OAuth state is required."),
 });
 
-export type LoginWithGoogleInput = z.infer<typeof loginWithGoogleSchema>;
+export type RegisterWithGoogleInput = z.infer<typeof registerWithGoogleSchema>;
 
-export interface LoginWithGoogleOutput {
+export interface RegisterWithGoogleOutput {
   accessToken: string;
   refreshToken: string;
 }
 
-export class LoginWithGoogleUseCase
-  implements UseCase<LoginWithGoogleInput, LoginWithGoogleOutput>
+export class RegisterWithGoogleUseCase
+  implements UseCase<RegisterWithGoogleInput, RegisterWithGoogleOutput>
 {
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
@@ -34,8 +34,8 @@ export class LoginWithGoogleUseCase
     private readonly googleOAuthService = new GoogleOAuthService(),
   ) {}
 
-  public async execute(input: LoginWithGoogleInput): Promise<LoginWithGoogleOutput> {
-    const parsed = loginWithGoogleSchema.safeParse(input);
+  public async execute(input: RegisterWithGoogleInput): Promise<RegisterWithGoogleOutput> {
+    const parsed = registerWithGoogleSchema.safeParse(input);
     if (!parsed.success) {
       throw AppError.badRequest(parsed.error.errors[0].message);
     }
@@ -48,35 +48,27 @@ export class LoginWithGoogleUseCase
       );
     }
 
-    const user = await this.userRepo.findByEmail(profile.email);
-    if (!user) {
-      throw AppError.notFound("No account was found for this Google email.", "ACCOUNT_NOT_FOUND");
-    }
-
-    if (user.authProvider !== "google") {
-      throw AppError.badRequest(
-        "This account must sign in with email and password.",
-        "AUTH_PROVIDER_MISMATCH",
+    const existing = await this.userRepo.findByEmail(profile.email);
+    if (existing) {
+      throw AppError.conflict(
+        "An account already exists for this Google email. Please sign in instead.",
+        "EMAIL_ALREADY_REGISTERED",
       );
     }
 
-    if (user.googleId && user.googleId !== profile.googleId) {
-      throw AppError.unauthorized("Invalid Google account.", "GOOGLE_ACCOUNT_MISMATCH");
-    }
-
-    if (user.role === "business_admin" && user.approvalStatus === "rejected") {
-      throw AppError.forbidden(
-        "Your account approval request was rejected.",
-        "ACCOUNT_REJECTED",
-      );
-    }
-
-    if (!user.googleId) {
-      await this.userRepo.save({
-        ...user,
-        googleId: profile.googleId,
-      });
-    }
+    const user = await this.userRepo.save({
+      id: randomUUID(),
+      email: profile.email,
+      firstName: profile.firstName || "Google",
+      lastName: profile.lastName || "User",
+      role: "user",
+      approvalStatus: "approved",
+      authProvider: "google",
+      googleId: profile.googleId,
+      isEmailVerified: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
     const { token, hash } = this.tokenService.generateRefreshToken();
     await this.refreshSessionRepo.save({
