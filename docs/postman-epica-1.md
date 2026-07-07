@@ -365,36 +365,51 @@ Resultado esperado:
 Para cuentas Google, cualquier intento de reset debe responder como link
 invalido o expirado.
 
-### 11. Registro de negocio local
+### 11. Registro de negocio (flujo autenticado — HU-1.8)
+
+El registro de negocio requiere una cuenta verificada y sesion activa. El flujo
+completo es: registrar cuenta (escenario 2) → verificar email (escenario 3) →
+login (escenario 5) → registrar negocio.
+
+Con el `accessToken` del login (role: user):
 
 Request:
 
 ```text
-POST {{baseUrl}}/auth/register-business
+POST {{baseUrl}}/business
+Authorization: Bearer {{accessToken}}
 ```
 
 Body:
 
 ```json
 {
-  "email": "owner@example.com",
-  "password": "Password1",
-  "firstName": "Owner",
-  "lastName": "Demo",
-  "businessName": "Cafe Espera",
-  "businessSlug": "cafe-espera",
-  "categoryId": "11111111-1111-4111-8111-111111111111"
+  "name": "Cafe Espera",
+  "categoryId": "11111111-1111-4111-8111-111111111111",
+  "address": "Av. Corrientes 1234, CABA"
 }
 ```
 
 Resultado esperado:
 
 - `201`
-- `approvalStatus`: `pending`
-- `userId`
-- `businessId`
+- `businessId`: guardar en variable `businessId`
+- `businessSlug`: identificador publico para navegacion
+- `status`: `pending`
 
-### 12. Login de negocio pendiente
+Inmediatamente despues llamar refresh-token para obtener JWT con role: business_admin:
+
+```text
+POST {{baseUrl}}/auth/refresh-token
+```
+
+Nota: `POST /api/auth/register-business` sigue activo pero esta deprecado.
+No usarlo en flujos nuevos.
+
+### 12. Login con negocio pendiente
+
+Un usuario con negocio en estado `pending` puede iniciar sesion normalmente
+y ver el estado de revision desde el panel.
 
 Request:
 
@@ -413,8 +428,9 @@ Body:
 
 Resultado esperado:
 
-- `403`
-- codigo funcional `ACCOUNT_PENDING_REVIEW`
+- `200`
+- `accessToken` y `refreshToken`
+- el panel muestra el negocio en estado "En revision"
 
 ### 13. Aprobacion de negocio
 
@@ -433,39 +449,31 @@ Resultado esperado:
 - `approvalStatus`: `approved`
 - email de bienvenida best-effort
 
-### 14. Registro de negocio con Google OAuth
+### 14. Login / Registro con Google OAuth (HU-1.9)
 
-Antes de probar OAuth, crear credenciales en Google Cloud Console:
+`POST /api/auth/login/google` implementa find-or-create: si el email de Google
+no tiene cuenta en Espera, la crea automaticamente (role: user). El mismo
+endpoint sirve para el boton de Google en login y en registro.
+
+Antes de probar, configurar credenciales en Google Cloud Console:
 
 ```text
 https://console.cloud.google.com/apis/credentials
 ```
 
-Configurar OAuth consent screen si Google lo solicita:
+Registrar este redirect URI exacto (debe coincidir con `GOOGLE_CALLBACK_URL` en `.env`):
 
 ```text
-https://console.cloud.google.com/apis/credentials/consent
+http://localhost:5173/oauth/google/callback
 ```
 
-Crear una credencial:
-
-```text
-Create credentials > OAuth client ID > Web application
-```
-
-Para desarrollo, registrar este redirect URI:
-
-```text
-http://localhost:5173/auth/google/callback
-```
-
-El mismo valor debe quedar en `.env`:
+`.env`:
 
 ```env
-GOOGLE_CALLBACK_URL=http://localhost:5173/auth/google/callback
+GOOGLE_CALLBACK_URL=http://localhost:5173/oauth/google/callback
 ```
 
-Request para obtener la URL de autorizacion:
+Paso 1 — obtener URL de autorizacion:
 
 ```text
 GET {{baseUrl}}/auth/google/url
@@ -474,70 +482,13 @@ GET {{baseUrl}}/auth/google/url
 Resultado esperado:
 
 - `200`
-- respuesta con `url`
+- respuesta con `url` y `state`
 - cookie firmada `googleOAuthState`
 
-Abrir el valor de `url` en el navegador. Google redirige al
-`GOOGLE_CALLBACK_URL` con query params `code` y `state`.
+Paso 2 — abrir el valor de `url` en el navegador. Google redirige a
+`/oauth/google/callback` con query params `code` y `state`.
 
-El frontend debe capturar `code` y `state`, conservar la cookie del navegador y
-llamar a uno de estos endpoints:
-
-```text
-POST {{baseUrl}}/auth/register-business/google
-POST {{baseUrl}}/auth/login/google
-```
-
-Para registro de negocio con Google, body esperado:
-
-```json
-{
-  "code": "code-devuelto-por-google",
-  "state": "state-devuelto-por-google",
-  "businessName": "Cafe Espera Google",
-  "businessSlug": "cafe-espera-google",
-  "categoryId": "11111111-1111-4111-8111-111111111111"
-}
-```
-
-Resultado esperado:
-
-- `200`
-- `status`: `pending_approval`
-- `email`
-- `userId`
-- `businessId`
-
-Notas:
-
-- `state` tambien viaja en cookie firmada; por eso la llamada posterior debe
-  conservar cookies del mismo navegador/cliente.
-- Google Auth para app movil (`HU-1.2` y `HU-1.4`) requiere credenciales por
-  plataforma y no queda cubierto por esta prueba web.
-- El backend no expone `GET /api/auth/google/callback`; el callback pertenece al
-  frontend.
-
-### 15. Login con Google OAuth
-
-El login con Google requiere un `code` nuevo. Los authorization codes de Google
-son de un solo uso, asi que no se puede reutilizar el `code` usado para registrar
-el negocio.
-
-Pasos:
-
-1. Solicitar una nueva URL:
-
-```text
-GET {{baseUrl}}/auth/google/url
-```
-
-2. Abrir el valor de `url` en el navegador.
-
-3. Autenticarse con la misma cuenta Google.
-
-4. Copiar de la URL final los valores `code` y `state`.
-
-5. Enviar el login:
+Paso 3 — desde el frontend (o Postman conservando la cookie del navegador):
 
 ```text
 POST {{baseUrl}}/auth/login/google
@@ -552,32 +503,39 @@ Body:
 }
 ```
 
-Resultado esperado si la cuenta negocio ya esta aprobada:
+Resultado esperado (cuenta nueva o existente aprobada/pendiente):
 
 - `200`
-- `accessToken`
-- `refreshToken`
+- `accessToken` y `refreshToken`
 - cookie `refreshToken` seteada
-- sesion persistida en `refresh_sessions`
 
-Resultado esperado si la cuenta negocio sigue pendiente:
+Si la cuenta es nueva (role: user), para registrar un negocio continuar con
+escenario 11.
 
-- `403`
-- codigo funcional `ACCOUNT_PENDING_REVIEW`
-
-Resultado esperado si el email existe pero pertenece a una cuenta local:
+Resultado esperado si el email existe con cuenta local:
 
 - `400`
 - codigo funcional `AUTH_PROVIDER_MISMATCH`
 
 Notas:
 
-- La llamada a `/auth/login/google` debe conservar la cookie
-  `googleOAuthState` emitida al pedir `/auth/google/url`.
-- Si aparece `GOOGLE_OAUTH_STATE_MISMATCH`, generar una URL nueva desde el mismo
-  cliente y repetir el flujo.
-- Si aparece `redirect_uri_mismatch`, el `GOOGLE_CALLBACK_URL` del `.env` no
-  coincide exactamente con los redirect URIs autorizados en Google Console.
+- La llamada debe conservar la cookie `googleOAuthState` emitida en el paso 1.
+- Si aparece `GOOGLE_OAUTH_STATE_MISMATCH`, generar una URL nueva y repetir.
+- Si aparece `redirect_uri_mismatch`, verificar que el Redirect URI en Google
+  Cloud Console coincida exactamente con `GOOGLE_CALLBACK_URL` en `.env`.
+- El backend no expone `GET /api/auth/google/callback`; el callback pertenece al frontend.
+- `POST /api/auth/register-business/google` esta deprecado; no usarlo.
+
+### 15. Login con Google OAuth — cuenta con negocio pendiente
+
+Un usuario con negocio en estado `pending` puede iniciar sesion con Google
+normalmente. No hay bloqueo por `pending`.
+
+Seguir los mismos pasos del escenario 14. Resultado esperado:
+
+- `200`
+- `accessToken` y `refreshToken`
+- el panel muestra el negocio en estado "En revision"
 
 ## Evidencia sugerida
 

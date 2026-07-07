@@ -314,6 +314,40 @@ Dos ramas fusionadas a `develop` antes de arrancar Épica 3:
   que no existían en el frontend; también se corrigió el puerto default de
   `APP_URL` en `.env.example` (`3000 → 5173`).
 
+## Bugfixes de alineación con backlog v2.3 (2026-07-07)
+
+### bugfix/align-registration-flow-hu18 (PR #32)
+
+Alineación del flujo de registro de negocio con HU-1.8 del backlog v2.3:
+
+- **Flujo separado**: el registro de negocio pasa a ser un paso posterior al
+  login, no un signup en un solo paso. `POST /api/auth/register-business`
+  queda deprecado.
+- **`LoginUseCase`**: elimina el bloqueo de login para `business_admin +
+  pending`; el usuario ve su negocio en estado de revisión desde el panel.
+- **`RegisterBusinessUseCase`**: acepta `role: user` y promueve al usuario a
+  `business_admin + pending` al crear su primer negocio. La ruta `POST
+  /api/business` deja de requerir `authorize("business:edit")`.
+- **Contratos de `GET /api/business/me`**: agrega `status`, elimina
+  `organizationId` (UUID interno sin uso en frontend).
+- **Contrato de `POST /api/business`**: devuelve `{ businessId, businessSlug,
+  status: "pending" }`.
+
+### bugfix/align-google-oauth-hu19 (PR #34)
+
+Alineación de Google OAuth con la arquitectura HU-1.8:
+
+- **`LoginWithGoogleUseCase`**: implementa semántica find-or-create. Si el
+  email de Google no tiene cuenta, la crea (`role: user`, `isEmailVerified:
+  true`) y emite tokens directamente. El mismo endpoint `POST
+  /api/auth/login/google` sirve para el botón de Google en login y en
+  registro.
+- Elimina el bloqueo de login para `business_admin + pending` en el flujo
+  Google, consistente con el fix del flujo local.
+- `POST /api/auth/register-business/google` queda deprecado.
+- `GOOGLE_CALLBACK_URL` debe apuntar al frontend
+  (`/oauth/google/callback`), no al backend.
+
 ## Siguiente épica
 
 La siguiente épica es `Épica 3 — Cola (Queue)`. El schema y los límites de
@@ -326,8 +360,7 @@ plan ya están listos. Puntos de entrada clave:
 - `Business.status` debe verificarse antes de permitir operaciones de cola;
   el check de ownership en use cases ya existe — solo hay que sumar la
   comprobación de `status === "approved"`.
-- `ListMyBusinessesUseCase` no expone `Business.status` todavía; debe
-  agregarse al output para que el panel frontend sepa el estado de aprobación.
+- `ListMyBusinessesUseCase` expone `Business.status` en el output (`GET /api/business/me`).
 
 Documentación de referencia:
 
