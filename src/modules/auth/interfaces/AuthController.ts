@@ -23,7 +23,6 @@ import { ResetPasswordUseCase } from "../application/ResetPasswordUseCase";
 import { VerifyEmailUseCase } from "../application/VerifyEmailUseCase";
 import { RegisterBusinessAccountUseCase } from "../application/RegisterBusinessAccountUseCase";
 import { RegisterBusinessWithGoogleUseCase } from "../application/RegisterBusinessWithGoogleUseCase";
-import { RegisterWithGoogleUseCase } from "../application/RegisterWithGoogleUseCase";
 import { ApproveBusinessAccountUseCase } from "../application/ApproveBusinessAccountUseCase";
 import { GoogleOAuthService } from "../infrastructure/GoogleOAuthService";
 
@@ -40,7 +39,6 @@ export class AuthController {
     private readonly verifyEmailUseCase = new VerifyEmailUseCase(),
     private readonly registerBusinessAccountUseCase = new RegisterBusinessAccountUseCase(),
     private readonly registerBusinessWithGoogleUseCase = new RegisterBusinessWithGoogleUseCase(),
-    private readonly registerWithGoogleUseCase = new RegisterWithGoogleUseCase(),
     private readonly approveBusinessAccountUseCase = new ApproveBusinessAccountUseCase(),
     private readonly googleOAuthService = new GoogleOAuthService(),
   ) {}
@@ -131,22 +129,6 @@ export class AuthController {
     );
 
     response.status(200).json(result);
-  };
-
-  /**
-   * Handles user registration through Google OAuth.
-   * Google guarantees email is verified, so tokens are issued immediately.
-   */
-  public registerWithGoogle = async (
-    request: Request,
-    response: Response,
-  ): Promise<void> => {
-    this.assertValidGoogleOAuthState(request, response);
-
-    const result = await this.registerWithGoogleUseCase.execute(request.body);
-    setRefreshTokenCookie(response, result.refreshToken);
-    logger.info("User registered with Google");
-    response.status(201).json(result);
   };
 
   /**
