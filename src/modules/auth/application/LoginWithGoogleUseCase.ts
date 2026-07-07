@@ -48,40 +48,51 @@ export class LoginWithGoogleUseCase
       );
     }
 
-    const user = await this.userRepo.findByEmail(profile.email);
-    if (!user) {
-      throw AppError.notFound("No account was found for this Google email.", "ACCOUNT_NOT_FOUND");
-    }
+    const existing = await this.userRepo.findByEmail(profile.email);
+    let resolvedUser;
 
-    if (user.authProvider !== "google") {
-      throw AppError.badRequest(
-        "This account must sign in with email and password.",
-        "AUTH_PROVIDER_MISMATCH",
-      );
-    }
-
-    if (user.googleId && user.googleId !== profile.googleId) {
-      throw AppError.unauthorized("Invalid Google account.", "GOOGLE_ACCOUNT_MISMATCH");
-    }
-
-    if (user.role === "business_admin" && user.approvalStatus === "rejected") {
-      throw AppError.forbidden(
-        "Your account approval request was rejected.",
-        "ACCOUNT_REJECTED",
-      );
-    }
-
-    if (!user.googleId) {
-      await this.userRepo.save({
-        ...user,
+    if (!existing) {
+      resolvedUser = await this.userRepo.save({
+        id: randomUUID(),
+        email: profile.email,
+        firstName: profile.firstName || "Google",
+        lastName: profile.lastName || "User",
+        role: "user",
+        approvalStatus: "approved",
+        authProvider: "google",
         googleId: profile.googleId,
+        isEmailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
+    } else {
+      if (existing.authProvider !== "google") {
+        throw AppError.badRequest(
+          "This account must sign in with email and password.",
+          "AUTH_PROVIDER_MISMATCH",
+        );
+      }
+
+      if (existing.googleId && existing.googleId !== profile.googleId) {
+        throw AppError.unauthorized("Invalid Google account.", "GOOGLE_ACCOUNT_MISMATCH");
+      }
+
+      if (existing.role === "business_admin" && existing.approvalStatus === "rejected") {
+        throw AppError.forbidden(
+          "Your account approval request was rejected.",
+          "ACCOUNT_REJECTED",
+        );
+      }
+
+      resolvedUser = existing.googleId
+        ? existing
+        : await this.userRepo.save({ ...existing, googleId: profile.googleId });
     }
 
     const { token, hash } = this.tokenService.generateRefreshToken();
     await this.refreshSessionRepo.save({
       id: randomUUID(),
-      userId: user.id,
+      userId: resolvedUser.id,
       tokenHash: hash,
       expiresAt: this.tokenService.getRefreshTokenExpiryDate(),
       createdAt: new Date(),
@@ -89,7 +100,7 @@ export class LoginWithGoogleUseCase
     });
 
     return {
-      accessToken: this.tokenService.generateAccessToken(user),
+      accessToken: this.tokenService.generateAccessToken(resolvedUser),
       refreshToken: token,
     };
   }

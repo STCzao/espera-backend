@@ -93,6 +93,29 @@ describe("LoginWithGoogleUseCase", () => {
     expect(refreshSessionRepo.all()).toHaveLength(1);
   });
 
+  it("creates account and issues tokens when Google email is new (find-or-create)", async () => {
+    const userRepo = new InMemoryUserRepo([]);
+    const refreshSessionRepo = new InMemoryRefreshSessionRepo();
+    const useCase = new LoginWithGoogleUseCase(
+      userRepo,
+      refreshSessionRepo,
+      tokenService,
+      buildGoogleOAuthService(),
+    );
+
+    const result = await useCase.execute({ code: "google-code", state: "oauth-state" });
+
+    expect(result).toEqual({ accessToken: "google-access-token", refreshToken: "google-refresh-token" });
+    const created = userRepo.all()[0];
+    expect(created).toMatchObject({
+      email: "owner.google@example.com",
+      role: "user",
+      authProvider: "google",
+      isEmailVerified: true,
+    });
+    expect(refreshSessionRepo.all()[0].userId).toBe(created.id);
+  });
+
   it("rejects local accounts on Google login", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({

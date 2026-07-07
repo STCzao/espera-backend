@@ -19,8 +19,7 @@ authRouter.post(
   controller.registerBusinessAccount,
 );
 authRouter.get("/google/url", rateLimiter, controller.getGoogleAuthorizationUrl);
-authRouter.post("/register/google", rateLimiter, controller.registerWithGoogle);
-// @deprecated — flujo previo a v2.2 del backlog. Usar POST /register/google + POST /api/business.
+// @deprecated — flujo previo a v2.2 del backlog. Usar POST /login/google + POST /api/business.
 authRouter.post(
   "/register-business/google",
   rateLimiter,
