@@ -39,6 +39,30 @@ describe("ListMyBusinessesUseCase", () => {
     expect(business).toHaveProperty("id");
   });
 
+  it("includes profile fields needed to preload the edit form", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({
+        ownerUserId: OWNER_ID,
+        categoryId: "11111111-1111-4111-8111-111111111111",
+        address: "Av. Corrientes 1234, CABA",
+        latitude: -34.6037,
+        longitude: -58.3816,
+      }),
+    ]);
+    const useCase = new ListMyBusinessesUseCase(businessRepo);
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+    const business = result.businesses[0];
+
+    expect(business).toMatchObject({
+      categoryId: "11111111-1111-4111-8111-111111111111",
+      address: "Av. Corrientes 1234, CABA",
+      latitude: -34.6037,
+      longitude: -58.3816,
+    });
+    expect(business).not.toHaveProperty("organizationId");
+  });
+
   it("returns empty array when owner has no businesses", async () => {
     const useCase = new ListMyBusinessesUseCase(new InMemoryBusinessRepo());
 
