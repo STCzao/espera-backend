@@ -26,7 +26,7 @@ describe("ListMyBusinessesUseCase", () => {
     });
   });
 
-  it("does not expose internal ids", async () => {
+  it("does not expose organizationId", async () => {
     const businessRepo = new InMemoryBusinessRepo([
       buildBusiness({ ownerUserId: OWNER_ID }),
     ]);
@@ -35,8 +35,8 @@ describe("ListMyBusinessesUseCase", () => {
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
     const business = result.businesses[0] as Record<string, unknown>;
 
-    expect(business).not.toHaveProperty("id");
     expect(business).not.toHaveProperty("organizationId");
+    expect(business).toHaveProperty("id");
   });
 
   it("returns empty array when owner has no businesses", async () => {

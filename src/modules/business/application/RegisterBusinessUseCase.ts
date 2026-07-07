@@ -27,6 +27,7 @@ const registerBusinessSchema = z.object({
 export type RegisterBusinessInput = z.infer<typeof registerBusinessSchema>;
 
 export interface RegisterBusinessOutput {
+  businessId: string;
   businessSlug: string;
   status: "pending";
 }
@@ -119,6 +120,7 @@ export class RegisterBusinessUseCase
       }
 
       return {
+        businessId: business.id,
         businessSlug: business.slug,
         status: "pending",
       };
