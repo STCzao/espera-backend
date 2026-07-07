@@ -45,7 +45,7 @@ export class BusinessController {
       ...request.body,
       ownerUserId: request.user?.id ?? "",
     });
-    logger.info({ businessId: result.businessId }, "Business registered");
+    logger.info({ businessSlug: result.businessSlug }, "Business registered");
     response.status(201).json(result);
   };
 

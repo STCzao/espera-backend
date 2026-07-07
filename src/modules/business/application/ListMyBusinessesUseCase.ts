@@ -13,10 +13,9 @@ export type ListMyBusinessesInput = z.infer<typeof listMyBusinessesSchema>;
 
 export interface ListMyBusinessesOutput {
   businesses: Array<{
-    id: string;
     name: string;
     slug: string;
-    organizationId: string;
+    status: string;
     listingStatus: string;
     operationalStatus: string;
   }>;
@@ -39,10 +38,9 @@ export class ListMyBusinessesUseCase
 
     return {
       businesses: businesses.map((business) => ({
-        id: business.id,
         name: business.name,
         slug: business.slug,
-        organizationId: business.organizationId,
+        status: business.status,
         listingStatus: business.listingStatus,
         operationalStatus: business.operationalStatus,
       })),
