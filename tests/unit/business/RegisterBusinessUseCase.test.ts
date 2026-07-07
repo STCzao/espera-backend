@@ -111,7 +111,7 @@ describe("RegisterBusinessUseCase", () => {
     const result = await useCase.execute(validInput);
     const created = businessRepo.all()[0];
 
-    expect(result).toEqual({ businessId: created.id });
+    expect(result).toEqual({ businessSlug: created.slug, status: "pending" });
     expect(created).toMatchObject({
       name: "Cafe Espera",
       categoryId: CATEGORY_ID,
