@@ -22,6 +22,7 @@ export interface ListMyBusinessesOutput {
     address?: string;
     latitude?: number;
     longitude?: number;
+    activeServiceWindows: number;
     listingStatus: string;
     operationalStatus: string;
   }>;
@@ -53,6 +54,7 @@ export class ListMyBusinessesUseCase
         address: business.address,
         latitude: business.latitude,
         longitude: business.longitude,
+        activeServiceWindows: business.activeServiceWindows,
         listingStatus: business.listingStatus,
         operationalStatus: business.operationalStatus,
       })),
