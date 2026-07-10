@@ -18,6 +18,7 @@ export interface ListMyBusinessesOutput {
     slug: string;
     categoryId: string;
     status: string;
+    phone?: string;
     address?: string;
     latitude?: number;
     longitude?: number;
@@ -48,6 +49,7 @@ export class ListMyBusinessesUseCase
         slug: business.slug,
         categoryId: business.categoryId,
         status: business.status,
+        phone: business.phone,
         address: business.address,
         latitude: business.latitude,
         longitude: business.longitude,

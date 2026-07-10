@@ -14,6 +14,7 @@ export interface Business {
   slug: string;
   categoryId: string;
   status: BusinessStatus;
+  phone?: string;
   address?: string;
   latitude?: number;
   longitude?: number;
