@@ -17,6 +17,7 @@ const toBusiness = (raw: {
   slug: string;
   categoryId: string;
   status: string;
+  phone: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -33,6 +34,7 @@ const toBusiness = (raw: {
   slug: raw.slug,
   categoryId: raw.categoryId,
   status: raw.status.toLowerCase() as Business["status"],
+  phone: raw.phone ?? undefined,
   address: raw.address ?? undefined,
   latitude: raw.latitude ?? undefined,
   longitude: raw.longitude ?? undefined,
@@ -67,6 +69,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       slug: entity.slug,
       categoryId: entity.categoryId,
       status: toStatusEnum(entity.status),
+      phone: entity.phone ?? null,
       address: entity.address ?? null,
       latitude: entity.latitude ?? null,
       longitude: entity.longitude ?? null,

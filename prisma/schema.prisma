@@ -139,6 +139,7 @@ model Business {
   name        String
   slug        String   @unique
   categoryId  String
+  phone       String?
   address     String?
   latitude    Float?
   longitude   Float?

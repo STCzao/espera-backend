@@ -20,6 +20,7 @@ import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 const registerBusinessSchema = z.object({
   name: z.string().trim().min(2, "Business name is required.").max(120),
   categoryId: z.string().uuid("Invalid category id."),
+  phone: z.string().trim().max(30).optional(),
   address: z.string().trim().min(5, "Business address is required.").max(200),
   ownerUserId: z.string().uuid("Invalid owner user id."),
 });
@@ -99,6 +100,7 @@ export class RegisterBusinessUseCase
         slug,
         categoryId: parsed.data.categoryId,
         status: "pending",
+        phone: parsed.data.phone,
         address: parsed.data.address,
         latitude: coordinates?.latitude,
         longitude: coordinates?.longitude,

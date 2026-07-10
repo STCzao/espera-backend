@@ -50,6 +50,7 @@ export const buildBusiness = (
   slug: "cafe-espera",
   categoryId: "11111111-1111-4111-8111-111111111111",
   status: "pending",
+  phone: "+54 11 1234-5678",
   address: "Av. Siempre Viva 123",
   latitude: -34.6037,
   longitude: -58.3816,

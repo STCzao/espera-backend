@@ -14,6 +14,7 @@ const updateBusinessProfileSchema = z.object({
   ownerUserId: z.string().uuid("Invalid owner user id."),
   name: z.string().trim().min(2, "Business name is required.").max(120),
   categoryId: z.string().uuid("Invalid category id."),
+  phone: z.string().trim().max(30).optional(),
   address: z.string().trim().min(5, "Business address is required.").max(200),
 });
 
@@ -23,6 +24,7 @@ export interface UpdateBusinessProfileOutput {
   businessId: string;
   name: string;
   categoryId: string;
+  phone?: string;
   address: string;
   latitude?: number;
   longitude?: number;
@@ -67,6 +69,7 @@ export class UpdateBusinessProfileUseCase
       ...business,
       name: parsed.data.name,
       categoryId: parsed.data.categoryId,
+      phone: parsed.data.phone,
       address: parsed.data.address,
       latitude: coordinates?.latitude,
       longitude: coordinates?.longitude,
@@ -77,6 +80,7 @@ export class UpdateBusinessProfileUseCase
       businessId: updatedBusiness.id,
       name: updatedBusiness.name,
       categoryId: updatedBusiness.categoryId,
+      phone: updatedBusiness.phone,
       address: updatedBusiness.address ?? parsed.data.address,
       latitude: updatedBusiness.latitude,
       longitude: updatedBusiness.longitude,
