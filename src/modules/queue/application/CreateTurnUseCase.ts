@@ -1,28 +1,83 @@
-import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
-import type { UseCase } from "../../../shared/kernel/UseCase";
+import { AppError } from "@shared/kernel/AppError";
+import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
+import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import type { IQueueRepo } from "../domain/IQueueRepo";
+import type { ITurnRepo } from "../domain/ITurnRepo";
+import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
+import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
-export interface CreateTurnInput {
-  queueId: string;
-  customerId?: string;
-}
+const schema = z.object({
+  queueId: z.string().uuid("Invalid queue id."),
+  customerId: z.string().uuid().optional(),
+});
+
+export type CreateTurnInput = z.infer<typeof schema>;
 
 export interface CreateTurnOutput {
   turnId: string;
   queueId: string;
+  displayNumber: string;
+  position: number;
 }
 
-/**
- * Placeholder turn creation flow.
- *
- * The real implementation must allocate sequential numbers, persist the turn,
- * publish realtime updates and enforce business availability.
- */
+const todayUTC = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+};
+
 export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOutput> {
+  public constructor(
+    private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
+    private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+  ) {}
+
   public async execute(input: CreateTurnInput): Promise<CreateTurnOutput> {
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
+
+    const queue = await this.queueRepo.findById(parsed.data.queueId);
+    if (!queue) throw AppError.notFound("Queue not found.");
+    if (!queue.isActive) throw AppError.conflict("This queue is not accepting new turns.");
+
+    const business = await this.businessRepo.findById(queue.businessId);
+    if (!business) throw AppError.notFound("Business not found.");
+    if (business.status !== "approved") {
+      throw AppError.conflict("This business is not currently accepting customers.");
+    }
+    if (business.operationalStatus === "paused" || business.operationalStatus === "closed") {
+      throw AppError.conflict(`This business is ${business.operationalStatus} and not accepting new turns.`);
+    }
+
+    if (parsed.data.customerId) {
+      const existing = await this.turnRepo.findActiveByCustomerInAnyBusiness(
+        parsed.data.customerId,
+      );
+      if (existing) {
+        throw AppError.conflict(
+          "You already have an active turn at another business. Cancel it before taking a new one.",
+        );
+      }
+    }
+
+    const turn = await this.turnRepo.createWithNextNumber({
+      queueId: parsed.data.queueId,
+      businessId: queue.businessId,
+      customerId: parsed.data.customerId,
+      priority: "registered",
+      source: "app",
+      turnDate: todayUTC(),
+      prefix: queue.prefix,
+    });
+
     return {
-      turnId: randomUUID(),
-      queueId: input.queueId
+      turnId: turn.id,
+      queueId: turn.queueId,
+      displayNumber: turn.displayNumber,
+      position: turn.number,
     };
   }
 }

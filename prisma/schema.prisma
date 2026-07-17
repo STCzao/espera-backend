@@ -75,6 +75,27 @@ enum MembershipRole {
   EMPLOYEE
 }
 
+enum TurnStatus {
+  WAITING
+  CALLED
+  CANCELLED
+  COMPLETED
+}
+
+enum TurnPriority {
+  ARRIVED
+  PHYSICAL
+  IN_TRANSIT
+  REGISTERED
+}
+
+enum TurnSource {
+  APP
+  MANUAL
+  QR
+  WEB
+}
+
 enum SubscriptionPlan {
   BASIC
   PRO
@@ -106,6 +127,7 @@ model User {
   refreshSessions         RefreshSession[]
   employeeMemberships     BusinessEmployee[]
   memberships             Membership[]
+  turns                   Turn[]
 
   @@map("users")
 }
@@ -160,6 +182,8 @@ model Business {
   qrCodes BusinessQrCode[]
   employees BusinessEmployee[]
   employeeInvitations BusinessEmployeeInvitation[]
+  queues Queue[]
+  turns Turn[]
 
   @@index([organizationId])
   @@map("businesses")
@@ -292,4 +316,48 @@ model BusinessNonWorkingDay {
   @@unique([businessId, date])
   @@index([businessId])
   @@map("business_non_working_days")
+}
+
+model Queue {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  prefix     String   @default("A")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  turns      Turn[]
+
+  @@index([businessId])
+  @@map("queues")
+}
+
+model Turn {
+  id            String       @id @default(uuid())
+  queueId       String
+  businessId    String
+  customerId    String?
+  guestName     String?
+  number        Int
+  displayNumber String
+  status        TurnStatus   @default(WAITING)
+  priority      TurnPriority @default(REGISTERED)
+  source        TurnSource   @default(APP)
+  turnDate      DateTime
+  calledAt      DateTime?
+  attendedAt    DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  queue      Queue    @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id])
+  customer   User?    @relation(fields: [customerId], references: [id])
+
+  @@index([queueId, status])
+  @@index([customerId, status])
+  @@index([businessId, turnDate])
+  @@map("turns")
 }
