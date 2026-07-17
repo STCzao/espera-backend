@@ -14,7 +14,8 @@ import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
 import { businessRouter } from "./modules/business/interfaces/business.routes";
 import { qrRouter } from "./modules/business/interfaces/qr.routes";
-import { queueRouter } from "./modules/queue/interfaces/queue.routes";
+import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
+import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
 import { prisma } from "./shared/infrastructure/prisma";
@@ -31,7 +32,7 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 2_000): Promise<T
   ]);
 };
 
-export const createApp = (): express.Express => {
+export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): express.Express => {
   const app = express();
 
   app.use(helmet());
@@ -72,15 +73,16 @@ export const createApp = (): express.Express => {
   app.use(`${apiPrefix}/auth`, authRouter);
   app.use(`${apiPrefix}/business`, businessRouter);
   app.use(`${apiPrefix}/qr`, qrRouter);
-  app.use(`${apiPrefix}/queue`, queueRouter);
+  app.use(`${apiPrefix}/queue`, createQueueRouter(deps.emitter ?? null));
   app.use(errorHandler);
 
   return app;
 };
 
 export const createServer = () => {
-  const app = createApp();
-  const server = http.createServer(app);
+  // Create the HTTP server before the app so that Socket.IO can attach to it
+  // first, letting us pass the emitter into createApp.
+  const server = http.createServer();
 
   const io = new SocketIOServer(server, {
     cors: {
@@ -89,8 +91,19 @@ export const createServer = () => {
     }
   });
 
+  const emitter = new SocketIOEmitter(io);
+  const app = createApp({ emitter });
+
+  // Attach Express as the request handler after both io and app are ready.
+  server.on("request", app);
+
   io.on("connection", (socket) => {
     logger.info({ socketId: socket.id }, "Socket connected");
+
+    socket.on("queue:join", ({ queueId }: { queueId: string }) => {
+      void socket.join(`queue:${queueId}`);
+      logger.info({ socketId: socket.id, queueId }, "Socket joined queue room");
+    });
 
     socket.on("disconnect", () => {
       logger.info({ socketId: socket.id }, "Socket disconnected");

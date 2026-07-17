@@ -1,6 +1,7 @@
 export * from "./application/CallNextUseCase";
 export * from "./application/CancelTurnUseCase";
 export * from "./application/CreateTurnUseCase";
+export * from "./application/GetMyTurnUseCase";
 export * from "./domain/IQueueRepo";
 export * from "./domain/ITurnRepo";
 export * from "./domain/Queue";
