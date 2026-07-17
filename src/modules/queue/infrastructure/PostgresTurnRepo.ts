@@ -85,9 +85,24 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async findNextWaitingTurn(queueId: string): Promise<Turn | null> {
-    const row = await prisma.turn.findFirst({
+    const PRIORITY_RANK: Record<string, number> = {
+      ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
+    };
+    const rows = await prisma.turn.findMany({
       where: { queueId, status: "WAITING" },
       orderBy: { createdAt: "asc" },
+    });
+    const sorted = rows.sort((a, b) => {
+      const pa = PRIORITY_RANK[a.priority] ?? 5;
+      const pb = PRIORITY_RANK[b.priority] ?? 5;
+      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+    });
+    return sorted[0] ? toTurn(sorted[0]) : null;
+  }
+
+  public async findCalledTurnByQueue(queueId: string): Promise<Turn | null> {
+    const row = await prisma.turn.findFirst({
+      where: { queueId, status: "CALLED" },
     });
     return row ? toTurn(row) : null;
   }
@@ -100,6 +115,28 @@ export class PostgresTurnRepo implements ITurnRepo {
       },
     });
     return row ? toTurn(row) : null;
+  }
+
+  public async findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null> {
+    const row = await prisma.turn.findFirst({
+      where: {
+        customerId,
+        queueId,
+        status: { in: ["WAITING", "CALLED"] },
+      },
+    });
+    return row ? toTurn(row) : null;
+  }
+
+  public async countWaitingAhead(queueId: string, turnNumber: number, turnDate: Date): Promise<number> {
+    return prisma.turn.count({
+      where: {
+        queueId,
+        turnDate,
+        status: "WAITING",
+        number: { lt: turnNumber },
+      },
+    });
   }
 
   public async save(entity: Turn): Promise<Turn> {

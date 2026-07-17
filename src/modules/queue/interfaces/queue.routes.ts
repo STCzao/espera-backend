@@ -2,12 +2,27 @@ import { Router } from "express";
 
 import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
+import { CallNextUseCase } from "../application/CallNextUseCase";
+import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
+import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
+import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
+import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 import { QueueController } from "./QueueController";
 
-const controller = new QueueController();
+export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Router => {
+  const controller = new QueueController(
+    new CreateTurnUseCase(),
+    new GetMyTurnUseCase(),
+    new CallNextUseCase(undefined, undefined, emitter),
+    new CancelTurnUseCase(),
+  );
 
-export const queueRouter = Router();
+  const router = Router();
 
-queueRouter.post("/:queueId/turns", authenticate, authorize("turn:create"), controller.createTurn);
-queueRouter.post("/turns/call-next", authenticate, authorize("queue:call_next"), controller.callNext);
-queueRouter.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
+  router.post("/:queueId/turns", authenticate, authorize("turn:create"), controller.createTurn);
+  router.get("/:queueId/turns/my-turn", authenticate, authorize("turn:read_own"), controller.getMyTurn);
+  router.post("/turns/call-next", authenticate, authorize("queue:call_next"), controller.callNext);
+  router.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
+
+  return router;
+};

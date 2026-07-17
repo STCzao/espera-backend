@@ -103,8 +103,23 @@ export class InMemoryTurnRepo implements ITurnRepo {
   }
 
   public async findNextWaitingTurn(queueId: string): Promise<Turn | null> {
+    const PRIORITY_RANK: Record<string, number> = {
+      arrived: 1, physical: 2, in_transit: 3, registered: 4,
+    };
+    const waiting = [...this.turns.values()].filter(
+      (t) => t.queueId === queueId && t.status === "waiting",
+    );
+    waiting.sort((a, b) => {
+      const pa = PRIORITY_RANK[a.priority] ?? 5;
+      const pb = PRIORITY_RANK[b.priority] ?? 5;
+      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+    });
+    return waiting[0] ?? null;
+  }
+
+  public async findCalledTurnByQueue(queueId: string): Promise<Turn | null> {
     return (
-      [...this.turns.values()].find((t) => t.queueId === queueId && t.status === "waiting") ?? null
+      [...this.turns.values()].find((t) => t.queueId === queueId && t.status === "called") ?? null
     );
   }
 
@@ -114,6 +129,27 @@ export class InMemoryTurnRepo implements ITurnRepo {
         (t) => t.customerId === customerId && (t.status === "waiting" || t.status === "called"),
       ) ?? null
     );
+  }
+
+  public async findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null> {
+    return (
+      [...this.turns.values()].find(
+        (t) =>
+          t.customerId === customerId &&
+          t.queueId === queueId &&
+          (t.status === "waiting" || t.status === "called"),
+      ) ?? null
+    );
+  }
+
+  public async countWaitingAhead(queueId: string, turnNumber: number, turnDate: Date): Promise<number> {
+    return [...this.turns.values()].filter(
+      (t) =>
+        t.queueId === queueId &&
+        t.turnDate.getTime() === turnDate.getTime() &&
+        t.status === "waiting" &&
+        t.number < turnNumber,
+    ).length;
   }
 
   public async save(entity: Turn): Promise<Turn> {
