@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { ISubscriptionRepo, SubscriptionPlan } from "@modules/organization/public-api";
+import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
@@ -25,6 +27,9 @@ export interface ListMyBusinessesOutput {
     activeServiceWindows: number;
     listingStatus: string;
     operationalStatus: string;
+    plan: SubscriptionPlan;
+    subscriptionStatus: string;
+    trialEndsAt: string | null;
   }>;
 }
 
@@ -33,6 +38,7 @@ export class ListMyBusinessesUseCase
 {
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
   ) {}
 
   public async execute(input: ListMyBusinessesInput): Promise<ListMyBusinessesOutput> {
@@ -43,21 +49,32 @@ export class ListMyBusinessesUseCase
 
     const businesses = await this.businessRepo.findByOwnerUserId(parsed.data.ownerUserId);
 
-    return {
-      businesses: businesses.map((business) => ({
-        id: business.id,
-        name: business.name,
-        slug: business.slug,
-        categoryId: business.categoryId,
-        status: business.status,
-        phone: business.phone,
-        address: business.address,
-        latitude: business.latitude,
-        longitude: business.longitude,
-        activeServiceWindows: business.activeServiceWindows,
-        listingStatus: business.listingStatus,
-        operationalStatus: business.operationalStatus,
-      })),
-    };
+    const results = await Promise.all(
+      businesses.map(async (business) => {
+        const subscription = await this.subscriptionRepo.findByOrganizationId(
+          business.organizationId,
+        );
+
+        return {
+          id: business.id,
+          name: business.name,
+          slug: business.slug,
+          categoryId: business.categoryId,
+          status: business.status,
+          phone: business.phone,
+          address: business.address,
+          latitude: business.latitude,
+          longitude: business.longitude,
+          activeServiceWindows: business.activeServiceWindows,
+          listingStatus: business.listingStatus,
+          operationalStatus: business.operationalStatus,
+          plan: subscription?.plan ?? "basic",
+          subscriptionStatus: subscription?.status ?? "pending",
+          trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
+        };
+      }),
+    );
+
+    return { businesses: results };
   }
 }
