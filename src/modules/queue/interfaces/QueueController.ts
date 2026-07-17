@@ -9,11 +9,14 @@ export class QueueController {
   public constructor(
     private readonly createTurnUseCase = new CreateTurnUseCase(),
     private readonly callNextUseCase = new CallNextUseCase(),
-    private readonly cancelTurnUseCase = new CancelTurnUseCase()
+    private readonly cancelTurnUseCase = new CancelTurnUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
-    const result = await this.createTurnUseCase.execute(request.body);
+    const result = await this.createTurnUseCase.execute({
+      queueId: String(request.params.queueId),
+      customerId: request.user?.id,
+    });
     logger.info({ turnId: result.turnId, queueId: result.queueId }, "Turn created");
     response.status(201).json(result);
   };

@@ -8,6 +8,6 @@ const controller = new QueueController();
 
 export const queueRouter = Router();
 
-queueRouter.post("/turns", authenticate, authorize("turn:create"), controller.createTurn);
+queueRouter.post("/:queueId/turns", authenticate, authorize("turn:create"), controller.createTurn);
 queueRouter.post("/turns/call-next", authenticate, authorize("queue:call_next"), controller.callNext);
 queueRouter.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
