@@ -2,32 +2,37 @@
 
 ## Resumen
 
-La Épica 3 implementa la cola de turnos persistida de Espera. Su objetivo es
-que un usuario pueda sacar turno en un negocio desde la app, y que el negocio
-pueda operar la cola desde el panel: llamar al siguiente, cancelar turnos y
-consultar el estado en tiempo real.
+La Épica 3 implementa la cola de turnos de Espera. Permite que un usuario saque
+turno desde la app, siga su posición en tiempo real, suba de prioridad
+confirmando que está en camino o que llegó, y cancele su turno. Permite también
+que el empleado opere la cola: llamar al siguiente, ver la lista activa, agregar
+turnos manuales para personas sin app, cancelar cualquier turno y marcar turnos
+como atendidos. El orden de la cola respeta una jerarquía de prioridad con FIFO
+como desempate.
 
-Alcance total estimado: `31 pts`.
+Alcance total: `34 pts` (12 historias).
 
-Formato de referencia:
-
-- `docs/story-documentation-standard.md`
+Formato de referencia: `docs/story-documentation-standard.md`
 
 ## Estado general
 
-- Estado: `parcial`.
-- Historias implementadas: `HU-3.1`.
-- Historias pendientes: `HU-3.2`, `HU-3.3`, `HU-3.4`, `HU-3.5`, `HU-3.6`,
-  `HU-3.7`, `HU-3.8`, `HU-3.9`, `HU-3.10`, `HU-3.11`, `HU-3.12`.
+- Estado: `completo`.
+- Historias implementadas: `HU-3.1`, `HU-3.2`, `HU-3.3`, `HU-3.4`, `HU-3.5`,
+  `HU-3.6`, `HU-3.7`, `HU-3.8`, `HU-3.9`, `HU-3.10`, `HU-3.11`, `HU-3.12`.
 
 ## Contratos principales de la épica
 
-Cola:
-
 ```text
-POST /api/queues/:queueId/turns
-POST /api/queues/turns/call-next   (stub — pendiente HU-3.3)
-POST /api/queues/turns/cancel      (stub — pendiente HU-3.5)
+POST   /api/queues/:queueId/turns                        turn:create
+GET    /api/queues/:queueId/turns                        queue:read
+GET    /api/queues/:queueId/turns/my-turn                turn:read_own
+POST   /api/queues/:queueId/turns/my-turn/confirm-transit   turn:update_own
+POST   /api/queues/:queueId/turns/my-turn/confirm-arrival   turn:update_own
+POST   /api/queues/:queueId/turns/manual                 turn:create_manual
+POST   /api/queues/:queueId/turns/:turnId/cancel         turn:cancel_any
+POST   /api/queues/:queueId/turns/:turnId/attend         turn:attend
+POST   /api/queues/turns/call-next                       queue:call_next
+POST   /api/queues/turns/cancel                          turn:cancel
 ```
 
 ## Modelo de datos central
@@ -36,76 +41,6 @@ Tablas creadas en migración `20260717100000_add_queues_and_turns`:
 
 - `queues`: una cola por negocio (extensible a N colas).
 - `turns`: turno individual dentro de una cola para una fecha de operación.
-
-## HU-3.1 - Sacar turno desde la app
-
-Story points: `3`
-
-Estado: `implementado`.
-
-### Objetivo de producto
-
-Permitir que un usuario final con sesión activa saque turno en una cola
-específica de un negocio desde la app mobile. El resultado es un turno en
-estado `waiting` con un número visible (ej. `A-001`) que el usuario puede
-mostrar o consultar mientras espera.
-
-### Criterios de aceptación
-
-- Dado que selecciono un negocio y toco "Sacar turno", cuando la cola está
-  abierta, entonces recibo un número de turno único para hoy.
-- Dado que ya tengo un turno activo en otro negocio, cuando intento sacar
-  turno, entonces veo un mensaje que me pide cancelar el turno anterior.
-- Dado que el negocio está pausado o cerrado, cuando intento sacar turno,
-  entonces veo que no se aceptan nuevos turnos.
-- Dado que dos usuarios sacan turno al mismo tiempo, entonces los números
-  asignados son correlativos sin huecos ni duplicados.
-
-### Decisiones de alcance
-
-La HU cubre exclusivamente el camino de sacar turno desde la app con sesión.
-Quedan fuera:
-
-- Turno como invitado sin sesión (sin `customerId`): el endpoint acepta
-  `customerId` opcional para soportar ese flujo en el futuro, pero HU-3.1
-  no lo requiere aún.
-- Cola con sistema de prioridad (arrived, physical, in_transit): el campo
-  `priority` existe en el modelo pero HU-3.1 siempre asigna `registered`.
-- Sacar turno por QR (source `qr`) o web (source `web`): el campo `source`
-  existe; HU-3.1 siempre asigna `app`.
-- Llamar al siguiente y cancelar turno: los endpoints `call-next` y `cancel`
-  son stubs diferidos a HU-3.3 y HU-3.5.
-- Notificaciones push al recibir o cancelar turno: diferidas a épicas de
-  notificaciones.
-- Estado de cola en tiempo real (Socket.IO): diferido a HU-3.9 / HU-3.10.
-
-### Contrato backend
-
-```text
-POST /api/queues/:queueId/turns
-```
-
-Requiere autenticación y permiso `turn:create`.
-
-Request: no requiere body. El `customerId` se extrae del JWT (`request.user.id`).
-
-Respuesta `201`:
-
-```json
-{
-  "turnId": "uuid",
-  "queueId": "uuid",
-  "displayNumber": "A-001",
-  "position": 1
-}
-```
-
-- `displayNumber`: prefijo de la cola + número correlativo del día con padding
-  a 3 dígitos (ej. `A-001`, `B-012`).
-- `position`: número correlativo entero, equivalente a la posición en la cola
-  en el momento de creación.
-
-### Modelo y persistencia
 
 Entidades de dominio:
 
@@ -144,10 +79,8 @@ interface Turn {
 }
 ```
 
-Migración aplicada: `20260717100000_add_queues_and_turns`.
-
-Enums de DB: `TurnStatus`, `TurnPriority`, `TurnSource` (mayúsculas en
-Postgres; el repo mapea a minúsculas en dominio).
+Enums de DB: `TurnStatus`, `TurnPriority`, `TurnSource` (mayúsculas en Postgres;
+el repo mapea a minúsculas en dominio vía `toTurn()`).
 
 Índices en `turns`:
 
@@ -155,8 +88,83 @@ Postgres; el repo mapea a minúsculas en dominio).
 - `(customerId, status)` — para el chequeo de turno activo cross-business.
 - `(businessId, turnDate)` — para agrupar por día de operación.
 
-`turnDate` normalizado a medianoche UTC (`todayUTC()`) para consistencia en
-entornos con zonas horarias distintas entre app y servidor.
+`turnDate` normalizado a medianoche UTC (`todayUTC()`) para consistencia entre
+zonas horarias de app y servidor.
+
+## Infraestructura de tiempo real
+
+Todas las acciones que modifican el estado de la cola emiten un evento
+`queue:update` al room `queue:{queueId}` de Socket.IO vía
+`SocketIOEmitter.emitQueueUpdate(queueId, payload)`. El payload varía por acción
+(ver cada historia). Los clientes suscritos al room reciben el evento y pueden
+actualizar su vista sin hacer polling.
+
+---
+
+## HU-3.1 - Sacar turno desde la app
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que un usuario final con sesión activa saque turno en una cola
+específica de un negocio desde la app mobile. El resultado es un turno en
+estado `waiting` con un número visible (ej. `A-001`) que el usuario puede
+mostrar o consultar mientras espera.
+
+### Criterios de aceptación
+
+- Dado que selecciono un negocio y toco "Sacar turno", cuando la cola está
+  abierta, entonces recibo un número de turno único para hoy.
+- Dado que ya tengo un turno activo en otro negocio, cuando intento sacar
+  turno, entonces veo un mensaje que me pide cancelar el turno anterior.
+- Dado que el negocio está pausado o cerrado, cuando intento sacar turno,
+  entonces veo que no se aceptan nuevos turnos.
+- Dado que dos usuarios sacan turno al mismo tiempo, entonces los números
+  asignados son correlativos sin huecos ni duplicados.
+
+### Decisiones de alcance
+
+La HU cubre exclusivamente el camino de sacar turno desde la app con sesión.
+Quedan fuera:
+
+- Turno como invitado sin sesión (sin `customerId`): el endpoint acepta
+  `customerId` opcional para soportar ese flujo en el futuro, pero HU-3.1
+  no lo requiere aún.
+- Cola con sistema de prioridad (arrived, physical, in_transit): el campo
+  `priority` existe en el modelo pero HU-3.1 siempre asigna `registered`.
+- Sacar turno por QR (source `qr`) o web (source `web`): el campo `source`
+  existe; HU-3.1 siempre asigna `app`.
+- Notificaciones push: diferidas a épicas de notificaciones.
+- Estado de cola en tiempo real (Socket.IO): implementado en HU-3.2.
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns
+```
+
+Requiere autenticación y permiso `turn:create`.
+
+Request: no requiere body. El `customerId` se extrae del JWT (`request.user.id`).
+
+Respuesta `201`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-001",
+  "position": 1
+}
+```
+
+- `displayNumber`: prefijo de la cola + número correlativo del día con padding
+  a 3 dígitos (ej. `A-001`, `B-012`).
+- `position`: posición en la cola en el momento de creación considerando
+  jerarquía de prioridad (ver HU-3.12).
 
 ### Reglas de negocio
 
@@ -164,58 +172,623 @@ entornos con zonas horarias distintas entre app y servidor.
 2. El negocio asociado debe tener `status = approved`.
 3. El negocio no puede tener `operationalStatus = paused` ni `closed`.
 4. Si se provee `customerId`, el cliente no puede tener un turno activo
-   (`waiting` o `called`) en ningún otro negocio. El mensaje de error
-   indica explícitamente que debe cancelarlo primero.
+   (`waiting` o `called`) en ningún negocio. El mensaje de error indica que
+   debe cancelarlo primero.
 5. El número de turno se asigna dentro de una transacción con `FOR UPDATE`
    sobre la fila del queue en Postgres, garantizando secuencia sin huecos
    bajo concurrencia alta.
-6. La prioridad siempre es `registered` y el source siempre es `app` en
-   esta historia.
-
-### Eventos e integraciones
-
-Sin integraciones externas en esta historia. La emisión de eventos de dominio
-para notificaciones push (ej. `turn.created`) queda diferida a la épica de
-notificaciones.
-
-### Documentación inline
-
-- `CreateTurnUseCase.ts`: documenta `todayUTC()` y la razón del `FOR UPDATE`
-  en la creación de turno.
-- `PostgresTurnRepo.ts`: documenta el lock de fila (`SELECT ... FOR UPDATE`)
-  como mecanismo de serialización para numeración correlativa sin duplicados.
-- `ITurnRepo.ts` / `IQueueRepo.ts`: documentan los métodos diferidos
-  (`findNextWaitingTurn`, `findActiveByBusinessId`) como contratos preparados
-  para HU posteriores.
-
-### Contratos diferidos
-
-Los siguientes contratos están declarados en las interfaces y en el router pero
-no cerrados end-to-end:
-
-- `POST /api/queues/turns/call-next` — `CallNextUseCase` (stub): diferido a
-  HU-3.3.
-- `POST /api/queues/turns/cancel` — `CancelTurnUseCase` (stub): diferido a
-  HU-3.5.
-- `ITurnRepo.findNextWaitingTurn` — implementado en repo pero no consumido por
-  ningún use case activo.
-- `IQueueRepo.findActiveByBusinessId` — preparado para el contrato de estado
-  de cola de HU-3.2.
+6. La prioridad es siempre `registered` y el source siempre `app`.
 
 ### Cobertura
 
 - `tests/unit/queue/CreateTurnUseCase.test.ts`
 
-Tests automatizados:
+---
 
-- creación exitosa con customerId y respuesta correcta
-- numeración correlativa en turnos sucesivos del mismo día
-- uso del prefijo de la cola en el displayNumber
-- rechazo con `404` cuando la cola no existe
-- rechazo con `409` cuando la cola está inactiva
-- rechazo con `409` cuando el negocio no está aprobado
-- rechazo con `409` cuando el negocio está pausado
-- rechazo con `409` cuando el negocio está cerrado
-- rechazo con `409` cuando el cliente ya tiene turno activo en cualquier negocio
-- creación exitosa de turno sin customerId (invitado)
-- rechazo con `400` para queueId inválido (no UUID)
+## HU-3.2 - Ver posición en la cola en tiempo real
+
+Story points: `5`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el usuario vea su posición actualizada en tiempo real sin necesidad
+de recargar la pantalla. Cuando el empleado llama al siguiente turno, la
+posición de todos los usuarios en cola avanza automáticamente.
+
+### Criterios de aceptación
+
+- Dado que estoy en la cola, cuando el negocio llama al siguiente turno,
+  entonces mi posición se actualiza en pantalla en menos de 1 segundo vía
+  WebSocket.
+- Dado que pierdo conexión, cuando recupero señal, entonces mi posición se
+  sincroniza automáticamente.
+
+### Contrato backend
+
+El backend emite un evento `queue:update` al room `queue:{queueId}` cada vez
+que el estado de la cola cambia. El cliente se suscribe al room y refresca su
+posición llamando a `GET /api/queues/:queueId/turns/my-turn`.
+
+El room se identifica como `queue:{queueId}`. La emisión se realiza vía
+`SocketIOEmitter.emitQueueUpdate(queueId, payload)`.
+
+### Eventos e integraciones
+
+Socket.IO: `SocketIOEmitter` inyectado como dependencia opcional en todos los
+use cases que modifican la cola. Si es `null` (tests o entorno sin socket),
+la emisión se omite sin romper el flujo.
+
+### Cobertura
+
+Cubierta indirectamente por los tests de `CallNextUseCase`,
+`CancelTurnUseCase`, `ConfirmTurnStatusUseCase`, `CancelTurnByEmployeeUseCase`
+y `AttendTurnUseCase`, todos los cuales verifican que `emitQueueUpdate` es
+llamado con el payload correcto.
+
+---
+
+## HU-3.3 - Tiempo estimado de espera
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Mostrar al usuario cuántos minutos aproximados le quedan de espera, calculado
+a partir de su posición en la cola, el tiempo promedio de atención del negocio
+y la cantidad de ventanillas activas.
+
+### Criterios de aceptación
+
+- Dado que estoy en la cola, entonces veo el tiempo estimado calculado como:
+  `⌈(posición - 1) / ventanillas_activas⌉ × promedio_minutos`.
+- Dado que el negocio tiene 0 ventanillas activas, entonces el estimado es
+  `null` (sin atención disponible).
+
+### Contrato backend
+
+`GET /api/queues/:queueId/turns/my-turn` devuelve `estimatedWaitMinutes` junto
+con la posición (ver HU-3.2). Requiere permiso `turn:read_own`.
+
+Respuesta `200`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-003",
+  "status": "waiting",
+  "position": 3,
+  "estimatedWaitMinutes": 10
+}
+```
+
+- `estimatedWaitMinutes`: entero en minutos, o `null` si `activeServiceWindows`
+  es 0.
+- `status: "called"` devuelve `position: 0` y `estimatedWaitMinutes: 0`.
+
+### Reglas de negocio
+
+1. El promedio de atención se calcula sobre los turnos `completed` del día con
+   `calledAt` y `attendedAt` registrados.
+2. Si no hay turnos completados, se usa el default de `5` minutos.
+3. La fórmula es `⌈turnosAdelante / ventanillasActivas⌉ × promedioMinutos`.
+4. `activeServiceWindows` se obtiene del `Business` asociado a la cola.
+
+### Cobertura
+
+- `tests/unit/queue/GetMyTurnUseCase.test.ts`
+- `tests/unit/queue/QueueWaitEstimateService.test.ts`
+
+---
+
+## HU-3.4 - Confirmar en camino
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el usuario avise que está en camino al local, subiendo su prioridad
+en la cola de `registered` a `in_transit`.
+
+### Criterios de aceptación
+
+- Dado que toco "Estoy en camino", cuando confirmo, entonces mi turno sube de
+  prioridad `registered` a `in_transit`.
+- Dado que ya confirmé que estoy en camino, entonces el botón cambia a
+  "Confirmar llegada".
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns/my-turn/confirm-transit
+```
+
+Requiere autenticación y permiso `turn:update_own`. No requiere body.
+
+Respuesta `200`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-002",
+  "priority": "in_transit"
+}
+```
+
+Emite `queue:update` con `{ updatedTurnId, updatedPriority }`.
+
+### Reglas de negocio
+
+1. El turno debe estar en estado `waiting` o `called`.
+2. La transición es `registered → in_transit`. No se puede confirmar tránsito
+   si ya se confirmó llegada.
+
+### Cobertura
+
+- `tests/unit/queue/ConfirmTurnStatusUseCase.test.ts`
+
+---
+
+## HU-3.5 - Confirmar llegada
+
+Story points: `2`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el usuario confirme que ya está físicamente en el local, subiendo
+su prioridad al máximo: `in_transit → arrived`.
+
+### Criterios de aceptación
+
+- Dado que llego al local y toco "Llegué", cuando confirmo, entonces mi turno
+  sube a prioridad `arrived` (máxima).
+- Dado que confirmo llegada, entonces el negocio ve en su panel que el usuario
+  está físicamente presente.
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns/my-turn/confirm-arrival
+```
+
+Requiere autenticación y permiso `turn:update_own`. No requiere body.
+
+Respuesta `200`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-002",
+  "priority": "arrived"
+}
+```
+
+Emite `queue:update` con `{ updatedTurnId, updatedPriority }`.
+
+### Reglas de negocio
+
+1. La transición es `in_transit → arrived`. Solo se puede confirmar llegada
+   si el turno está en `in_transit`.
+2. HU-3.4 y HU-3.5 comparten `ConfirmTurnStatusUseCase` con un parámetro
+   `action: "in_transit" | "arrived"` que define la transición.
+
+### Cobertura
+
+- `tests/unit/queue/ConfirmTurnStatusUseCase.test.ts`
+
+---
+
+## HU-3.6 - Cancelar mi turno
+
+Story points: `2`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el usuario cancele su propio turno activo cuando decide no seguir
+esperando.
+
+### Criterios de aceptación
+
+- Dado que cancelo mi turno, cuando confirmo, entonces se libera mi posición y
+  los usuarios detrás avanzan automáticamente.
+- Dado que cancelo mi turno, entonces recibo push de confirmación de
+  cancelación.
+
+### Contrato backend
+
+```text
+POST /api/queues/turns/cancel
+```
+
+Requiere autenticación y permiso `turn:cancel`.
+
+Request body:
+
+```json
+{ "turnId": "uuid" }
+```
+
+Respuesta `200`:
+
+```json
+{ "cancelled": true, "turnId": "uuid" }
+```
+
+Emite `queue:update` con `{ cancelledTurnId, cancelledDisplayNumber }`.
+
+### Reglas de negocio
+
+1. El turno debe pertenecer al `customerId` del JWT (ownership check).
+2. Solo se puede cancelar un turno en estado `waiting` o `called`.
+3. Turnos `completed` o `cancelled` devuelven `409`.
+4. Registra `cancelledAt` con la hora actual.
+
+### Cobertura
+
+- `tests/unit/queue/CancelTurnUseCase.test.ts`
+
+---
+
+## HU-3.7 - Llamar al siguiente turno
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el empleado llame al siguiente turno con un botón, avanzando la
+cola según la jerarquía de prioridad.
+
+### Criterios de aceptación
+
+- Dado que toco "Siguiente", cuando confirmo, entonces el turno en espera con
+  mayor prioridad pasa a estado `called`.
+- Dado que llamo al siguiente, entonces ese usuario recibe push "Es tu turno".
+- Dado que no hay más turnos, entonces el sistema lo informa.
+
+### Contrato backend
+
+```text
+POST /api/queues/turns/call-next
+```
+
+Requiere autenticación y permiso `queue:call_next`.
+
+Request body:
+
+```json
+{ "queueId": "uuid" }
+```
+
+Respuesta `200`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-001",
+  "calledAt": "2026-01-01T10:00:00.000Z"
+}
+```
+
+Emite `queue:update` con `{ calledTurnId, calledDisplayNumber }`.
+
+### Reglas de negocio
+
+1. Si hay un turno en estado `called`, primero se marca como `completed` antes
+   de llamar al siguiente (el empleado no puede tener dos turnos llamados
+   simultáneamente).
+2. El siguiente turno se selecciona con `findNextWaitingTurn`, que respeta la
+   jerarquía de prioridad (ver HU-3.12).
+3. Si no hay turnos en espera, devuelve `404`.
+4. Registra `calledAt` en el turno.
+
+### Cobertura
+
+- `tests/unit/queue/CallNextUseCase.test.ts`
+
+---
+
+## HU-3.8 - Ver lista de turnos activos en tiempo real
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el empleado vea en el panel la lista completa de turnos activos
+(waiting y called) ordenados por jerarquía de prioridad, con nombre del
+usuario, tiempo de espera y estado.
+
+### Criterios de aceptación
+
+- Dado que estoy en el panel, entonces veo la lista de todos los turnos con:
+  número, nombre del usuario, tiempo de espera y estado de prioridad.
+- Dado que un usuario cambia su estado, entonces su fila se actualiza en tiempo
+  real sin recargar.
+
+### Contrato backend
+
+```text
+GET /api/queues/:queueId/turns
+```
+
+Requiere autenticación y permiso `queue:read`.
+
+Respuesta `200`:
+
+```json
+{
+  "queueId": "uuid",
+  "items": [
+    {
+      "turnId": "uuid",
+      "displayNumber": "A-001",
+      "customerName": "Juan García",
+      "guestName": null,
+      "priority": "arrived",
+      "status": "waiting",
+      "createdAt": "2026-01-01T10:00:00.000Z",
+      "waitingMinutes": 12
+    }
+  ]
+}
+```
+
+- `items` está ordenado por prioridad (arrived primero) y por `createdAt` para
+  desempate (FIFO).
+- `waitingMinutes`: minutos enteros desde `createdAt` hasta ahora.
+- `customerName`: nombre completo del usuario registrado, o `null` para turnos
+  manuales.
+- `guestName`: nombre ingresado por el empleado para turnos manuales, o `null`.
+- La lista incluye turnos de cualquier `turnDate`, no filtra por fecha. El
+  estado activo (`waiting` o `called`) determina la inclusión.
+
+### Reglas de negocio
+
+1. `ActiveTurnSummary` es un tipo de consulta especializado que evita exponer
+   el dominio `Turn` completo con datos de usuario.
+2. `findActiveByQueue` hace un JOIN con `customer` para obtener el nombre sin
+   requerir una consulta separada.
+
+### Cobertura
+
+- `tests/unit/queue/GetQueueListUseCase.test.ts`
+
+---
+
+## HU-3.9 - Agregar turno manualmente
+
+Story points: `3`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el empleado registre en la cola a una persona que se presenta
+físicamente sin app ni dispositivo. El turno se crea con prioridad `physical`,
+equivalente a presencia física.
+
+### Criterios de aceptación
+
+- Dado que toco "Agregar manual" e ingreso un nombre, cuando confirmo, entonces
+  se crea un turno con prioridad `physical`.
+- Dado que agrego un turno manual, entonces aparece en la cola con indicador
+  visual diferenciado de los turnos virtuales.
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns/manual
+```
+
+Requiere autenticación y permiso `turn:create_manual`.
+
+Request body:
+
+```json
+{ "guestName": "María López" }
+```
+
+- `guestName`: requerido, entre 1 y 100 caracteres.
+
+Respuesta `201`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-005",
+  "guestName": "María López",
+  "position": 2
+}
+```
+
+Emite `queue:update` con `{ newTurnId, newDisplayNumber, guestName }`.
+
+### Reglas de negocio
+
+1. No requiere `customerId` (turno sin cuenta de usuario).
+2. `source` es siempre `manual`. `priority` es siempre `physical`.
+3. No aplica el chequeo de turno activo cross-business (solo aplica para
+   usuarios autenticados con `customerId`).
+4. El negocio debe existir y estar aprobado. La cola debe estar activa.
+
+### Cobertura
+
+- `tests/unit/queue/CreateManualTurnUseCase.test.ts`
+
+---
+
+## HU-3.10 - Cancelar turno desde el panel
+
+Story points: `2`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el empleado cancele cualquier turno de la cola, sin importar a
+quién pertenece.
+
+### Criterios de aceptación
+
+- Dado que cancelo un turno desde el panel, cuando confirmo, entonces ese
+  usuario recibe push de cancelación.
+- Dado que cancelo un turno, entonces los usuarios detrás avanzan
+  automáticamente en posición.
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns/:turnId/cancel
+```
+
+Requiere autenticación y permiso `turn:cancel_any`.
+
+No requiere body.
+
+Respuesta `200`:
+
+```json
+{ "cancelled": true, "turnId": "uuid" }
+```
+
+Emite `queue:update` con `{ cancelledTurnId, cancelledDisplayNumber }`.
+
+### Reglas de negocio
+
+1. Sin verificación de ownership. El empleado puede cancelar cualquier turno.
+2. Solo se puede cancelar un turno en estado `waiting` o `called`.
+3. Registra `cancelledAt` con la hora actual.
+
+### Cobertura
+
+- `tests/unit/queue/CancelTurnByEmployeeUseCase.test.ts`
+
+---
+
+## HU-3.11 - Marcar turno como atendido
+
+Story points: `1`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Permitir que el empleado marque un turno como atendido una vez que la atención
+finalizó. El turno pasa al historial con timestamp de atención.
+
+### Criterios de aceptación
+
+- Dado que marco un turno como atendido, entonces pasa a historial con
+  timestamp de inicio y fin de atención.
+- Dado que marco como atendido, entonces el tiempo de atención se usa para
+  recalcular el promedio del negocio.
+
+### Contrato backend
+
+```text
+POST /api/queues/:queueId/turns/:turnId/attend
+```
+
+Requiere autenticación y permiso `turn:attend`.
+
+No requiere body.
+
+Respuesta `200`:
+
+```json
+{
+  "attended": true,
+  "turnId": "uuid",
+  "attendedAt": "2026-01-01T10:15:00.000Z"
+}
+```
+
+Emite `queue:update` con `{ attendedTurnId, attendedDisplayNumber }`.
+
+### Reglas de negocio
+
+1. Solo se puede marcar como atendido un turno en estado `called`. Un turno
+   `waiting` no se puede marcar directamente como atendido.
+2. `attendedAt` se registra en el momento de la llamada al endpoint.
+3. El tiempo de atención (`attendedAt - calledAt`) contribuye al promedio
+   usado en el estimado de espera (HU-3.3).
+
+### Cobertura
+
+- `tests/unit/queue/AttendTurnUseCase.test.ts`
+
+---
+
+## HU-3.12 - Jerarquía de prioridad en la cola
+
+Story points: `5`
+
+Estado: `implementado`.
+
+### Objetivo de producto
+
+Garantizar que el orden de la cola respete una jerarquía de prioridad en lugar
+de ser puramente FIFO por número de registro. Los usuarios que confirman su
+llegada tienen prioridad sobre los que están en camino, y estos sobre los que
+simplemente se registraron.
+
+### Criterios de aceptación
+
+- Dado que hay turnos con distintos estados, entonces el orden respeta:
+  (1) `arrived`, (2) `physical`, (3) `in_transit`, (4) `registered`.
+- Dado que dos usuarios tienen la misma prioridad, entonces se resuelve por
+  FIFO (número de turno).
+- Dado que un usuario sube de prioridad, entonces la cola se reordena en tiempo
+  real y todos los afectados ven su nueva posición.
+- Dado que hay un turno manual, entonces se trata como `physical` por defecto.
+
+### Reglas de negocio
+
+La jerarquía se implementa en tres lugares:
+
+1. **`findNextWaitingTurn`** (`PostgresTurnRepo`): selecciona el turno a llamar
+   aplicando el ranking en memoria sobre los resultados de la DB.
+
+2. **`findActiveByQueue`** (`PostgresTurnRepo`): ordena la lista del panel del
+   empleado aplicando el mismo ranking.
+
+3. **`countWaitingAhead`** (`PostgresTurnRepo`): calcula la posición del usuario
+   sumando:
+   - Turnos `waiting` con prioridad mayor a la del turno consultado.
+   - Turnos `waiting` con la misma prioridad y número de turno menor (FIFO).
+
+   Esta función eliminó el filtro por `turnDate` — el estado activo
+   (`waiting`) es suficiente para determinar que el turno es relevante.
+
+Ranking de prioridades:
+
+| Prioridad   | Rank | Origen                              |
+|-------------|------|-------------------------------------|
+| `arrived`   | 1    | Usuario confirma llegada (HU-3.5)   |
+| `physical`  | 2    | Turno manual (HU-3.9)               |
+| `in_transit`| 3    | Usuario confirma tránsito (HU-3.4)  |
+| `registered`| 4    | Registro inicial (HU-3.1)           |
+
+### Cobertura
+
+- `tests/unit/queue/GetMyTurnUseCase.test.ts` (sección HU-3.12 — 4 tests de
+  jerarquía de prioridad en posición)
+- Cubierta indirectamente en `CallNextUseCase.test.ts` y
+  `GetQueueListUseCase.test.ts`
