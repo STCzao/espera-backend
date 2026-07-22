@@ -40,8 +40,11 @@ export class QueueController {
   };
 
   public cancelTurn = async (request: Request, response: Response): Promise<void> => {
-    const result = await this.cancelTurnUseCase.execute(request.body);
-    logger.info({ turnId: request.body.turnId }, "Turn cancelled");
+    const result = await this.cancelTurnUseCase.execute({
+      turnId: String(request.body.turnId),
+      customerId: String(request.user?.id),
+    });
+    logger.info({ turnId: result.turnId }, "Turn cancelled");
     response.status(200).json(result);
   };
 }

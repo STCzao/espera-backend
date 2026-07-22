@@ -14,7 +14,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new CreateTurnUseCase(),
     new GetMyTurnUseCase(),
     new CallNextUseCase(undefined, undefined, emitter),
-    new CancelTurnUseCase(),
+    new CancelTurnUseCase(undefined, emitter),
   );
 
   const router = Router();
