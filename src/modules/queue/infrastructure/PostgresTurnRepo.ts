@@ -128,15 +128,24 @@ export class PostgresTurnRepo implements ITurnRepo {
     return row ? toTurn(row) : null;
   }
 
-  public async countWaitingAhead(queueId: string, turnNumber: number, turnDate: Date): Promise<number> {
-    return prisma.turn.count({
-      where: {
-        queueId,
-        turnDate,
-        status: "WAITING",
-        number: { lt: turnNumber },
-      },
+  public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {
+    const PRIORITY_ORDER = ["ARRIVED", "PHYSICAL", "IN_TRANSIT", "REGISTERED"] as const;
+    const priorityEnum = toPriorityEnum(priority);
+    const myRank = PRIORITY_ORDER.indexOf(priorityEnum);
+    const higherPriorities = PRIORITY_ORDER.slice(0, myRank);
+
+    const countHigher = higherPriorities.length > 0
+      ? prisma.turn.count({
+          where: { queueId, status: "WAITING", priority: { in: [...higherPriorities] } },
+        })
+      : Promise.resolve(0);
+
+    const countSame = prisma.turn.count({
+      where: { queueId, status: "WAITING", priority: priorityEnum, number: { lt: turnNumber } },
     });
+
+    const [ahead, sameAhead] = await Promise.all([countHigher, countSame]);
+    return ahead + sameAhead;
   }
 
   public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {
