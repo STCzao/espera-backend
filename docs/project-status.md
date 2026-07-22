@@ -2,13 +2,13 @@
 
 ## Resumen ejecutivo
 
-`espera-back` es el backend principal del producto Espera. Su estado actual debe
-leerse como una primera fase de autenticación bastante avanzada, con onboarding
-de negocios y bases iniciales para las siguientes épicas.
+`espera-back` es el backend principal del producto Espera. Cubre las Épicas 1,
+2 y 3 completas: autenticación, gestión de negocios y cola de turnos con tiempo
+real vía Socket.IO.
 
-El corte funcional real alcanzado hasta ahora llega principalmente hasta
-`HU-1.9` para autenticación y onboarding. La Épica 2 ya cuenta con una primera
-implementación backend de gestión de negocios para panel.
+El corte funcional alcanzado cubre `HU-1.1` a `HU-1.9` (auth y onboarding),
+`HU-2.1` a `HU-2.8` (gestión de negocios) y `HU-3.1` a `HU-3.12` (cola con
+prioridad, tiempo real, turnos manuales y panel de empleado).
 
 ## Alcance real implementado
 
@@ -21,6 +21,20 @@ implementación backend de gestión de negocios para panel.
 - `HU-1.7` Recuperación de password
 - `HU-1.8` Registro de negocio con aprobación pendiente
 - `HU-1.9` OAuth para panel de negocio
+- `HU-2.1` a `HU-2.8` Gestión de negocios (configuración, horarios, QR, empleados)
+- `HU-2.5.1` a `HU-2.5.4` Cuentas y Organizaciones (Organization, Membership, Subscription, límites de plan)
+- `HU-3.1` Sacar turno desde la app
+- `HU-3.2` Posición en cola en tiempo real (Socket.IO)
+- `HU-3.3` Tiempo estimado de espera
+- `HU-3.4` Confirmar en camino (prioridad in_transit)
+- `HU-3.5` Confirmar llegada (prioridad arrived)
+- `HU-3.6` Cancelar propio turno
+- `HU-3.7` Llamar al siguiente turno
+- `HU-3.8` Lista de turnos activos en el panel
+- `HU-3.9` Agregar turno manual (presencia física sin app)
+- `HU-3.10` Cancelar turno desde el panel (empleado)
+- `HU-3.11` Marcar turno como atendido
+- `HU-3.12` Jerarquía de prioridad en la cola
 
 ### Historias en rollover
 
@@ -350,23 +364,20 @@ Alineación de Google OAuth con la arquitectura HU-1.8:
 
 ## Siguiente épica
 
-La siguiente épica es `Épica 3 — Cola (Queue)`. El schema y los límites de
-plan ya están listos. Puntos de entrada clave:
+La Épica 3 — Cola está completa (`HU-3.1` a `HU-3.12`).
 
-- `Queue`/`Turn` no tienen persistencia real en Postgres aún (solo domain
-  stubs); el primer `CreateQueueUseCase` debe llamar a
-  `EnsureQueueCreationAllowedUseCase` de `@modules/organization/public-api`
-  antes de insertar.
-- `Business.status` debe verificarse antes de permitir operaciones de cola;
-  el check de ownership en use cases ya existe — solo hay que sumar la
-  comprobación de `status === "approved"`.
-- `ListMyBusinessesUseCase` expone `Business.status` en el output (`GET /api/business/me`).
+Las Épicas 1, 2, 2.5 y 3 están completas. Las siguientes candidatas en
+Fase 2 son:
+
+- `Épica 6 — Panel del Negocio` (19 pts): dashboard, historial, métricas y
+  responsividad del panel de empleado.
+- `Épica 8 — Backoffice Espera` (22 pts): aprobación de negocios, suspensión,
+  métricas globales — panel interno en .NET.
 
 Documentación de referencia:
 
 - `docs/story-documentation-standard.md`
-- `docs/epica-1-autenticacion-onboarding.md`
-- `docs/epica-2-gestion-negocios.md`
+- `docs/epica-3-cola.md`
 - `docs/epica-2-5-cuentas-organizaciones.md`
 - `docs/decision-modelo-cuentas-negocios.md`
 
