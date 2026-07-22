@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
+import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
@@ -19,14 +22,24 @@ export interface GetMyTurnOutput {
   queueId: string;
   displayNumber: string;
   status: "waiting" | "called";
-  // 0 = being called now; 1 = next in line; N = Nth in line
   position: number;
+  estimatedWaitMinutes: number | null;
 }
+
+const DEFAULT_SERVICE_MINUTES = 5;
+
+const todayUTC = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+};
+
+const estimateService = new QueueWaitEstimateService();
 
 export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput> {
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
   ) {}
 
   public async execute(input: GetMyTurnInput): Promise<GetMyTurnOutput> {
@@ -49,14 +62,25 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
         displayNumber: turn.displayNumber,
         status: "called",
         position: 0,
+        estimatedWaitMinutes: 0,
       };
     }
 
-    const ahead = await this.turnRepo.countWaitingAhead(
-      turn.queueId,
-      turn.number,
-      turn.turnDate,
-    );
+    const today = todayUTC();
+    const [ahead, business, avgMinutes] = await Promise.all([
+      this.turnRepo.countWaitingAhead(turn.queueId, turn.number, turn.turnDate),
+      this.businessRepo.findById(queue.businessId),
+      this.turnRepo.getAverageServiceMinutes(turn.queueId, today),
+    ]);
+
+    const activeServiceWindows = business?.activeServiceWindows ?? 1;
+    const serviceMinutes = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
+
+    const estimate = estimateService.estimate({
+      waitingTurns: ahead,
+      activeServiceWindows,
+      averageServiceMinutes: serviceMinutes,
+    });
 
     return {
       turnId: turn.id,
@@ -64,6 +88,7 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
       displayNumber: turn.displayNumber,
       status: "waiting",
       position: ahead + 1,
+      estimatedWaitMinutes: estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null,
     };
   }
 }

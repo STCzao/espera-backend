@@ -139,6 +139,25 @@ export class PostgresTurnRepo implements ITurnRepo {
     });
   }
 
+  public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {
+    const rows = await prisma.turn.findMany({
+      where: {
+        queueId,
+        turnDate,
+        status: "COMPLETED",
+        calledAt: { not: null },
+        attendedAt: { not: null },
+      },
+      select: { calledAt: true, attendedAt: true },
+    });
+    if (rows.length === 0) return null;
+    const total = rows.reduce(
+      (sum, row) => sum + (row.attendedAt!.getTime() - row.calledAt!.getTime()) / 60_000,
+      0,
+    );
+    return total / rows.length;
+  }
+
   public async save(entity: Turn): Promise<Turn> {
     const row = await prisma.turn.update({
       where: { id: entity.id },

@@ -152,6 +152,23 @@ export class InMemoryTurnRepo implements ITurnRepo {
     ).length;
   }
 
+  public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {
+    const completed = [...this.turns.values()].filter(
+      (t) =>
+        t.queueId === queueId &&
+        t.turnDate.getTime() === turnDate.getTime() &&
+        t.status === "completed" &&
+        t.calledAt != null &&
+        t.attendedAt != null,
+    );
+    if (completed.length === 0) return null;
+    const total = completed.reduce(
+      (sum, t) => sum + (t.attendedAt!.getTime() - t.calledAt!.getTime()) / 60_000,
+      0,
+    );
+    return total / completed.length;
+  }
+
   public async save(entity: Turn): Promise<Turn> {
     this.turns.set(entity.id, entity);
     return entity;
