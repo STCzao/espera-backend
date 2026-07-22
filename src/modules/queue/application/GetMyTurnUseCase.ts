@@ -68,7 +68,7 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
 
     const today = todayUTC();
     const [ahead, business, avgMinutes] = await Promise.all([
-      this.turnRepo.countWaitingAhead(turn.queueId, turn.number, turn.turnDate),
+      this.turnRepo.countWaitingAhead(turn.queueId, turn.number, turn.priority),
       this.businessRepo.findById(queue.businessId),
       this.turnRepo.getAverageServiceMinutes(turn.queueId, today),
     ]);

@@ -142,14 +142,18 @@ export class InMemoryTurnRepo implements ITurnRepo {
     );
   }
 
-  public async countWaitingAhead(queueId: string, turnNumber: number, turnDate: Date): Promise<number> {
-    return [...this.turns.values()].filter(
-      (t) =>
-        t.queueId === queueId &&
-        t.turnDate.getTime() === turnDate.getTime() &&
-        t.status === "waiting" &&
-        t.number < turnNumber,
-    ).length;
+  public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {
+    const PRIORITY_RANK: Record<string, number> = {
+      arrived: 1, physical: 2, in_transit: 3, registered: 4,
+    };
+    const myRank = PRIORITY_RANK[priority] ?? 5;
+    return [...this.turns.values()].filter((t) => {
+      if (t.queueId !== queueId || t.status !== "waiting") return false;
+      const theirRank = PRIORITY_RANK[t.priority] ?? 5;
+      if (theirRank < myRank) return true;
+      if (theirRank === myRank && t.number < turnNumber) return true;
+      return false;
+    }).length;
   }
 
   public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {

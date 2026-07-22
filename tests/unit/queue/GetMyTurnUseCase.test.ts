@@ -187,6 +187,80 @@ describe("GetMyTurnUseCase — tiempo estimado (HU-3.3)", () => {
   });
 });
 
+describe("GetMyTurnUseCase — HU-3.12 jerarquía de prioridad en posición", () => {
+  const CUSTOMER_B = "44444444-4444-4444-8444-444444444444";
+  const CUSTOMER_C = "55555555-5555-4555-8555-555555555555";
+  const CUSTOMER_D = "66666666-6666-4666-8666-666666666666";
+
+  it("arrived turn jumps ahead of registered turns with lower number", async () => {
+    // B registers first (number 1, registered), A arrives later (number 2, arrived)
+    // A should be position 1 because arrived > registered
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-b", queueId: QUEUE_ID, customerId: CUSTOMER_B, number: 1, priority: "registered", status: "waiting" }),
+      buildTurn({ id: "t-a", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 2, priority: "arrived",    status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(result.position).toBe(1);
+  });
+
+  it("full priority order: arrived(1) > physical(2) > in_transit(3) > registered(4)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-a", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, priority: "registered", status: "waiting" }),
+      buildTurn({ id: "t-b", queueId: QUEUE_ID, customerId: CUSTOMER_B,  number: 2, priority: "in_transit", status: "waiting" }),
+      buildTurn({ id: "t-c", queueId: QUEUE_ID, customerId: CUSTOMER_C,  number: 3, priority: "physical",   status: "waiting" }),
+      buildTurn({ id: "t-d", queueId: QUEUE_ID, customerId: CUSTOMER_D,  number: 4, priority: "arrived",    status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const [rD, rC, rB, rA] = await Promise.all([
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_D }),  // arrived → 1
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_C }),  // physical → 2
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_B }),  // in_transit → 3
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }), // registered → 4
+    ]);
+
+    expect(rD.position).toBe(1);
+    expect(rC.position).toBe(2);
+    expect(rB.position).toBe(3);
+    expect(rA.position).toBe(4);
+  });
+
+  it("manual turn (physical priority) beats registered but loses to arrived", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-r",  queueId: QUEUE_ID, customerId: CUSTOMER_B,  number: 1, priority: "registered", status: "waiting" }),
+      buildTurn({ id: "t-m",  queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 2, priority: "physical",   status: "waiting", source: "manual" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const [rManual, rRegistered] = await Promise.all([
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_B }),
+    ]);
+
+    expect(rManual.position).toBe(1);
+    expect(rRegistered.position).toBe(2);
+  });
+
+  it("FIFO resolves ties within same priority", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_B,  number: 3, priority: "in_transit", status: "waiting" }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 7, priority: "in_transit", status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const [rFirst, rSecond] = await Promise.all([
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_B }),
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
+    ]);
+
+    expect(rFirst.position).toBe(1);
+    expect(rSecond.position).toBe(2);
+  });
+});
+
 describe("GetMyTurnUseCase — errores", () => {
   it("throws NOT_FOUND when the queue does not exist", async () => {
     const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });

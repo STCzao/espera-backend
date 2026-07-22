@@ -37,7 +37,7 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
     const attendedAt = new Date();
     const attended = await this.turnRepo.save({
       ...turn,
-      status: "completed",
+      status: "completed", 
       attendedAt,
     });
 

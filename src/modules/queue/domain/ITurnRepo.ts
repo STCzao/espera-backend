@@ -28,7 +28,7 @@ export interface ITurnRepo extends Repository<Turn> {
   findCalledTurnByQueue(queueId: string): Promise<Turn | null>;
   findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null>;
   findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null>;
-  countWaitingAhead(queueId: string, turnNumber: number, turnDate: Date): Promise<number>;
+  countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number>;
   getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null>;
   findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]>;
 }
