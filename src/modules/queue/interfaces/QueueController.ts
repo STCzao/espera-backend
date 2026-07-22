@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { logger } from "@shared/infrastructure/logger";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
+import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 
@@ -12,6 +13,7 @@ export class QueueController {
     private readonly getMyTurnUseCase = new GetMyTurnUseCase(),
     private readonly callNextUseCase = new CallNextUseCase(),
     private readonly cancelTurnUseCase = new CancelTurnUseCase(),
+    private readonly confirmTurnStatusUseCase = new ConfirmTurnStatusUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -27,6 +29,24 @@ export class QueueController {
     const result = await this.getMyTurnUseCase.execute({
       queueId: String(request.params.queueId),
       customerId: String(request.user?.id),
+    });
+    response.status(200).json(result);
+  };
+
+  public confirmTransit = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.confirmTurnStatusUseCase.execute({
+      queueId:    String(request.params.queueId),
+      customerId: String(request.user?.id),
+      action:     "in_transit",
+    });
+    response.status(200).json(result);
+  };
+
+  public confirmArrival = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.confirmTurnStatusUseCase.execute({
+      queueId:    String(request.params.queueId),
+      customerId: String(request.user?.id),
+      action:     "arrived",
     });
     response.status(200).json(result);
   };
