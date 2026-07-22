@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
 import { CallNextUseCase } from "../application/CallNextUseCase";
+import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
@@ -18,6 +19,7 @@ export class QueueController {
     private readonly confirmTurnStatusUseCase = new ConfirmTurnStatusUseCase(),
     private readonly getQueueListUseCase = new GetQueueListUseCase(),
     private readonly createManualTurnUseCase = new CreateManualTurnUseCase(),
+    private readonly cancelTurnByEmployeeUseCase = new CancelTurnByEmployeeUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -76,6 +78,14 @@ export class QueueController {
       queueId: String(request.body.queueId),
     });
     logger.info({ turnId: result.turnId, queueId: result.queueId }, "Next turn called");
+    response.status(200).json(result);
+  };
+
+  public cancelTurnByEmployee = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.cancelTurnByEmployeeUseCase.execute({
+      turnId: String(request.params.turnId),
+    });
+    logger.info({ turnId: result.turnId }, "Turn cancelled by employee");
     response.status(200).json(result);
   };
 
