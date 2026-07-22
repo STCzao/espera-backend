@@ -3,6 +3,7 @@ import { Router } from "express";
 import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
 import { CallNextUseCase } from "../application/CallNextUseCase";
+import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
@@ -21,6 +22,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new ConfirmTurnStatusUseCase(undefined, emitter),
     new GetQueueListUseCase(),
     new CreateManualTurnUseCase(),
+    new CancelTurnByEmployeeUseCase(undefined, emitter),
   );
 
   const router = Router();
@@ -33,6 +35,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   router.post("/:queueId/turns/my-turn/confirm-arrival", authenticate, authorize("turn:update_own"), controller.confirmArrival);
   router.post("/turns/call-next", authenticate, authorize("queue:call_next"), controller.callNext);
   router.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
+  router.post("/:queueId/turns/:turnId/cancel", authenticate, authorize("turn:cancel_any"), controller.cancelTurnByEmployee);
 
   return router;
 };
