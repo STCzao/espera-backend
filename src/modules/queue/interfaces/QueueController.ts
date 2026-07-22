@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
@@ -20,6 +21,7 @@ export class QueueController {
     private readonly getQueueListUseCase = new GetQueueListUseCase(),
     private readonly createManualTurnUseCase = new CreateManualTurnUseCase(),
     private readonly cancelTurnByEmployeeUseCase = new CancelTurnByEmployeeUseCase(),
+    private readonly attendTurnUseCase = new AttendTurnUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -78,6 +80,14 @@ export class QueueController {
       queueId: String(request.body.queueId),
     });
     logger.info({ turnId: result.turnId, queueId: result.queueId }, "Next turn called");
+    response.status(200).json(result);
+  };
+
+  public attendTurn = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.attendTurnUseCase.execute({
+      turnId: String(request.params.turnId),
+    });
+    logger.info({ turnId: result.turnId }, "Turn marked as attended");
     response.status(200).json(result);
   };
 
