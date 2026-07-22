@@ -70,7 +70,7 @@ export class PostgresTurnRepo implements ITurnRepo {
           queueId: data.queueId,
           businessId: data.businessId,
           customerId: data.customerId ?? null,
-          guestName: null,
+          guestName: data.guestName ?? null,
           number,
           displayNumber,
           status: "WAITING",

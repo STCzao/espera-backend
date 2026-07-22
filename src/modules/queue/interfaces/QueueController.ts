@@ -4,6 +4,7 @@ import { logger } from "@shared/infrastructure/logger";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
+import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
@@ -16,6 +17,7 @@ export class QueueController {
     private readonly cancelTurnUseCase = new CancelTurnUseCase(),
     private readonly confirmTurnStatusUseCase = new ConfirmTurnStatusUseCase(),
     private readonly getQueueListUseCase = new GetQueueListUseCase(),
+    private readonly createManualTurnUseCase = new CreateManualTurnUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -40,6 +42,15 @@ export class QueueController {
       queueId: String(request.params.queueId),
     });
     response.status(200).json(result);
+  };
+
+  public createManualTurn = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.createManualTurnUseCase.execute({
+      queueId:   String(request.params.queueId),
+      guestName: String(request.body.guestName),
+    });
+    logger.info({ turnId: result.turnId, queueId: result.queueId }, "Manual turn created");
+    response.status(201).json(result);
   };
 
   public confirmTransit = async (request: Request, response: Response): Promise<void> => {
