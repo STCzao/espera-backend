@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
+import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
@@ -23,6 +24,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new GetQueueListUseCase(),
     new CreateManualTurnUseCase(),
     new CancelTurnByEmployeeUseCase(undefined, emitter),
+    new AttendTurnUseCase(undefined, emitter),
   );
 
   const router = Router();
@@ -36,6 +38,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   router.post("/turns/call-next", authenticate, authorize("queue:call_next"), controller.callNext);
   router.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
   router.post("/:queueId/turns/:turnId/cancel", authenticate, authorize("turn:cancel_any"), controller.cancelTurnByEmployee);
+  router.post("/:queueId/turns/:turnId/attend", authenticate, authorize("turn:attend"), controller.attendTurn);
 
   return router;
 };
