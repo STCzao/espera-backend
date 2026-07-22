@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
-import type { CreateTurnData, ITurnRepo } from "../domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo } from "../domain/ITurnRepo";
 
 const toTurn = (raw: {
   id: string;
@@ -156,6 +156,33 @@ export class PostgresTurnRepo implements ITurnRepo {
       0,
     );
     return total / rows.length;
+  }
+
+  public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
+    const PRIORITY_RANK: Record<string, number> = {
+      ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
+    };
+    const rows = await prisma.turn.findMany({
+      where: { queueId, status: { in: ["WAITING", "CALLED"] } },
+      include: { customer: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    rows.sort((a, b) => {
+      const pa = PRIORITY_RANK[a.priority] ?? 5;
+      const pb = PRIORITY_RANK[b.priority] ?? 5;
+      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+    });
+    return rows.map((row) => ({
+      turnId: row.id,
+      displayNumber: row.displayNumber,
+      customerName: row.customer
+        ? `${row.customer.firstName} ${row.customer.lastName}`.trim()
+        : null,
+      guestName: row.guestName ?? null,
+      priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
+      status: row.status.toLowerCase() as "waiting" | "called",
+      createdAt: row.createdAt,
+    }));
   }
 
   public async save(entity: Turn): Promise<Turn> {

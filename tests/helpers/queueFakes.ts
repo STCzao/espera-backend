@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
-import type { CreateTurnData, ITurnRepo } from "../../src/modules/queue/domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
-import type { Turn } from "../../src/modules/queue/domain/Turn";
+import type { Turn, TurnPriority } from "../../src/modules/queue/domain/Turn";
 
 export const buildQueue = (overrides: Partial<Queue> = {}): Queue => ({
   id: "queue-1",
@@ -167,6 +167,29 @@ export class InMemoryTurnRepo implements ITurnRepo {
       0,
     );
     return total / completed.length;
+  }
+
+  public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
+    const PRIORITY_RANK: Record<string, number> = {
+      arrived: 1, physical: 2, in_transit: 3, registered: 4,
+    };
+    const active = [...this.turns.values()].filter(
+      (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called"),
+    );
+    active.sort((a, b) => {
+      const pa = PRIORITY_RANK[a.priority] ?? 5;
+      const pb = PRIORITY_RANK[b.priority] ?? 5;
+      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+    });
+    return active.map((t) => ({
+      turnId: t.id,
+      displayNumber: t.displayNumber,
+      customerName: null,
+      guestName: t.guestName ?? null,
+      priority: t.priority as TurnPriority,
+      status: t.status as "waiting" | "called",
+      createdAt: t.createdAt,
+    }));
   }
 
   public async save(entity: Turn): Promise<Turn> {

@@ -23,7 +23,7 @@ export interface CreateTurnOutput {
   position: number;
 }
 
-const todayUTC = (): Date => {
+export const todayUTC = (): Date => {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 };
