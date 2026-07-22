@@ -5,6 +5,7 @@ export interface CreateTurnData {
   queueId: string;
   businessId: string;
   customerId?: string;
+  guestName?: string;
   priority: TurnPriority;
   source: TurnSource;
   turnDate: Date;

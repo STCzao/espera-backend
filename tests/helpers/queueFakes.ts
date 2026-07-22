@@ -87,7 +87,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       queueId: data.queueId,
       businessId: data.businessId,
       customerId: data.customerId,
-      guestName: undefined,
+      guestName: data.guestName,
       number,
       displayNumber,
       status: "waiting",
