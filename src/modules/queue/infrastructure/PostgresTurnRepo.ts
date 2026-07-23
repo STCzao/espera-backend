@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnHistoryItem } from "../domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
 
 const toTurn = (raw: {
   id: string;
@@ -192,6 +192,20 @@ export class PostgresTurnRepo implements ITurnRepo {
       status: row.status.toLowerCase() as "waiting" | "called",
       createdAt: row.createdAt,
     }));
+  }
+
+  public async getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw> {
+    const [completedRows, cancelledCount] = await Promise.all([
+      prisma.turn.findMany({
+        where: { queueId, turnDate: date, status: "COMPLETED", calledAt: { not: null }, attendedAt: { not: null } },
+        select: { calledAt: true, attendedAt: true },
+      }),
+      prisma.turn.count({ where: { queueId, turnDate: date, status: "CANCELLED" } }),
+    ]);
+    return {
+      completedTurns: completedRows.map((r) => ({ calledAt: r.calledAt!, attendedAt: r.attendedAt! })),
+      cancelledCount,
+    };
   }
 
   public async findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]> {

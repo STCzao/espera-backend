@@ -1,6 +1,11 @@
 import type { Repository } from "../../../shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "./Turn";
 
+export interface TurnDayRaw {
+  completedTurns: Array<{ calledAt: Date; attendedAt: Date }>;
+  cancelledCount: number;
+}
+
 export interface TurnHistoryItem {
   turnId: string;
   displayNumber: string;
@@ -45,4 +50,5 @@ export interface ITurnRepo extends Repository<Turn> {
   getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null>;
   findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]>;
   findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]>;
+  getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw>;
 }
