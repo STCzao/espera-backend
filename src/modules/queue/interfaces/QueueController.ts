@@ -10,6 +10,7 @@ import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase"
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
+import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 
 export class QueueController {
   public constructor(
@@ -22,6 +23,7 @@ export class QueueController {
     private readonly createManualTurnUseCase = new CreateManualTurnUseCase(),
     private readonly cancelTurnByEmployeeUseCase = new CancelTurnByEmployeeUseCase(),
     private readonly attendTurnUseCase = new AttendTurnUseCase(),
+  private readonly getQueueStatusUseCase = new GetQueueStatusUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -96,6 +98,13 @@ export class QueueController {
       turnId: String(request.params.turnId),
     });
     logger.info({ turnId: result.turnId }, "Turn cancelled by employee");
+    response.status(200).json(result);
+  };
+
+  public getQueueStatus = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.getQueueStatusUseCase.execute({
+      queueId: String(request.params.queueId),
+    });
     response.status(200).json(result);
   };
 
