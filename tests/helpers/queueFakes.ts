@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
 import type { Turn, TurnPriority, TurnSource } from "../../src/modules/queue/domain/Turn";
 
@@ -194,6 +194,18 @@ export class InMemoryTurnRepo implements ITurnRepo {
       status: t.status as "waiting" | "called",
       createdAt: t.createdAt,
     }));
+  }
+
+  public async getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw> {
+    const turns = [...this.turns.values()].filter(
+      (t) => t.queueId === queueId && t.turnDate.getTime() === date.getTime(),
+    );
+    return {
+      completedTurns: turns
+        .filter((t) => t.status === "completed" && t.calledAt != null && t.attendedAt != null)
+        .map((t) => ({ calledAt: t.calledAt!, attendedAt: t.attendedAt! })),
+      cancelledCount: turns.filter((t) => t.status === "cancelled").length,
+    };
   }
 
   public async findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]> {
