@@ -1,6 +1,19 @@
 import type { Repository } from "../../../shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "./Turn";
 
+export interface TurnHistoryItem {
+  turnId: string;
+  displayNumber: string;
+  customerName: string | null;
+  guestName: string | null;
+  source: TurnSource;
+  priority: TurnPriority;
+  createdAt: Date;
+  calledAt: Date;
+  attendedAt: Date;
+  waitMinutes: number;
+}
+
 export interface CreateTurnData {
   queueId: string;
   businessId: string;
@@ -31,4 +44,5 @@ export interface ITurnRepo extends Repository<Turn> {
   countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number>;
   getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null>;
   findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]>;
+  findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]>;
 }

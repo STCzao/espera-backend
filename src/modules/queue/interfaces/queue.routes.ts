@@ -12,6 +12,7 @@ import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
 import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
+import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 import { QueueController } from "./QueueController";
 
@@ -27,6 +28,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new CancelTurnByEmployeeUseCase(undefined, emitter),
     new AttendTurnUseCase(undefined, emitter),
     new GetQueueStatusUseCase(),
+    new GetTurnHistoryUseCase(),
   );
 
   const router = Router();
@@ -35,6 +37,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   router.post("/:queueId/turns", authenticate, authorize("turn:create"), controller.createTurn);
   router.post("/:queueId/turns/manual", authenticate, authorize("turn:create_manual"), controller.createManualTurn);
   router.get("/:queueId/turns", authenticate, authorize("queue:read"), controller.getQueueList);
+  router.get("/:queueId/turns/history", authenticate, authorize("queue:read"), controller.getTurnHistory);
   router.get("/:queueId/turns/my-turn", authenticate, authorize("turn:read_own"), controller.getMyTurn);
   router.post("/:queueId/turns/my-turn/confirm-transit", authenticate, authorize("turn:update_own"), controller.confirmTransit);
   router.post("/:queueId/turns/my-turn/confirm-arrival", authenticate, authorize("turn:update_own"), controller.confirmArrival);
