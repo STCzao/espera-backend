@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ListMyBusinessesUseCase } from "../../../src/modules/business/application/ListMyBusinessesUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
+import { InMemoryQueueRepo, buildQueue } from "../../helpers/queueFakes";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 const ORG_ID = "organization-1";
@@ -10,12 +11,14 @@ const ORG_ID = "organization-1";
 const buildUseCase = (options: {
   businesses?: ReturnType<typeof buildBusiness>[];
   subscription?: ReturnType<typeof buildSubscription>;
+  queueRepo?: InMemoryQueueRepo;
 } = {}) => {
   const businessRepo = new InMemoryBusinessRepo(options.businesses ?? []);
   const subscriptionRepo = new InMemorySubscriptionRepo(
     options.subscription ? [options.subscription] : [buildSubscription({ organizationId: ORG_ID })],
   );
-  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo);
+  const queueRepo = options.queueRepo ?? new InMemoryQueueRepo();
+  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo, queueRepo);
 };
 
 describe("ListMyBusinessesUseCase", () => {
@@ -109,11 +112,37 @@ describe("ListMyBusinessesUseCase", () => {
     const useCase = new ListMyBusinessesUseCase(
       new InMemoryBusinessRepo([buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })]),
       new InMemorySubscriptionRepo([]),
+      new InMemoryQueueRepo(),
     );
 
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
 
     expect(result.businesses[0]).toMatchObject({ plan: "basic", subscriptionStatus: "pending" });
+  });
+
+  it("exposes activeQueueId when a queue exists for the business", async () => {
+    const BIZ_ID = "biz-uuid-1111-1111-1111-111111111111";
+    const queueRepo = new InMemoryQueueRepo([
+      buildQueue({ id: "q-1", businessId: BIZ_ID, isActive: true }),
+    ]);
+    const useCase = buildUseCase({
+      businesses: [buildBusiness({ id: BIZ_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+      queueRepo,
+    });
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+    expect(result.businesses[0].activeQueueId).toBe("q-1");
+  });
+
+  it("returns activeQueueId as null when no queue exists", async () => {
+    const useCase = buildUseCase({
+      businesses: [buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+    });
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+    expect(result.businesses[0].activeQueueId).toBeNull();
   });
 
   it("returns empty array when owner has no businesses", async () => {

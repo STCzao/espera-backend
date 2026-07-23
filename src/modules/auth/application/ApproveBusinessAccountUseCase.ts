@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import { sendBusinessWelcomeEmail } from "@shared/infrastructure/email";
@@ -6,6 +8,8 @@ import type { ISubscriptionRepo } from "@modules/organization/public-api";
 import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
+import type { IQueueRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo } from "@modules/queue/public-api";
 
 import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
@@ -29,6 +33,7 @@ export class ApproveBusinessAccountUseCase implements UseCase<
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
   ) {}
 
   public async execute(
@@ -60,6 +65,18 @@ export class ApproveBusinessAccountUseCase implements UseCase<
     for (const business of businesses) {
       if (business.status === "pending") {
         await this.businessRepo.save({ ...business, status: "approved" });
+        const existingQueue = await this.queueRepo.findActiveByBusinessId(business.id);
+        if (!existingQueue) {
+          await this.queueRepo.save({
+            id:         randomUUID(),
+            businessId: business.id,
+            name:       "Caja principal",
+            prefix:     "A",
+            isActive:   true,
+            createdAt:  new Date(),
+            updatedAt:  new Date(),
+          });
+        }
       }
 
       if (!approvedOrganizationIds.has(business.organizationId)) {
