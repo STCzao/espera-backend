@@ -11,6 +11,7 @@ import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase"
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
+import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 import { QueueController } from "./QueueController";
 
@@ -25,10 +26,12 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new CreateManualTurnUseCase(),
     new CancelTurnByEmployeeUseCase(undefined, emitter),
     new AttendTurnUseCase(undefined, emitter),
+    new GetQueueStatusUseCase(),
   );
 
   const router = Router();
 
+  router.get("/:queueId/status", authenticate, authorize("queue:read"), controller.getQueueStatus);
   router.post("/:queueId/turns", authenticate, authorize("turn:create"), controller.createTurn);
   router.post("/:queueId/turns/manual", authenticate, authorize("turn:create_manual"), controller.createManualTurn);
   router.get("/:queueId/turns", authenticate, authorize("queue:read"), controller.getQueueList);
