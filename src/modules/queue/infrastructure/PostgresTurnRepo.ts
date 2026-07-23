@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo } from "../domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnHistoryItem } from "../domain/ITurnRepo";
 
 const toTurn = (raw: {
   id: string;
@@ -191,6 +191,32 @@ export class PostgresTurnRepo implements ITurnRepo {
       priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
       status: row.status.toLowerCase() as "waiting" | "called",
       createdAt: row.createdAt,
+    }));
+  }
+
+  public async findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]> {
+    const rows = await prisma.turn.findMany({
+      where: {
+        queueId,
+        turnDate: date,
+        status: "COMPLETED",
+        calledAt: { not: null },
+        attendedAt: { not: null },
+      },
+      include: { customer: { select: { firstName: true, lastName: true } } },
+      orderBy: { attendedAt: "asc" },
+    });
+    return rows.map((row) => ({
+      turnId:        row.id,
+      displayNumber: row.displayNumber,
+      customerName:  row.customer ? `${row.customer.firstName} ${row.customer.lastName}`.trim() : null,
+      guestName:     row.guestName ?? null,
+      source:        row.source.toLowerCase() as TurnSource,
+      priority:      row.priority.toLowerCase().replace("_", "-") as TurnPriority,
+      createdAt:     row.createdAt,
+      calledAt:      row.calledAt!,
+      attendedAt:    row.attendedAt!,
+      waitMinutes:   Math.round((row.calledAt!.getTime() - row.createdAt.getTime()) / 60_000),
     }));
   }
 
