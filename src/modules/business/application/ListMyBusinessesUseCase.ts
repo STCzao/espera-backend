@@ -4,6 +4,8 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { ISubscriptionRepo, SubscriptionPlan } from "@modules/organization/public-api";
 import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
+import type { IQueueRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo } from "@modules/queue/public-api";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
@@ -30,6 +32,7 @@ export interface ListMyBusinessesOutput {
     plan: SubscriptionPlan;
     subscriptionStatus: string;
     trialEndsAt: string | null;
+    activeQueueId: string | null;
   }>;
 }
 
@@ -39,6 +42,7 @@ export class ListMyBusinessesUseCase
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
   ) {}
 
   public async execute(input: ListMyBusinessesInput): Promise<ListMyBusinessesOutput> {
@@ -51,9 +55,10 @@ export class ListMyBusinessesUseCase
 
     const results = await Promise.all(
       businesses.map(async (business) => {
-        const subscription = await this.subscriptionRepo.findByOrganizationId(
-          business.organizationId,
-        );
+        const [subscription, queue] = await Promise.all([
+          this.subscriptionRepo.findByOrganizationId(business.organizationId),
+          this.queueRepo.findActiveByBusinessId(business.id),
+        ]);
 
         return {
           id: business.id,
@@ -71,6 +76,7 @@ export class ListMyBusinessesUseCase
           plan: subscription?.plan ?? "basic",
           subscriptionStatus: subscription?.status ?? "pending",
           trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
+          activeQueueId: queue?.id ?? null,
         };
       }),
     );
