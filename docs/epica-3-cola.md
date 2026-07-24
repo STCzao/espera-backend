@@ -23,17 +23,30 @@ Formato de referencia: `docs/story-documentation-standard.md`
 ## Contratos principales de la épica
 
 ```text
-POST   /api/queues/:queueId/turns                        turn:create
-GET    /api/queues/:queueId/turns                        queue:read
-GET    /api/queues/:queueId/turns/my-turn                turn:read_own
-POST   /api/queues/:queueId/turns/my-turn/confirm-transit   turn:update_own
-POST   /api/queues/:queueId/turns/my-turn/confirm-arrival   turn:update_own
-POST   /api/queues/:queueId/turns/manual                 turn:create_manual
-POST   /api/queues/:queueId/turns/:turnId/cancel         turn:cancel_any
-POST   /api/queues/:queueId/turns/:turnId/attend         turn:attend
-POST   /api/queues/turns/call-next                       queue:call_next
-POST   /api/queues/turns/cancel                          turn:cancel
+POST   /api/queue/:queueId/turns                             turn:create
+GET    /api/queue/:queueId/turns                             queue:read
+GET    /api/queue/:queueId/turns/my-turn                     turn:read_own
+POST   /api/queue/:queueId/turns/my-turn/confirm-transit     turn:update_own
+POST   /api/queue/:queueId/turns/my-turn/confirm-arrival     turn:update_own
+POST   /api/queue/:queueId/turns/manual                      turn:create_manual
+POST   /api/queue/:queueId/turns/:turnId/cancel              turn:cancel_any
+POST   /api/queue/:queueId/turns/:turnId/attend              turn:attend
+POST   /api/queue/turns/call-next                            queue:call_next
+POST   /api/queue/turns/cancel                               turn:cancel
+GET    /api/queue/:queueId/status                            queue:read
+GET    /api/queue/:queueId/turns/history?date=YYYY-MM-DD     queue:read
+GET    /api/queue/:queueId/metrics?date=YYYY-MM-DD           queue:read
 ```
+
+> **Nota de mount**: el router se monta en `/api/queue` (singular) en
+> `src/app.ts`. Las versiones anteriores de este documento usaban
+> `/api/queue/` (plural) por error.
+>
+> **Queue bootstrap**: la cola inicial `("Caja principal", prefix "A")` se
+> crea automáticamente al aprobar el Business en
+> `ApproveBusinessAccountUseCase`. El `activeQueueId` se expone en
+> `GET /api/business/me` para que el frontend pueda arrancar sin un paso
+> extra de configuración.
 
 ## Modelo de datos central
 
@@ -143,7 +156,7 @@ Quedan fuera:
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns
+POST /api/queue/:queueId/turns
 ```
 
 Requiere autenticación y permiso `turn:create`.
@@ -209,7 +222,7 @@ posición de todos los usuarios en cola avanza automáticamente.
 
 El backend emite un evento `queue:update` al room `queue:{queueId}` cada vez
 que el estado de la cola cambia. El cliente se suscribe al room y refresca su
-posición llamando a `GET /api/queues/:queueId/turns/my-turn`.
+posición llamando a `GET /api/queue/:queueId/turns/my-turn`.
 
 El room se identifica como `queue:{queueId}`. La emisión se realiza vía
 `SocketIOEmitter.emitQueueUpdate(queueId, payload)`.
@@ -250,7 +263,7 @@ y la cantidad de ventanillas activas.
 
 ### Contrato backend
 
-`GET /api/queues/:queueId/turns/my-turn` devuelve `estimatedWaitMinutes` junto
+`GET /api/queue/:queueId/turns/my-turn` devuelve `estimatedWaitMinutes` junto
 con la posición (ver HU-3.2). Requiere permiso `turn:read_own`.
 
 Respuesta `200`:
@@ -306,7 +319,7 @@ en la cola de `registered` a `in_transit`.
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns/my-turn/confirm-transit
+POST /api/queue/:queueId/turns/my-turn/confirm-transit
 ```
 
 Requiere autenticación y permiso `turn:update_own`. No requiere body.
@@ -357,7 +370,7 @@ su prioridad al máximo: `in_transit → arrived`.
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns/my-turn/confirm-arrival
+POST /api/queue/:queueId/turns/my-turn/confirm-arrival
 ```
 
 Requiere autenticación y permiso `turn:update_own`. No requiere body.
@@ -409,7 +422,7 @@ esperando.
 ### Contrato backend
 
 ```text
-POST /api/queues/turns/cancel
+POST /api/queue/turns/cancel
 ```
 
 Requiere autenticación y permiso `turn:cancel`.
@@ -462,7 +475,7 @@ cola según la jerarquía de prioridad.
 ### Contrato backend
 
 ```text
-POST /api/queues/turns/call-next
+POST /api/queue/turns/call-next
 ```
 
 Requiere autenticación y permiso `queue:call_next`.
@@ -524,7 +537,7 @@ usuario, tiempo de espera y estado.
 ### Contrato backend
 
 ```text
-GET /api/queues/:queueId/turns
+GET /api/queue/:queueId/turns
 ```
 
 Requiere autenticación y permiso `queue:read`.
@@ -593,7 +606,7 @@ equivalente a presencia física.
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns/manual
+POST /api/queue/:queueId/turns/manual
 ```
 
 Requiere autenticación y permiso `turn:create_manual`.
@@ -655,7 +668,7 @@ quién pertenece.
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns/:turnId/cancel
+POST /api/queue/:queueId/turns/:turnId/cancel
 ```
 
 Requiere autenticación y permiso `turn:cancel_any`.
@@ -703,7 +716,7 @@ finalizó. El turno pasa al historial con timestamp de atención.
 ### Contrato backend
 
 ```text
-POST /api/queues/:queueId/turns/:turnId/attend
+POST /api/queue/:queueId/turns/:turnId/attend
 ```
 
 Requiere autenticación y permiso `turn:attend`.
