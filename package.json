@@ -12,7 +12,8 @@
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest",
     "test:run": "vitest run",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "backfill:queues": "tsx src/scripts/backfill-queues.ts"
   },
   "repository": {
     "type": "git",
