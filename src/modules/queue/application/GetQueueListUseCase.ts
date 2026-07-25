@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
+import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { TurnPriority } from "../domain/Turn";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
@@ -22,6 +25,7 @@ export interface QueueListItem {
   priority: TurnPriority;
   status: "waiting" | "called";
   waitingMinutes: number;
+  estimatedWaitMinutes: number | null;
 }
 
 export interface GetQueueListOutput {
@@ -29,10 +33,20 @@ export interface GetQueueListOutput {
   items: QueueListItem[];
 }
 
+const DEFAULT_SERVICE_MINUTES = 5;
+
+const todayUTC = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+};
+
+const estimateService = new QueueWaitEstimateService();
+
 export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueListOutput> {
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
   ) {}
 
   public async execute(input: GetQueueListInput): Promise<GetQueueListOutput> {
@@ -45,19 +59,45 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     if (!queue) throw AppError.notFound("Queue not found.");
 
     const now = new Date();
-    const summaries = await this.turnRepo.findActiveByQueue(queueId);
+    const today = todayUTC();
+
+    const [summaries, business, avgMinutes] = await Promise.all([
+      this.turnRepo.findActiveByQueue(queueId),
+      this.businessRepo.findById(queue.businessId),
+      this.turnRepo.getAverageServiceMinutes(queueId, today),
+    ]);
+
+    const activeServiceWindows = business?.activeServiceWindows ?? 1;
+    const serviceMinutes = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
+
+    let waitingPosition = 0;
 
     return {
       queueId,
-      items: summaries.map((s) => ({
-        turnId:         s.turnId,
-        displayNumber:  s.displayNumber,
-        customerName:   s.customerName,
-        guestName:      s.guestName,
-        priority:       s.priority,
-        status:         s.status,
-        waitingMinutes: Math.floor((now.getTime() - s.createdAt.getTime()) / 60_000),
-      })),
+      items: summaries.map((s) => {
+        let estimatedWaitMinutes: number | null = null;
+
+        if (s.status === "waiting") {
+          waitingPosition++;
+          const estimate = estimateService.estimate({
+            waitingTurns: waitingPosition,
+            activeServiceWindows,
+            averageServiceMinutes: serviceMinutes,
+          });
+          estimatedWaitMinutes = estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null;
+        }
+
+        return {
+          turnId:               s.turnId,
+          displayNumber:        s.displayNumber,
+          customerName:         s.customerName,
+          guestName:            s.guestName,
+          priority:             s.priority,
+          status:               s.status,
+          waitingMinutes:       Math.floor((now.getTime() - s.createdAt.getTime()) / 60_000),
+          estimatedWaitMinutes,
+        };
+      }),
     };
   }
 }
