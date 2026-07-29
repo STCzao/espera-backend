@@ -52,6 +52,19 @@ describe("CallNextUseCase", () => {
     expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("called");
   });
 
+  it("does not auto-complete an attending turn when calling the next", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "attending" }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("attending");
+    expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("called");
+  });
+
   it("selects the highest-priority waiting turn first", async () => {
     const base = new Date("2026-01-01T00:00:00.000Z");
     const turnRepo = new InMemoryTurnRepo([

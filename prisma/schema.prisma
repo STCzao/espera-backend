@@ -78,6 +78,7 @@ enum MembershipRole {
 enum TurnStatus {
   WAITING
   CALLED
+  ATTENDING
   CANCELLED
   COMPLETED
 }
@@ -346,9 +347,10 @@ model Turn {
   priority      TurnPriority @default(REGISTERED)
   source        TurnSource   @default(APP)
   turnDate      DateTime
-  calledAt      DateTime?
-  attendedAt    DateTime?
-  cancelledAt   DateTime?
+  calledAt             DateTime?
+  startedAttentionAt   DateTime?
+  attendedAt           DateTime?
+  cancelledAt          DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

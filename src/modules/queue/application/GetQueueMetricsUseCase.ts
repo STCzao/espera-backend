@@ -62,7 +62,7 @@ const computeMetrics = (raw: TurnDayRaw): DayMetrics => {
     completedCount > 0
       ? Math.round(
           raw.completedTurns.reduce(
-            (sum, t) => sum + (t.attendedAt.getTime() - t.calledAt.getTime()) / 60_000,
+            (sum, t) => sum + (t.attendedAt.getTime() - t.startedAttentionAt.getTime()) / 60_000,
             0,
           ) / completedCount,
         )
@@ -72,7 +72,7 @@ const computeMetrics = (raw: TurnDayRaw): DayMetrics => {
   if (completedCount > 0) {
     const countByHour = new Map<number, number>();
     for (const t of raw.completedTurns) {
-      const hour = t.calledAt.getUTCHours();
+      const hour = t.startedAttentionAt.getUTCHours();
       countByHour.set(hour, (countByHour.get(hour) ?? 0) + 1);
     }
     peakHour = [...countByHour.entries()].reduce((max, cur) =>

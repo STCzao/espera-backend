@@ -15,8 +15,8 @@ const buildUseCase = (options: {
   return { useCase: new AttendTurnUseCase(turnRepo, emitter as never), turnRepo };
 };
 
-describe("AttendTurnUseCase — atención exitosa", () => {
-  it("marks a called turn as completed", async () => {
+describe("AttendTurnUseCase — called → attending", () => {
+  it("transitions a called turn to attending", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
     ]);
@@ -24,40 +24,76 @@ describe("AttendTurnUseCase — atención exitosa", () => {
 
     const result = await useCase.execute({ turnId: TURN_ID });
 
-    expect(result).toMatchObject({ attended: true, turnId: TURN_ID });
+    expect(result).toMatchObject({ turnId: TURN_ID, status: "attending" });
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.status).toBe("attending");
   });
 
-  it("stamps attendedAt on the saved turn", async () => {
+  it("stamps startedAttentionAt on the turn", async () => {
     const before = new Date();
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID });
 
     const saved = turnRepo.all().find((t) => t.id === TURN_ID);
-    expect(saved?.status).toBe("completed");
-    expect(saved?.attendedAt).toBeInstanceOf(Date);
-    expect(saved!.attendedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(saved?.startedAttentionAt).toBeInstanceOf(Date);
+    expect(saved!.startedAttentionAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(result.startedAttentionAt).toBeDefined();
+    expect(() => new Date(result.startedAttentionAt!)).not.toThrow();
   });
 
-  it("returns attendedAt as ISO string", async () => {
+  it("emits queue:update with attendingTurnId and displayNumber", async () => {
+    const emitQueueUpdate = vi.fn();
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, displayNumber: "A-003", status: "called" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
+
+    await useCase.execute({ turnId: TURN_ID });
+
+    expect(emitQueueUpdate).toHaveBeenCalledOnce();
+    expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
+      attendingTurnId: TURN_ID,
+      attendingDisplayNumber: "A-003",
+    });
+  });
+});
+
+describe("AttendTurnUseCase — attending → completed", () => {
+  it("transitions an attending turn to completed", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
     const result = await useCase.execute({ turnId: TURN_ID });
 
-    expect(typeof result.attendedAt).toBe("string");
-    expect(() => new Date(result.attendedAt)).not.toThrow();
+    expect(result).toMatchObject({ turnId: TURN_ID, status: "completed" });
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.status).toBe("completed");
+  });
+
+  it("stamps attendedAt on the turn", async () => {
+    const before = new Date();
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ turnId: TURN_ID });
+
+    const saved = turnRepo.all().find((t) => t.id === TURN_ID);
+    expect(saved?.attendedAt).toBeInstanceOf(Date);
+    expect(saved!.attendedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(result.attendedAt).toBeDefined();
+    expect(() => new Date(result.attendedAt!)).not.toThrow();
   });
 
   it("emits queue:update with attendedTurnId and displayNumber", async () => {
     const emitQueueUpdate = vi.fn();
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, displayNumber: "A-003", status: "called" }),
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, displayNumber: "A-003", status: "attending" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
 
@@ -72,11 +108,11 @@ describe("AttendTurnUseCase — atención exitosa", () => {
 
   it("works without emitter", async () => {
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: null });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).resolves.toMatchObject({ attended: true });
+    await expect(useCase.execute({ turnId: TURN_ID })).resolves.toMatchObject({ status: "completed" });
   });
 });
 
@@ -84,20 +120,16 @@ describe("AttendTurnUseCase — errores", () => {
   it("throws 404 when the turn does not exist", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(
-      useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("throws 409 when the turn is waiting (not yet called)", async () => {
+  it("throws 409 when the turn is waiting", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "waiting" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(
-      useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("throws 409 when the turn is already completed", async () => {
@@ -106,27 +138,21 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(
-      useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("throws 409 when the turn is already cancelled", async () => {
+  it("throws 409 when the turn is cancelled", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "cancelled" }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(
-      useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("throws 400 for an invalid turnId", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(
-      useCase.execute({ turnId: "not-a-uuid" }),
-    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(useCase.execute({ turnId: "not-a-uuid" })).rejects.toMatchObject({ statusCode: 400 });
   });
 });

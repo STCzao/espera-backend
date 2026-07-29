@@ -22,10 +22,10 @@ const buildUseCase = (options: {
   return new GetQueueMetricsUseCase(queueRepo, turnRepo);
 };
 
-const completedTurn = (id: string, date: Date, calledHour: number, serviceMinutes: number) => {
-  const calledAt   = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), calledHour, 0, 0));
-  const attendedAt = new Date(calledAt.getTime() + serviceMinutes * 60_000);
-  return buildTurn({ id, queueId: QUEUE_ID, status: "completed", turnDate: date, calledAt, attendedAt });
+const completedTurn = (id: string, date: Date, startHour: number, serviceMinutes: number) => {
+  const startedAttentionAt = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), startHour, 0, 0));
+  const attendedAt         = new Date(startedAttentionAt.getTime() + serviceMinutes * 60_000);
+  return buildTurn({ id, queueId: QUEUE_ID, status: "completed", turnDate: date, startedAttentionAt, attendedAt });
 };
 
 describe("GetQueueMetricsUseCase — métricas vacías", () => {
@@ -108,7 +108,7 @@ describe("GetQueueMetricsUseCase — avgServiceMinutes", () => {
     expect(result.today.avgServiceMinutes).toBeNull();
   });
 
-  it("computes average service time from calledAt to attendedAt", async () => {
+  it("computes average service time from startedAttentionAt to attendedAt", async () => {
     // 6 min + 10 min = avg 8 min
     const turnRepo = new InMemoryTurnRepo([
       completedTurn("t-1", DATE_UTC, 9,  6),

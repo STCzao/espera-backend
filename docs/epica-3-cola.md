@@ -68,7 +68,7 @@ interface Queue {
   updatedAt: Date;
 }
 
-type TurnStatus   = "waiting" | "called" | "cancelled" | "completed";
+type TurnStatus   = "waiting" | "called" | "attending" | "cancelled" | "completed";
 type TurnPriority = "arrived" | "physical" | "in_transit" | "registered";
 type TurnSource   = "app" | "manual" | "qr" | "web";
 
@@ -85,6 +85,7 @@ interface Turn {
   source: TurnSource;
   turnDate: Date;
   calledAt?: Date;
+  startedAttentionAt?: Date;
   attendedAt?: Date;
   cancelledAt?: Date;
   createdAt: Date;
@@ -723,25 +724,43 @@ Requiere autenticación y permiso `turn:attend`.
 
 No requiere body.
 
-Respuesta `200`:
+Respuesta `200` — primera llamada (`called → attending`):
 
 ```json
 {
-  "attended": true,
   "turnId": "uuid",
-  "attendedAt": "2026-01-01T10:15:00.000Z"
+  "status": "attending",
+  "startedAttentionAt": "2026-01-01T10:14:00.000Z"
 }
 ```
 
-Emite `queue:update` con `{ attendedTurnId, attendedDisplayNumber }`.
+Respuesta `200` — segunda llamada (`attending → completed`):
+
+```json
+{
+  "turnId": "uuid",
+  "status": "completed",
+  "attendedAt": "2026-01-01T10:19:00.000Z"
+}
+```
+
+Primera llamada emite `queue:update` con `{ attendingTurnId, attendingDisplayNumber }`.
+
+Segunda llamada emite `queue:update` con `{ attendedTurnId, attendedDisplayNumber }`.
 
 ### Reglas de negocio
 
-1. Solo se puede marcar como atendido un turno en estado `called`. Un turno
-   `waiting` no se puede marcar directamente como atendido.
-2. `attendedAt` se registra en el momento de la llamada al endpoint.
-3. El tiempo de atención (`attendedAt - calledAt`) contribuye al promedio
-   usado en el estimado de espera (HU-3.3).
+1. El endpoint progresa la máquina de estados en dos pasos sucesivos:
+   - `called` → `attending`: registra `startedAttentionAt`. Responde
+     `{ status: "attending", startedAttentionAt }`.
+   - `attending` → `completed`: registra `attendedAt`. Responde
+     `{ status: "completed", attendedAt }`.
+2. Un turno `waiting`, `completed` o `cancelled` rechaza la llamada con
+   `409 Conflict`.
+3. El tiempo de servicio real (`attendedAt - startedAttentionAt`) alimenta el
+   promedio de los últimos 7 días usado en el estimado de espera (HU-3.3).
+   El intervalo `calledAt → startedAttentionAt` (tiempo de reacción del
+   cliente) queda excluido del promedio.
 
 ### Cobertura
 

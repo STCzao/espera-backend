@@ -165,9 +165,9 @@ describe("GetQueueListUseCase — estimatedWaitMinutes", () => {
     // 2 completed turns with 10 min service each → avg=10 min, pos 1 → 10 min
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "c-1", queueId: QUEUE_ID, status: "completed", turnDate: realToday,
-        calledAt: new Date(t0 + 0 * 60_000), attendedAt: new Date(t0 + 10 * 60_000) }),
+        startedAttentionAt: new Date(t0 + 0 * 60_000), attendedAt: new Date(t0 + 10 * 60_000) }),
       buildTurn({ id: "c-2", queueId: QUEUE_ID, status: "completed", turnDate: realToday,
-        calledAt: new Date(t0 + 10 * 60_000), attendedAt: new Date(t0 + 20 * 60_000) }),
+        startedAttentionAt: new Date(t0 + 10 * 60_000), attendedAt: new Date(t0 + 20 * 60_000) }),
       buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",   turnDate: realToday }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });

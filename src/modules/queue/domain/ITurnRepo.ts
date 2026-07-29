@@ -2,7 +2,7 @@ import type { Repository } from "../../../shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "./Turn";
 
 export interface TurnDayRaw {
-  completedTurns: Array<{ calledAt: Date; attendedAt: Date }>;
+  completedTurns: Array<{ startedAttentionAt: Date; attendedAt: Date }>;
   cancelledCount: number;
 }
 
@@ -36,7 +36,7 @@ export interface ActiveTurnSummary {
   customerName: string | null;
   guestName: string | null;
   priority: TurnPriority;
-  status: Extract<TurnStatus, "waiting" | "called">;
+  status: Extract<TurnStatus, "waiting" | "called" | "attending">;
   createdAt: Date;
 }
 

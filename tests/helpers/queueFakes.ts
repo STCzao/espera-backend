@@ -126,7 +126,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
   public async findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null> {
     return (
       [...this.turns.values()].find(
-        (t) => t.customerId === customerId && (t.status === "waiting" || t.status === "called"),
+        (t) => t.customerId === customerId && (t.status === "waiting" || t.status === "called" || t.status === "attending"),
       ) ?? null
     );
   }
@@ -137,7 +137,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
         (t) =>
           t.customerId === customerId &&
           t.queueId === queueId &&
-          (t.status === "waiting" || t.status === "called"),
+          (t.status === "waiting" || t.status === "called" || t.status === "attending"),
       ) ?? null
     );
   }
@@ -157,17 +157,19 @@ export class InMemoryTurnRepo implements ITurnRepo {
   }
 
   public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {
+    const sevenDaysAgo = new Date(turnDate.getTime() - 6 * 24 * 60 * 60 * 1000);
     const completed = [...this.turns.values()].filter(
       (t) =>
         t.queueId === queueId &&
-        t.turnDate.getTime() === turnDate.getTime() &&
+        t.turnDate.getTime() >= sevenDaysAgo.getTime() &&
+        t.turnDate.getTime() <= turnDate.getTime() &&
         t.status === "completed" &&
-        t.calledAt != null &&
+        t.startedAttentionAt != null &&
         t.attendedAt != null,
     );
     if (completed.length === 0) return null;
     const total = completed.reduce(
-      (sum, t) => sum + (t.attendedAt!.getTime() - t.calledAt!.getTime()) / 60_000,
+      (sum, t) => sum + (t.attendedAt!.getTime() - t.startedAttentionAt!.getTime()) / 60_000,
       0,
     );
     return total / completed.length;
@@ -178,7 +180,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,
     };
     const active = [...this.turns.values()].filter(
-      (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called"),
+      (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called" || t.status === "attending"),
     );
     active.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
@@ -202,8 +204,8 @@ export class InMemoryTurnRepo implements ITurnRepo {
     );
     return {
       completedTurns: turns
-        .filter((t) => t.status === "completed" && t.calledAt != null && t.attendedAt != null)
-        .map((t) => ({ calledAt: t.calledAt!, attendedAt: t.attendedAt! })),
+        .filter((t) => t.status === "completed" && t.startedAttentionAt != null && t.attendedAt != null)
+        .map((t) => ({ startedAttentionAt: t.startedAttentionAt!, attendedAt: t.attendedAt! })),
       cancelledCount: turns.filter((t) => t.status === "cancelled").length,
     };
   }

@@ -13,9 +13,10 @@ const schema = z.object({
 export type AttendTurnInput = z.infer<typeof schema>;
 
 export interface AttendTurnOutput {
-  attended: true;
   turnId: string;
-  attendedAt: string;
+  status: "attending" | "completed";
+  startedAttentionAt?: string;
+  attendedAt?: string;
 }
 
 export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOutput> {
@@ -30,26 +31,47 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
     if (!turn) throw AppError.notFound("Turn not found.");
-    if (turn.status !== "called") {
-      throw AppError.conflict("Only a called turn can be marked as attended.");
+
+    if (turn.status === "called") {
+      const startedAttentionAt = new Date();
+      const updated = await this.turnRepo.save({
+        ...turn,
+        status: "attending",
+        startedAttentionAt,
+      });
+
+      this.emitter?.emitQueueUpdate(updated.queueId, {
+        attendingTurnId: updated.id,
+        attendingDisplayNumber: updated.displayNumber,
+      });
+
+      return {
+        turnId: updated.id,
+        status: "attending",
+        startedAttentionAt: startedAttentionAt.toISOString(),
+      };
     }
 
-    const attendedAt = new Date();
-    const attended = await this.turnRepo.save({
-      ...turn,
-      status: "completed", 
-      attendedAt,
-    });
+    if (turn.status === "attending") {
+      const attendedAt = new Date();
+      const updated = await this.turnRepo.save({
+        ...turn,
+        status: "completed",
+        attendedAt,
+      });
 
-    this.emitter?.emitQueueUpdate(attended.queueId, {
-      attendedTurnId: attended.id,
-      attendedDisplayNumber: attended.displayNumber,
-    });
+      this.emitter?.emitQueueUpdate(updated.queueId, {
+        attendedTurnId: updated.id,
+        attendedDisplayNumber: updated.displayNumber,
+      });
 
-    return {
-      attended:   true,
-      turnId:     attended.id,
-      attendedAt: attendedAt.toISOString(),
-    };
+      return {
+        turnId: updated.id,
+        status: "completed",
+        attendedAt: attendedAt.toISOString(),
+      };
+    }
+
+    throw AppError.conflict("Only a called or attending turn can be progressed.");
   }
 }
