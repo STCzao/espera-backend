@@ -38,6 +38,18 @@ describe("CancelTurnByEmployeeUseCase — cancelación exitosa", () => {
     expect(result.cancelled).toBe(true);
   });
 
+  it("can cancel an attending turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ turnId: TURN_ID });
+
+    expect(result.cancelled).toBe(true);
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.status).toBe("cancelled");
+  });
+
   it("stamps cancelledAt on the saved turn", async () => {
     const before = new Date();
     const turnRepo = new InMemoryTurnRepo([

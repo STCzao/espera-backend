@@ -17,6 +17,7 @@ const toTurn = (raw: {
   source: string;
   turnDate: Date;
   calledAt: Date | null;
+  startedAttentionAt: Date | null;
   attendedAt: Date | null;
   cancelledAt: Date | null;
   createdAt: Date;
@@ -34,6 +35,7 @@ const toTurn = (raw: {
   source: raw.source.toLowerCase() as TurnSource,
   turnDate: raw.turnDate,
   calledAt: raw.calledAt ?? undefined,
+  startedAttentionAt: raw.startedAttentionAt ?? undefined,
   attendedAt: raw.attendedAt ?? undefined,
   cancelledAt: raw.cancelledAt ?? undefined,
   createdAt: raw.createdAt,
@@ -111,7 +113,7 @@ export class PostgresTurnRepo implements ITurnRepo {
     const row = await prisma.turn.findFirst({
       where: {
         customerId,
-        status: { in: ["WAITING", "CALLED"] },
+        status: { in: ["WAITING", "CALLED", "ATTENDING"] },
       },
     });
     return row ? toTurn(row) : null;
@@ -122,7 +124,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: {
         customerId,
         queueId,
-        status: { in: ["WAITING", "CALLED"] },
+        status: { in: ["WAITING", "CALLED", "ATTENDING"] },
       },
     });
     return row ? toTurn(row) : null;
@@ -149,19 +151,20 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null> {
+    const sevenDaysAgo = new Date(turnDate.getTime() - 6 * 24 * 60 * 60 * 1000);
     const rows = await prisma.turn.findMany({
       where: {
         queueId,
-        turnDate,
+        turnDate: { gte: sevenDaysAgo, lte: turnDate },
         status: "COMPLETED",
-        calledAt: { not: null },
+        startedAttentionAt: { not: null },
         attendedAt: { not: null },
       },
-      select: { calledAt: true, attendedAt: true },
+      select: { startedAttentionAt: true, attendedAt: true },
     });
     if (rows.length === 0) return null;
     const total = rows.reduce(
-      (sum, row) => sum + (row.attendedAt!.getTime() - row.calledAt!.getTime()) / 60_000,
+      (sum, row) => sum + (row.attendedAt!.getTime() - row.startedAttentionAt!.getTime()) / 60_000,
       0,
     );
     return total / rows.length;
@@ -172,7 +175,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
     };
     const rows = await prisma.turn.findMany({
-      where: { queueId, status: { in: ["WAITING", "CALLED"] } },
+      where: { queueId, status: { in: ["WAITING", "CALLED", "ATTENDING"] } },
       include: { customer: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: "asc" },
     });
@@ -189,7 +192,7 @@ export class PostgresTurnRepo implements ITurnRepo {
         : null,
       guestName: row.guestName ?? null,
       priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
-      status: row.status.toLowerCase() as "waiting" | "called",
+      status: row.status.toLowerCase() as "waiting" | "called" | "attending",
       createdAt: row.createdAt,
     }));
   }
@@ -197,13 +200,13 @@ export class PostgresTurnRepo implements ITurnRepo {
   public async getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw> {
     const [completedRows, cancelledCount] = await Promise.all([
       prisma.turn.findMany({
-        where: { queueId, turnDate: date, status: "COMPLETED", calledAt: { not: null }, attendedAt: { not: null } },
-        select: { calledAt: true, attendedAt: true },
+        where: { queueId, turnDate: date, status: "COMPLETED", startedAttentionAt: { not: null }, attendedAt: { not: null } },
+        select: { startedAttentionAt: true, attendedAt: true },
       }),
       prisma.turn.count({ where: { queueId, turnDate: date, status: "CANCELLED" } }),
     ]);
     return {
-      completedTurns: completedRows.map((r) => ({ calledAt: r.calledAt!, attendedAt: r.attendedAt! })),
+      completedTurns: completedRows.map((r) => ({ startedAttentionAt: r.startedAttentionAt!, attendedAt: r.attendedAt! })),
       cancelledCount,
     };
   }
@@ -238,8 +241,9 @@ export class PostgresTurnRepo implements ITurnRepo {
     const row = await prisma.turn.update({
       where: { id: entity.id },
       data: {
-        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "CANCELLED" | "COMPLETED",
+        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "CANCELLED" | "COMPLETED",
         calledAt: entity.calledAt ?? null,
+        startedAttentionAt: entity.startedAttentionAt ?? null,
         attendedAt: entity.attendedAt ?? null,
         cancelledAt: entity.cancelledAt ?? null,
       },

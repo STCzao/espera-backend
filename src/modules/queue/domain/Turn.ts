@@ -1,4 +1,4 @@
-export type TurnStatus = "waiting" | "called" | "cancelled" | "completed";
+export type TurnStatus = "waiting" | "called" | "attending" | "cancelled" | "completed";
 export type TurnPriority = "arrived" | "physical" | "in_transit" | "registered";
 export type TurnSource = "app" | "manual" | "qr" | "web";
 
@@ -15,6 +15,7 @@ export interface Turn {
   source: TurnSource;
   turnDate: Date;
   calledAt?: Date;
+  startedAttentionAt?: Date;
   attendedAt?: Date;
   cancelledAt?: Date;
   createdAt: Date;

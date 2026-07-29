@@ -24,6 +24,7 @@ export interface GetQueueStatusOutput {
   activeServiceWindows: number;
   waitingCount: number;
   calledCount: number;
+  attendingCount: number;
   estimatedTotalWaitMinutes: number | null;
 }
 
@@ -57,8 +58,9 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       this.turnRepo.getAverageServiceMinutes(parsed.data.queueId, today),
     ]);
 
-    const waitingCount = activeTurns.filter((t) => t.status === "waiting").length;
-    const calledCount  = activeTurns.filter((t) => t.status === "called").length;
+    const waitingCount   = activeTurns.filter((t) => t.status === "waiting").length;
+    const calledCount    = activeTurns.filter((t) => t.status === "called").length;
+    const attendingCount = activeTurns.filter((t) => t.status === "attending").length;
 
     const activeServiceWindows = business?.activeServiceWindows ?? 1;
     const operationalStatus    = business?.operationalStatus ?? "normal";
@@ -77,6 +79,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       activeServiceWindows,
       waitingCount,
       calledCount,
+      attendingCount,
       estimatedTotalWaitMinutes: estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null,
     };
   }

@@ -37,14 +37,16 @@ describe("GetQueueStatusUseCase — estado básico", () => {
       activeServiceWindows: 1,
       waitingCount:         0,
       calledCount:          0,
+      attendingCount:       0,
     });
   });
 
-  it("counts waiting and called turns separately", async () => {
+  it("counts waiting, called and attending turns separately", async () => {
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting", turnDate: TODAY }),
-      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "waiting", turnDate: TODAY }),
-      buildTurn({ id: "t-3", queueId: QUEUE_ID, status: "called",  turnDate: TODAY }),
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
+      buildTurn({ id: "t-3", queueId: QUEUE_ID, status: "called",    turnDate: TODAY }),
+      buildTurn({ id: "t-4", queueId: QUEUE_ID, status: "attending", turnDate: TODAY }),
     ]);
     const useCase = buildUseCase({ turnRepo });
 
@@ -52,6 +54,7 @@ describe("GetQueueStatusUseCase — estado básico", () => {
 
     expect(result.waitingCount).toBe(2);
     expect(result.calledCount).toBe(1);
+    expect(result.attendingCount).toBe(1);
   });
 
   it("does not count completed or cancelled turns", async () => {
@@ -129,12 +132,12 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
   });
 
   it("uses real average service time from completed turns", async () => {
-    const now        = new Date();
-    const realToday  = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const calledAt   = new Date(realToday.getTime());
-    const attendedAt = new Date(realToday.getTime() + 10 * 60_000); // 10 min avg
+    const now               = new Date();
+    const realToday         = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startedAttentionAt = new Date(realToday.getTime());
+    const attendedAt         = new Date(realToday.getTime() + 10 * 60_000); // 10 min service
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "t-done", queueId: QUEUE_ID, status: "completed", turnDate: realToday, calledAt, attendedAt }),
+      buildTurn({ id: "t-done", queueId: QUEUE_ID, status: "completed", turnDate: realToday, startedAttentionAt, attendedAt }),
       buildTurn({ id: "t-1",    queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
       buildTurn({ id: "t-2",    queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
     ]);
