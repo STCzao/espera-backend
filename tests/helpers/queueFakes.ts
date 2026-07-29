@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
 import type { IServiceWindowRepo } from "../../src/modules/queue/domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../../src/modules/queue/domain/ServiceWindow";
@@ -233,9 +233,25 @@ export class InMemoryTurnRepo implements ITurnRepo {
       customerName: null,
       guestName: t.guestName ?? null,
       priority: t.priority as TurnPriority,
-      status: t.status as "waiting" | "called",
+      status: t.status as "waiting" | "called" | "attending",
       createdAt: t.createdAt,
+      serviceWindowId: t.serviceWindowId ?? null,
+      startedAttentionAt: t.startedAttentionAt ?? null,
     }));
+  }
+
+  public async findRecentCalls(queueId: string, limit: number): Promise<RecentCallItem[]> {
+    return [...this.turns.values()]
+      .filter((t) => t.queueId === queueId && t.calledAt != null)
+      .sort((a, b) => b.calledAt!.getTime() - a.calledAt!.getTime())
+      .slice(0, limit)
+      .map((t) => ({
+        turnId: t.id,
+        displayNumber: t.displayNumber,
+        serviceWindowId: t.serviceWindowId ?? null,
+        serviceWindowName: null,
+        calledAt: t.calledAt!,
+      }));
   }
 
   public async getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw> {

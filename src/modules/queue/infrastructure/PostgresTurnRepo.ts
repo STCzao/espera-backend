@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
+import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
 
 const toTurn = (raw: {
   id: string;
@@ -196,6 +196,24 @@ export class PostgresTurnRepo implements ITurnRepo {
       priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
       status: row.status.toLowerCase() as "waiting" | "called" | "attending",
       createdAt: row.createdAt,
+      serviceWindowId: row.serviceWindowId ?? null,
+      startedAttentionAt: row.startedAttentionAt ?? null,
+    }));
+  }
+
+  public async findRecentCalls(queueId: string, limit: number): Promise<RecentCallItem[]> {
+    const rows = await prisma.turn.findMany({
+      where: { queueId, calledAt: { not: null } },
+      include: { serviceWindow: { select: { name: true } } },
+      orderBy: { calledAt: "desc" },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      turnId: row.id,
+      displayNumber: row.displayNumber,
+      serviceWindowId: row.serviceWindowId ?? null,
+      serviceWindowName: row.serviceWindow?.name ?? null,
+      calledAt: row.calledAt!,
     }));
   }
 

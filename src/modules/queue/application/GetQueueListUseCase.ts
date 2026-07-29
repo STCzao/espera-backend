@@ -7,8 +7,10 @@ import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresB
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { TurnPriority } from "../domain/Turn";
 import type { IQueueRepo } from "../domain/IQueueRepo";
+import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
+import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
@@ -26,6 +28,8 @@ export interface QueueListItem {
   status: "waiting" | "called" | "attending";
   waitingMinutes: number;
   estimatedWaitMinutes: number | null;
+  serviceWindowId: string | null;
+  serviceWindowName: string | null;
 }
 
 export interface GetQueueListOutput {
@@ -47,6 +51,7 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: GetQueueListInput): Promise<GetQueueListOutput> {
@@ -61,13 +66,16 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     const now = new Date();
     const today = todayUTC();
 
-    const [summaries, business, avgMinutes] = await Promise.all([
+    const [summaries, business, avgMinutes, windows] = await Promise.all([
       this.turnRepo.findActiveByQueue(queueId),
       this.businessRepo.findById(queue.businessId),
       this.turnRepo.getAverageServiceMinutes(queueId, today),
+      this.windowRepo.findByQueueId(queueId),
     ]);
 
-    const activeServiceWindows = business?.activeServiceWindows ?? 1;
+    const windowNameById = new Map(windows.map((w) => [w.id, w.name]));
+    const activeWindowsCount = windows.filter((w) => w.isActive).length;
+    const activeServiceWindows = windows.length > 0 ? activeWindowsCount : (business?.activeServiceWindows ?? 1);
     const serviceMinutes = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
 
     let waitingPosition = 0;
@@ -96,6 +104,8 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
           status:               s.status,
           waitingMinutes:       Math.floor((now.getTime() - s.createdAt.getTime()) / 60_000),
           estimatedWaitMinutes,
+          serviceWindowId:      s.serviceWindowId,
+          serviceWindowName:    s.serviceWindowId ? (windowNameById.get(s.serviceWindowId) ?? null) : null,
         };
       }),
     };
