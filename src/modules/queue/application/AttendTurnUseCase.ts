@@ -7,7 +7,8 @@ import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
 const schema = z.object({
-  turnId: z.string().uuid("Invalid turn id."),
+  turnId:          z.string().uuid("Invalid turn id."),
+  serviceWindowId: z.string().uuid("Invalid service window id.").optional(),
 });
 
 export type AttendTurnInput = z.infer<typeof schema>;
@@ -38,6 +39,7 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
         ...turn,
         status: "attending",
         startedAttentionAt,
+        serviceWindowId: parsed.data.serviceWindowId ?? turn.serviceWindowId,
       });
 
       this.emitter?.emitQueueUpdate(updated.queueId, {

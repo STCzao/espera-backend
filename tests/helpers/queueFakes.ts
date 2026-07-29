@@ -3,7 +3,47 @@ import { randomUUID } from "node:crypto";
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
 import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
+import type { IServiceWindowRepo } from "../../src/modules/queue/domain/IServiceWindowRepo";
+import type { ServiceWindow } from "../../src/modules/queue/domain/ServiceWindow";
 import type { Turn, TurnPriority, TurnSource } from "../../src/modules/queue/domain/Turn";
+
+export const buildServiceWindow = (overrides: Partial<ServiceWindow> = {}): ServiceWindow => ({
+  id:        "window-1",
+  queueId:   "queue-1",
+  name:      "Ventanilla 1",
+  type:      "standard",
+  isActive:  true,
+  createdAt: new Date("2026-01-01T00:00:00.000Z"),
+  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  ...overrides,
+});
+
+export class InMemoryServiceWindowRepo implements IServiceWindowRepo {
+  private readonly windows = new Map<string, ServiceWindow>();
+
+  public constructor(initialWindows: ServiceWindow[] = []) {
+    initialWindows.forEach((w) => this.windows.set(w.id, w));
+  }
+
+  public async findById(id: string): Promise<ServiceWindow | null> {
+    return this.windows.get(id) ?? null;
+  }
+
+  public async findByQueueId(queueId: string): Promise<ServiceWindow[]> {
+    return [...this.windows.values()]
+      .filter((w) => w.queueId === queueId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  public async save(entity: ServiceWindow): Promise<ServiceWindow> {
+    this.windows.set(entity.id, entity);
+    return entity;
+  }
+
+  public all(): ServiceWindow[] {
+    return [...this.windows.values()];
+  }
+}
 
 export const buildQueue = (overrides: Partial<Queue> = {}): Queue => ({
   id: "queue-1",

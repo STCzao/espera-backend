@@ -75,6 +75,12 @@ enum MembershipRole {
   EMPLOYEE
 }
 
+enum ServiceWindowType {
+  STANDARD
+  PRIORITY
+  SPECIALIZED
+}
+
 enum TurnStatus {
   WAITING
   CALLED
@@ -328,11 +334,28 @@ model Queue {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  turns      Turn[]
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  turns           Turn[]
+  serviceWindows  ServiceWindow[]
 
   @@index([businessId])
   @@map("queues")
+}
+
+model ServiceWindow {
+  id        String            @id @default(uuid())
+  queueId   String
+  name      String
+  type      ServiceWindowType @default(STANDARD)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  queue Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  turns Turn[]
+
+  @@index([queueId])
+  @@map("service_windows")
 }
 
 model Turn {
@@ -347,6 +370,7 @@ model Turn {
   priority      TurnPriority @default(REGISTERED)
   source        TurnSource   @default(APP)
   turnDate      DateTime
+  serviceWindowId      String?
   calledAt             DateTime?
   startedAttentionAt   DateTime?
   attendedAt           DateTime?
@@ -354,9 +378,10 @@ model Turn {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  queue      Queue    @relation(fields: [queueId], references: [id], onDelete: Cascade)
-  business   Business @relation(fields: [businessId], references: [id])
-  customer   User?    @relation(fields: [customerId], references: [id])
+  queue         Queue          @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  business      Business       @relation(fields: [businessId], references: [id])
+  customer      User?          @relation(fields: [customerId], references: [id])
+  serviceWindow ServiceWindow? @relation(fields: [serviceWindowId], references: [id])
 
   @@index([queueId, status])
   @@index([customerId, status])
