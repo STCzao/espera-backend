@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GetQueueListUseCase } from "../../../src/modules/queue/application/GetQueueListUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
-import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue, buildTurn } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, InMemoryTurnRepo, buildQueue, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
 const QUEUE_ID    = "11111111-1111-4111-8111-111111111111";
 const BUSINESS_ID = "business-1";
@@ -12,11 +12,13 @@ const buildUseCase = (options: {
   queueRepo?:    InMemoryQueueRepo;
   turnRepo?:     InMemoryTurnRepo;
   businessRepo?: InMemoryBusinessRepo;
+  windowRepo?:   InMemoryServiceWindowRepo;
 } = {}) => {
   const queueRepo    = options.queueRepo    ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, businessId: BUSINESS_ID })]);
   const turnRepo     = options.turnRepo     ?? new InMemoryTurnRepo();
   const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([buildBusiness({ id: BUSINESS_ID, activeServiceWindows: 1 })]);
-  return { useCase: new GetQueueListUseCase(queueRepo, turnRepo, businessRepo), turnRepo };
+  const windowRepo   = options.windowRepo   ?? new InMemoryServiceWindowRepo();
+  return { useCase: new GetQueueListUseCase(queueRepo, turnRepo, businessRepo, windowRepo), turnRepo, windowRepo };
 };
 
 describe("GetQueueListUseCase — lista de turnos", () => {
@@ -229,6 +231,55 @@ describe("GetQueueListUseCase — estimatedWaitMinutes", () => {
 
     expect(result.items[0].estimatedWaitMinutes).toBe(5);
     expect(result.items[1].estimatedWaitMinutes).toBe(5);
+  });
+});
+
+describe("GetQueueListUseCase — ventanilla asignada", () => {
+  it("includes serviceWindowId and serviceWindowName for an attending turn with a window", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: QUEUE_ID, name: "Caja 1" }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "attending", turnDate: TODAY, serviceWindowId: "w-1" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.items[0]).toMatchObject({ serviceWindowId: "w-1", serviceWindowName: "Caja 1" });
+  });
+
+  it("returns null for both fields when the turn has no window assigned", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "called", turnDate: TODAY }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.items[0]).toMatchObject({ serviceWindowId: null, serviceWindowName: null });
+  });
+});
+
+describe("GetQueueListUseCase — activeServiceWindows real (ventanillas)", () => {
+  it("uses the real active window count instead of the legacy business field", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: QUEUE_ID, isActive: true }),
+      buildServiceWindow({ id: "w-2", queueId: QUEUE_ID, isActive: false }),
+    ]);
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_ID, activeServiceWindows: 99 }),
+    ]);
+    const base = TODAY.getTime();
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting", createdAt: new Date(base + 1000), turnDate: TODAY }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo, businessRepo });
+
+    // 1 active window, default 5 min → pos 1 = ceil(1/1) * 5 = 5
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.items[0].estimatedWaitMinutes).toBe(5);
   });
 });
 

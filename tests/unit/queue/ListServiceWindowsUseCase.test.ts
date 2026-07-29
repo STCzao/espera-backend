@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ListServiceWindowsUseCase } from "../../../src/modules/queue/application/ListServiceWindowsUseCase";
-import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue, buildServiceWindow } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, InMemoryTurnRepo, buildQueue, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
 const QUEUE_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUEUE_ID2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -9,10 +9,12 @@ const QUEUE_ID2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   windowRepo?: InMemoryServiceWindowRepo;
+  turnRepo?: InMemoryTurnRepo;
 } = {}) => {
   const queueRepo  = options.queueRepo  ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID })]);
   const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
-  return { useCase: new ListServiceWindowsUseCase(queueRepo, windowRepo), windowRepo };
+  const turnRepo   = options.turnRepo   ?? new InMemoryTurnRepo();
+  return { useCase: new ListServiceWindowsUseCase(queueRepo, windowRepo, turnRepo), windowRepo, turnRepo };
 };
 
 describe("ListServiceWindowsUseCase", () => {
@@ -43,6 +45,57 @@ describe("ListServiceWindowsUseCase", () => {
     const result = await useCase.execute({ queueId: QUEUE_ID });
 
     expect(result.windows).toHaveLength(0);
+  });
+
+  it("returns currentTurn null when the window is free", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: QUEUE_ID }),
+    ]);
+    const { useCase } = buildUseCase({ windowRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.windows[0].currentTurn).toBeNull();
+  });
+
+  it("returns currentTurn with the attending turn assigned to the window", async () => {
+    const startedAttentionAt = new Date("2026-01-01T10:00:00Z");
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: QUEUE_ID }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-1",
+        queueId: QUEUE_ID,
+        displayNumber: "A-001",
+        status: "attending",
+        serviceWindowId: "w-1",
+        startedAttentionAt,
+      }),
+    ]);
+    const { useCase } = buildUseCase({ windowRepo, turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.windows[0].currentTurn).toEqual({
+      turnId: "t-1",
+      displayNumber: "A-001",
+      startedAttentionAt: startedAttentionAt.toISOString(),
+    });
+  });
+
+  it("does not attach a called (not yet attending) turn as currentTurn", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: QUEUE_ID }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "called", serviceWindowId: "w-1" }),
+    ]);
+    const { useCase } = buildUseCase({ windowRepo, turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.windows[0].currentTurn).toBeNull();
   });
 
   it("throws 404 when queue does not exist", async () => {

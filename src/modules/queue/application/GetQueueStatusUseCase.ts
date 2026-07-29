@@ -7,8 +7,10 @@ import type { BusinessOperationalStatus } from "@modules/business/domain/Busines
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { IQueueRepo } from "../domain/IQueueRepo";
+import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
+import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
@@ -16,6 +18,16 @@ const schema = z.object({
 });
 
 export type GetQueueStatusInput = z.infer<typeof schema>;
+
+export interface RecentCall {
+  turnId: string;
+  displayNumber: string;
+  serviceWindowId: string | null;
+  serviceWindowName: string | null;
+  calledAt: string;
+}
+
+const RECENT_CALLS_LIMIT = 5;
 
 export interface GetQueueStatusOutput {
   queueId: string;
@@ -26,6 +38,7 @@ export interface GetQueueStatusOutput {
   calledCount: number;
   attendingCount: number;
   estimatedTotalWaitMinutes: number | null;
+  recentCalls: RecentCall[];
 }
 
 const DEFAULT_SERVICE_MINUTES = 5;
@@ -42,6 +55,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: GetQueueStatusInput): Promise<GetQueueStatusOutput> {
@@ -52,17 +66,20 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
     if (!queue) throw AppError.notFound("Queue not found.");
 
     const today = todayUTC();
-    const [activeTurns, business, avgMinutes] = await Promise.all([
+    const [activeTurns, business, avgMinutes, windows, recentCalls] = await Promise.all([
       this.turnRepo.findActiveByQueue(parsed.data.queueId),
       this.businessRepo.findById(queue.businessId),
       this.turnRepo.getAverageServiceMinutes(parsed.data.queueId, today),
+      this.windowRepo.findByQueueId(parsed.data.queueId),
+      this.turnRepo.findRecentCalls(parsed.data.queueId, RECENT_CALLS_LIMIT),
     ]);
 
     const waitingCount   = activeTurns.filter((t) => t.status === "waiting").length;
     const calledCount    = activeTurns.filter((t) => t.status === "called").length;
     const attendingCount = activeTurns.filter((t) => t.status === "attending").length;
 
-    const activeServiceWindows = business?.activeServiceWindows ?? 1;
+    const activeWindowsCount   = windows.filter((w) => w.isActive).length;
+    const activeServiceWindows = windows.length > 0 ? activeWindowsCount : (business?.activeServiceWindows ?? 1);
     const operationalStatus    = business?.operationalStatus ?? "normal";
     const serviceMinutes       = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
 
@@ -81,6 +98,13 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       calledCount,
       attendingCount,
       estimatedTotalWaitMinutes: estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null,
+      recentCalls: recentCalls.map((r) => ({
+        turnId:            r.turnId,
+        displayNumber:     r.displayNumber,
+        serviceWindowId:   r.serviceWindowId,
+        serviceWindowName: r.serviceWindowName,
+        calledAt:          r.calledAt.toISOString(),
+      })),
     };
   }
 }

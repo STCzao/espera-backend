@@ -577,9 +577,12 @@ Respuesta `200`:
       "customerName": "Juan García",
       "guestName": null,
       "priority": "arrived",
-      "status": "waiting",
+      "status": "attending",
       "createdAt": "2026-01-01T10:00:00.000Z",
-      "waitingMinutes": 12
+      "waitingMinutes": 12,
+      "estimatedWaitMinutes": null,
+      "serviceWindowId": "uuid",
+      "serviceWindowName": "Caja 1"
     }
   ]
 }
@@ -592,7 +595,10 @@ Respuesta `200`:
   manuales.
 - `guestName`: nombre ingresado por el empleado para turnos manuales, o `null`.
 - La lista incluye turnos de cualquier `turnDate`, no filtra por fecha. El
-  estado activo (`waiting` o `called`) determina la inclusión.
+  estado activo (`waiting`, `called` o `attending`) determina la inclusión.
+- `serviceWindowId` / `serviceWindowName`: ventanilla asignada al turno (ver
+  refinamiento *Visibilidad de ventanillas*). `null` si el turno todavía no
+  tiene ventanilla asignada.
 
 ### Reglas de negocio
 
@@ -883,16 +889,23 @@ Permiso: `queue:read`. Respuesta `200`:
       "id": "uuid",
       "queueId": "uuid",
       "name": "Ventanilla 1",
-      "type": "standard",
+      "type": "cashier",
       "isActive": true,
       "createdAt": "...",
-      "updatedAt": "..."
+      "updatedAt": "...",
+      "currentTurn": {
+        "turnId": "uuid",
+        "displayNumber": "A-001",
+        "startedAttentionAt": "2026-01-01T10:14:00.000Z"
+      }
     }
   ]
 }
 ```
 
-Ordenadas por `createdAt` ascendente.
+Ordenadas por `createdAt` ascendente. `currentTurn` es `null` cuando la
+ventanilla no tiene ningún turno `attending` asignado en este momento (ver
+refinamiento *Visibilidad de ventanillas*).
 
 #### Crear ventanilla
 
@@ -905,7 +918,7 @@ Permiso: `queue:configure`.
 Request body:
 
 ```json
-{ "name": "Preferencial", "type": "priority" }
+{ "name": "Atención al cliente", "type": "customer_service" }
 ```
 
 - `name`: requerido, 1–100 caracteres.
@@ -937,3 +950,75 @@ Respuesta `200`: objeto `ServiceWindow` con `isActive` invertido.
 - `tests/unit/queue/CreateServiceWindowUseCase.test.ts`
 - `tests/unit/queue/ToggleServiceWindowUseCase.test.ts`
 - `tests/unit/queue/AttendTurnUseCase.test.ts` (sección `serviceWindowId`)
+
+---
+
+## Refinamiento — Visibilidad de ventanillas y promedio real
+
+Rama: `bugfix/queue-window-visibility`. No requiere migraciones — todo se
+deriva de columnas ya existentes (`turns.serviceWindowId`,
+`turns.startedAttentionAt`, `turns.calledAt`, `service_windows.isActive`).
+
+### Objetivo
+
+El panel de cola no podía mostrar con claridad "a qué turno llamamos" ni "en
+qué ventanilla está siendo atendido" porque esa información nunca se exponía
+en los endpoints existentes. Este refinamiento junta 3 cambios de contrato y
+1 corrección de consistencia.
+
+### 1. Ventanilla asignada en `GET /queue/:queueId/turns`
+
+`QueueListItem` ahora incluye `serviceWindowId` y `serviceWindowName` (ver
+HU-3.8). Ambos son `null` si el turno todavía no tiene ventanilla asignada.
+
+### 2. Turno actual de cada ventanilla en `GET /queue/:queueId/windows`
+
+Cada `ServiceWindow` en la respuesta de `ListServiceWindowsUseCase` incluye
+`currentTurn` (ver sección de ventanillas más arriba): el turno `attending`
+asignado a esa ventanilla en este momento, o `null` si está libre. Una
+ventanilla atiende a lo sumo un turno a la vez.
+
+### 3. Histórico corto de llamados en `GET /queue/:queueId/status`
+
+```json
+{
+  "recentCalls": [
+    {
+      "turnId": "uuid",
+      "displayNumber": "A-003",
+      "serviceWindowId": "uuid",
+      "serviceWindowName": "Caja 1",
+      "calledAt": "2026-01-01T10:12:00.000Z"
+    }
+  ]
+}
+```
+
+- Últimos 5 turnos con `calledAt` no nulo de la cola, ordenados por
+  `calledAt` descendente.
+- No filtra por estado: un turno que ya pasó a `completed` sigue apareciendo
+  un rato en el histórico, para que el panel pueda mostrar "últimos
+  llamados" sin depender de que el empleado haya visto el aviso en el
+  momento exacto.
+
+### 4. Fix: `activeServiceWindows` usaba el contador legado del negocio
+
+`GetQueueStatusUseCase` y `GetQueueListUseCase` calculaban el estimado de
+espera con `business.activeServiceWindows` — el contador entero legado de
+HU-2.3, independiente de las ventanillas reales creadas en
+`bugfix/service-windows`. Si un negocio creaba 3 ventanillas pero solo 1
+estaba activa, el estimado seguía usando el número viejo del negocio (que
+nunca se actualiza al crear/activar/desactivar ventanillas).
+
+Ahora ambos use cases cuentan `service_windows` con `isActive = true` para
+esa cola. El campo legado del negocio solo se usa como fallback si la cola
+todavía no tiene ninguna fila en `service_windows` (negocios que no migraron
+a ventanillas individuales).
+
+### Cobertura
+
+- `tests/unit/queue/GetQueueListUseCase.test.ts` (secciones *ventanilla
+  asignada* y *activeServiceWindows real*)
+- `tests/unit/queue/ListServiceWindowsUseCase.test.ts` (`currentTurn`)
+- `tests/unit/queue/GetQueueStatusUseCase.test.ts` (secciones *recentCalls*
+  y *activeServiceWindows real*)
