@@ -7,12 +7,15 @@ import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployee
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
+import { CreateServiceWindowUseCase } from "../application/CreateServiceWindowUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
-import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
+import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
+import { ListServiceWindowsUseCase } from "../application/ListServiceWindowsUseCase";
+import { ToggleServiceWindowUseCase } from "../application/ToggleServiceWindowUseCase";
 
 export class QueueController {
   public constructor(
@@ -25,9 +28,12 @@ export class QueueController {
     private readonly createManualTurnUseCase = new CreateManualTurnUseCase(),
     private readonly cancelTurnByEmployeeUseCase = new CancelTurnByEmployeeUseCase(),
     private readonly attendTurnUseCase = new AttendTurnUseCase(),
-  private readonly getQueueStatusUseCase = new GetQueueStatusUseCase(),
-  private readonly getTurnHistoryUseCase = new GetTurnHistoryUseCase(),
-  private readonly getQueueMetricsUseCase = new GetQueueMetricsUseCase(),
+    private readonly getQueueStatusUseCase = new GetQueueStatusUseCase(),
+    private readonly getTurnHistoryUseCase = new GetTurnHistoryUseCase(),
+    private readonly getQueueMetricsUseCase = new GetQueueMetricsUseCase(),
+    private readonly listServiceWindowsUseCase = new ListServiceWindowsUseCase(),
+    private readonly createServiceWindowUseCase = new CreateServiceWindowUseCase(),
+    private readonly toggleServiceWindowUseCase = new ToggleServiceWindowUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -91,9 +97,35 @@ export class QueueController {
 
   public attendTurn = async (request: Request, response: Response): Promise<void> => {
     const result = await this.attendTurnUseCase.execute({
-      turnId: String(request.params.turnId),
+      turnId:          String(request.params.turnId),
+      serviceWindowId: request.body.serviceWindowId ? String(request.body.serviceWindowId) : undefined,
     });
     logger.info({ turnId: result.turnId }, "Turn marked as attended");
+    response.status(200).json(result);
+  };
+
+  public listServiceWindows = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.listServiceWindowsUseCase.execute({
+      queueId: String(request.params.queueId),
+    });
+    response.status(200).json(result);
+  };
+
+  public createServiceWindow = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.createServiceWindowUseCase.execute({
+      queueId: String(request.params.queueId),
+      name:    String(request.body.name),
+      type:    request.body.type,
+    });
+    logger.info({ windowId: result.id, queueId: result.queueId }, "Service window created");
+    response.status(201).json(result);
+  };
+
+  public toggleServiceWindow = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.toggleServiceWindowUseCase.execute({
+      windowId: String(request.params.windowId),
+    });
+    logger.info({ windowId: result.id, isActive: result.isActive }, "Service window toggled");
     response.status(200).json(result);
   };
 

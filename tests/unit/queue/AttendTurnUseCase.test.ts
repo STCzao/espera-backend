@@ -116,6 +116,32 @@ describe("AttendTurnUseCase — attending → completed", () => {
   });
 });
 
+describe("AttendTurnUseCase — serviceWindowId", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("assigns serviceWindowId on called → attending transition", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID });
+
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
+  });
+
+  it("keeps existing serviceWindowId on attending → completed when none provided", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await useCase.execute({ turnId: TURN_ID });
+
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
+  });
+});
+
 describe("AttendTurnUseCase — errores", () => {
   it("throws 404 when the turn does not exist", async () => {
     const { useCase } = buildUseCase();

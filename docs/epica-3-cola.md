@@ -16,9 +16,10 @@ Formato de referencia: `docs/story-documentation-standard.md`
 
 ## Estado general
 
-- Estado: `completo`.
+- Estado: `completo + refinamientos`.
 - Historias implementadas: `HU-3.1`, `HU-3.2`, `HU-3.3`, `HU-3.4`, `HU-3.5`,
   `HU-3.6`, `HU-3.7`, `HU-3.8`, `HU-3.9`, `HU-3.10`, `HU-3.11`, `HU-3.12`.
+- Refinamientos: `estado attending`, `promedio real 7 días`, `ventanillas de servicio`.
 
 ## Contratos principales de la épica
 
@@ -36,6 +37,9 @@ POST   /api/queue/turns/cancel                               turn:cancel
 GET    /api/queue/:queueId/status                            queue:read
 GET    /api/queue/:queueId/turns/history?date=YYYY-MM-DD     queue:read
 GET    /api/queue/:queueId/metrics?date=YYYY-MM-DD           queue:read
+GET    /api/queue/:queueId/windows                           queue:read
+POST   /api/queue/:queueId/windows                          queue:configure
+PATCH  /api/queue/:queueId/windows/:windowId/toggle         queue:configure
 ```
 
 > **Nota de mount**: el router se monta en `/api/queue` (singular) en
@@ -50,10 +54,11 @@ GET    /api/queue/:queueId/metrics?date=YYYY-MM-DD           queue:read
 
 ## Modelo de datos central
 
-Tablas creadas en migración `20260717100000_add_queues_and_turns`:
+Tablas:
 
-- `queues`: una cola por negocio (extensible a N colas).
-- `turns`: turno individual dentro de una cola para una fecha de operación.
+- `queues`: una cola por negocio (extensible a N colas). Migración `20260717100000_add_queues_and_turns`.
+- `turns`: turno individual dentro de una cola para una fecha de operación. Misma migración.
+- `service_windows`: ventanillas de atención de una cola. Migración `20260729000001_service_windows`.
 
 Entidades de dominio:
 
@@ -63,6 +68,18 @@ interface Queue {
   businessId: string;
   name: string;
   prefix: string;     // prefijo del displayNumber, ej. "A"
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+type ServiceWindowType = "standard" | "priority" | "specialized";
+
+interface ServiceWindow {
+  id: string;
+  queueId: string;
+  name: string;           // ej. "Ventanilla 1", "Preferencial"
+  type: ServiceWindowType;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -78,6 +95,7 @@ interface Turn {
   businessId: string;
   customerId?: string;
   guestName?: string;
+  serviceWindowId?: string;   // asignado en called → attending
   number: number;
   displayNumber: string;
   status: TurnStatus;
@@ -85,22 +103,26 @@ interface Turn {
   source: TurnSource;
   turnDate: Date;
   calledAt?: Date;
-  startedAttentionAt?: Date;
-  attendedAt?: Date;
+  startedAttentionAt?: Date;  // momento en que el empleado inicia atención
+  attendedAt?: Date;          // momento en que finaliza la atención
   cancelledAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 ```
 
-Enums de DB: `TurnStatus`, `TurnPriority`, `TurnSource` (mayúsculas en Postgres;
-el repo mapea a minúsculas en dominio vía `toTurn()`).
+Enums de DB: `TurnStatus`, `TurnPriority`, `TurnSource`, `ServiceWindowType`
+(mayúsculas en Postgres; los repos mapean a minúsculas en dominio).
 
 Índices en `turns`:
 
 - `(queueId, status)` — para llamar al siguiente y consultar cola activa.
 - `(customerId, status)` — para el chequeo de turno activo cross-business.
 - `(businessId, turnDate)` — para agrupar por día de operación.
+
+Índices en `service_windows`:
+
+- `(queueId)` — para listar ventanillas de una cola.
 
 `turnDate` normalizado a medianoche UTC (`todayUTC()`) para consistencia entre
 zonas horarias de app y servidor.
@@ -722,7 +744,14 @@ POST /api/queue/:queueId/turns/:turnId/attend
 
 Requiere autenticación y permiso `turn:attend`.
 
-No requiere body.
+Request body (opcional):
+
+```json
+{ "serviceWindowId": "uuid" }
+```
+
+- `serviceWindowId`: UUID de la ventanilla que atiende el turno. Solo se aplica
+  en la transición `called → attending`. Se ignora en `attending → completed`.
 
 Respuesta `200` — primera llamada (`called → attending`):
 
@@ -751,8 +780,8 @@ Segunda llamada emite `queue:update` con `{ attendedTurnId, attendedDisplayNumbe
 ### Reglas de negocio
 
 1. El endpoint progresa la máquina de estados en dos pasos sucesivos:
-   - `called` → `attending`: registra `startedAttentionAt`. Responde
-     `{ status: "attending", startedAttentionAt }`.
+   - `called` → `attending`: registra `startedAttentionAt` y, si se provee,
+     asigna `serviceWindowId`. Responde `{ status: "attending", startedAttentionAt }`.
    - `attending` → `completed`: registra `attendedAt`. Responde
      `{ status: "completed", attendedAt }`.
 2. Un turno `waiting`, `completed` o `cancelled` rechaza la llamada con
@@ -824,3 +853,87 @@ Ranking de prioridades:
   jerarquía de prioridad en posición)
 - Cubierta indirectamente en `CallNextUseCase.test.ts` y
   `GetQueueListUseCase.test.ts`
+
+---
+
+## Refinamiento — Ventanillas de servicio
+
+Rama: `bugfix/service-windows`. Migración: `20260729000001_service_windows`.
+
+### Objetivo
+
+Modelar las ventanillas físicas de atención de una cola para que el empleado
+pueda crearlas, habilitarlas/deshabilitarlas y asignar un turno a una ventanilla
+específica al inicio de la atención.
+
+### Contratos
+
+#### Listar ventanillas
+
+```text
+GET /api/queue/:queueId/windows
+```
+
+Permiso: `queue:read`. Respuesta `200`:
+
+```json
+{
+  "windows": [
+    {
+      "id": "uuid",
+      "queueId": "uuid",
+      "name": "Ventanilla 1",
+      "type": "standard",
+      "isActive": true,
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
+  ]
+}
+```
+
+Ordenadas por `createdAt` ascendente.
+
+#### Crear ventanilla
+
+```text
+POST /api/queue/:queueId/windows
+```
+
+Permiso: `queue:configure`.
+
+Request body:
+
+```json
+{ "name": "Preferencial", "type": "priority" }
+```
+
+- `name`: requerido, 1–100 caracteres.
+- `type`: `"standard"` | `"priority"` | `"specialized"`. Default: `"standard"`.
+
+Respuesta `201`: objeto `ServiceWindow` completo.
+
+#### Toggle activo/inactivo
+
+```text
+PATCH /api/queue/:queueId/windows/:windowId/toggle
+```
+
+Permiso: `queue:configure`. No requiere body.
+
+Respuesta `200`: objeto `ServiceWindow` con `isActive` invertido.
+
+### Reglas de negocio
+
+1. `serviceWindowId` se asigna opcionalmente al turno en la transición
+   `called → attending` (ver HU-3.11).
+2. Una ventanilla inactiva no impide asignar turnos — es solo un indicador
+   de disponibilidad para el frontend.
+3. Al eliminar (futuro), la FK en `turns.serviceWindowId` es `SET NULL`.
+
+### Cobertura
+
+- `tests/unit/queue/ListServiceWindowsUseCase.test.ts`
+- `tests/unit/queue/CreateServiceWindowUseCase.test.ts`
+- `tests/unit/queue/ToggleServiceWindowUseCase.test.ts`
+- `tests/unit/queue/AttendTurnUseCase.test.ts` (sección `serviceWindowId`)

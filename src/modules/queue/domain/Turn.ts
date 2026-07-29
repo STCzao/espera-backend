@@ -8,6 +8,7 @@ export interface Turn {
   businessId: string;
   customerId?: string;
   guestName?: string;
+  serviceWindowId?: string;
   number: number;
   displayNumber: string;
   status: TurnStatus;

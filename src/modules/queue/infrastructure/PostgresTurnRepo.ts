@@ -10,6 +10,7 @@ const toTurn = (raw: {
   businessId: string;
   customerId: string | null;
   guestName: string | null;
+  serviceWindowId: string | null;
   number: number;
   displayNumber: string;
   status: string;
@@ -28,6 +29,7 @@ const toTurn = (raw: {
   businessId: raw.businessId,
   customerId: raw.customerId ?? undefined,
   guestName: raw.guestName ?? undefined,
+  serviceWindowId: raw.serviceWindowId ?? undefined,
   number: raw.number,
   displayNumber: raw.displayNumber,
   status: raw.status.toLowerCase() as TurnStatus,
@@ -242,6 +244,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: { id: entity.id },
       data: {
         status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "CANCELLED" | "COMPLETED",
+        serviceWindowId: entity.serviceWindowId ?? null,
         calledAt: entity.calledAt ?? null,
         startedAttentionAt: entity.startedAttentionAt ?? null,
         attendedAt: entity.attendedAt ?? null,
