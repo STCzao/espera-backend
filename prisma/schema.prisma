@@ -76,9 +76,11 @@ enum MembershipRole {
 }
 
 enum ServiceWindowType {
-  STANDARD
-  PRIORITY
-  SPECIALIZED
+  CASHIER
+  CUSTOMER_SERVICE
+  INFORMATION
+  ADMIN
+  TECHNICAL
 }
 
 enum TurnStatus {
@@ -346,7 +348,7 @@ model ServiceWindow {
   id        String            @id @default(uuid())
   queueId   String
   name      String
-  type      ServiceWindowType @default(STANDARD)
+  type      ServiceWindowType @default(CASHIER)
   isActive  Boolean           @default(true)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt

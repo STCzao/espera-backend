@@ -5,13 +5,13 @@
 --   DROP TABLE service_windows;
 --   DROP TYPE "ServiceWindowType";
 
-CREATE TYPE "ServiceWindowType" AS ENUM ('STANDARD', 'PRIORITY', 'SPECIALIZED');
+CREATE TYPE "ServiceWindowType" AS ENUM ('CASHIER', 'CUSTOMER_SERVICE', 'INFORMATION', 'ADMIN', 'TECHNICAL');
 
 CREATE TABLE "service_windows" (
     "id"        TEXT NOT NULL,
     "queueId"   TEXT NOT NULL,
     "name"      TEXT NOT NULL,
-    "type"      "ServiceWindowType" NOT NULL DEFAULT 'STANDARD',
+    "type"      "ServiceWindowType" NOT NULL DEFAULT 'CASHIER',
     "isActive"  BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,

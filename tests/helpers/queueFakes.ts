@@ -11,7 +11,7 @@ export const buildServiceWindow = (overrides: Partial<ServiceWindow> = {}): Serv
   id:        "window-1",
   queueId:   "queue-1",
   name:      "Ventanilla 1",
-  type:      "standard",
+  type:      "cashier",
   isActive:  true,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),

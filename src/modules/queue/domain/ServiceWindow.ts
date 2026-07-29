@@ -1,4 +1,4 @@
-export type ServiceWindowType = "standard" | "priority" | "specialized";
+export type ServiceWindowType = "cashier" | "customer_service" | "information" | "admin" | "technical";
 
 export interface ServiceWindow {
   id: string;

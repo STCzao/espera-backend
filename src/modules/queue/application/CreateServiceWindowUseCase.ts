@@ -13,7 +13,7 @@ import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWind
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
   name:    z.string().min(1, "Name is required.").max(100, "Name is too long."),
-  type:    z.enum(["standard", "priority", "specialized"]).optional().default("standard"),
+  type:    z.enum(["cashier", "customer_service", "information", "admin", "technical"]).optional().default("cashier"),
 });
 
 export type CreateServiceWindowInput = z.infer<typeof schema>;
