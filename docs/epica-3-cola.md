@@ -73,7 +73,7 @@ interface Queue {
   updatedAt: Date;
 }
 
-type ServiceWindowType = "standard" | "priority" | "specialized";
+type ServiceWindowType = "cashier" | "customer_service" | "information" | "admin" | "technical";
 
 interface ServiceWindow {
   id: string;
@@ -909,7 +909,7 @@ Request body:
 ```
 
 - `name`: requerido, 1–100 caracteres.
-- `type`: `"standard"` | `"priority"` | `"specialized"`. Default: `"standard"`.
+- `type`: `"cashier"` | `"customer_service"` | `"information"` | `"admin"` | `"technical"`. Default: `"cashier"`.
 
 Respuesta `201`: objeto `ServiceWindow` completo.
 

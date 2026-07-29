@@ -46,14 +46,14 @@ describe("ToggleServiceWindowUseCase", () => {
   });
 
   it("does not modify other fields", async () => {
-    const original = buildServiceWindow({ id: WINDOW_ID, name: "Ventanilla 1", type: "priority", isActive: true });
+    const original = buildServiceWindow({ id: WINDOW_ID, name: "Ventanilla 1", type: "customer_service", isActive: true });
     const windowRepo = new InMemoryServiceWindowRepo([original]);
     const { useCase } = buildUseCase(windowRepo);
 
     const result = await useCase.execute({ windowId: WINDOW_ID });
 
     expect(result.name).toBe("Ventanilla 1");
-    expect(result.type).toBe("priority");
+    expect(result.type).toBe("customer_service");
     expect(result.queueId).toBe(original.queueId);
   });
 

@@ -15,14 +15,14 @@ const buildUseCase = (options: {
 };
 
 describe("CreateServiceWindowUseCase", () => {
-  it("creates a window with default type standard", async () => {
+  it("creates a window with default type cashier", async () => {
     const { useCase, windowRepo } = buildUseCase();
 
     const result = await useCase.execute({ queueId: QUEUE_ID, name: "Ventanilla 1" });
 
     expect(result.queueId).toBe(QUEUE_ID);
     expect(result.name).toBe("Ventanilla 1");
-    expect(result.type).toBe("standard");
+    expect(result.type).toBe("cashier");
     expect(result.isActive).toBe(true);
     expect(result.id).toBeDefined();
     expect(windowRepo.all()).toHaveLength(1);
@@ -31,9 +31,9 @@ describe("CreateServiceWindowUseCase", () => {
   it("creates a window with explicit type", async () => {
     const { useCase } = buildUseCase();
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, name: "Preferencial", type: "priority" });
+    const result = await useCase.execute({ queueId: QUEUE_ID, name: "Soporte", type: "technical" });
 
-    expect(result.type).toBe("priority");
+    expect(result.type).toBe("technical");
   });
 
   it("creates multiple independent windows for the same queue", async () => {

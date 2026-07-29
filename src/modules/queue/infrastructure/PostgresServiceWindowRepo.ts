@@ -21,7 +21,7 @@ const toServiceWindow = (raw: {
 });
 
 const toTypeEnum = (t: ServiceWindowType) =>
-  t.toUpperCase() as "STANDARD" | "PRIORITY" | "SPECIALIZED";
+  t.toUpperCase() as "CASHIER" | "CUSTOMER_SERVICE" | "INFORMATION" | "ADMIN" | "TECHNICAL";
 
 export class PostgresServiceWindowRepo implements IServiceWindowRepo {
   public async findById(id: string): Promise<ServiceWindow | null> {
