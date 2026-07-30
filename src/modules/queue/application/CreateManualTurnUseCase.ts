@@ -39,17 +39,18 @@ export class CreateManualTurnUseCase
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
-    if (!queue) throw AppError.notFound("Queue not found.");
-    if (!queue.isActive) throw AppError.conflict("This queue is not accepting new turns.");
+    if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+    if (!queue.isActive) throw AppError.conflict("This queue is not accepting new turns.", "QUEUE_NOT_ACCEPTING_TURNS");
 
     const business = await this.businessRepo.findById(queue.businessId);
-    if (!business) throw AppError.notFound("Business not found.");
+    if (!business) throw AppError.notFound("Business not found.", "BUSINESS_NOT_FOUND");
     if (business.status !== "approved") {
-      throw AppError.conflict("This business is not currently accepting customers.");
+      throw AppError.conflict("This business is not currently accepting customers.", "BUSINESS_NOT_ACCEPTING_CUSTOMERS");
     }
     if (business.operationalStatus === "paused" || business.operationalStatus === "closed") {
       throw AppError.conflict(
         `This business is ${business.operationalStatus} and not accepting new turns.`,
+        "BUSINESS_OPERATIONAL_STATUS_BLOCKED",
       );
     }
 

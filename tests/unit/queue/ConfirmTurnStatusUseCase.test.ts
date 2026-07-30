@@ -67,7 +67,7 @@ describe("ConfirmTurnStatusUseCase — confirm-transit (HU-3.4)", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID, action: "in_transit" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when priority is already arrived (cannot go back)", async () => {
@@ -78,7 +78,7 @@ describe("ConfirmTurnStatusUseCase — confirm-transit (HU-3.4)", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID, action: "in_transit" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 });
 
@@ -120,7 +120,7 @@ describe("ConfirmTurnStatusUseCase — confirm-arrival (HU-3.5)", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID, action: "arrived" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when already at arrived priority", async () => {
@@ -131,7 +131,7 @@ describe("ConfirmTurnStatusUseCase — confirm-arrival (HU-3.5)", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID, action: "arrived" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 });
 
@@ -143,7 +143,7 @@ describe("ConfirmTurnStatusUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID, action: "in_transit" }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws 400 for an invalid queueId", async () => {

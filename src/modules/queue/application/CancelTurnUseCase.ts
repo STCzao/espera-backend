@@ -29,12 +29,12 @@ export class CancelTurnUseCase implements UseCase<CancelTurnInput, CancelTurnOut
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
-    if (!turn) throw AppError.notFound("Turn not found.");
+    if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
     if (turn.customerId !== parsed.data.customerId) {
-      throw AppError.forbidden("You can only cancel your own turn.");
+      throw AppError.forbidden("You can only cancel your own turn.", "TURN_NOT_OWNED");
     }
     if (turn.status !== "waiting" && turn.status !== "called") {
-      throw AppError.conflict("This turn cannot be cancelled.");
+      throw AppError.conflict("This turn cannot be cancelled.", "TURN_NOT_CANCELLABLE");
     }
 
     const cancelled = await this.turnRepo.save({

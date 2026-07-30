@@ -77,7 +77,7 @@ describe("CreateManualTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, guestName: "Juan" }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws 409 when the queue is inactive", async () => {
@@ -88,7 +88,7 @@ describe("CreateManualTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, guestName: "Juan" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACCEPTING_TURNS" });
   });
 
   it("throws 409 when the business is not approved", async () => {
@@ -99,18 +99,18 @@ describe("CreateManualTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, guestName: "Juan" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_NOT_ACCEPTING_CUSTOMERS" });
   });
 
   it("throws 409 when the business is paused", async () => {
     const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ id: BUSINESS_ID, operationalStatus: "paused" }),
+      buildBusiness({ id: BUSINESS_ID, status: "approved", operationalStatus: "paused" }),
     ]);
     const { useCase } = buildUseCase({ businessRepo });
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, guestName: "Juan" }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OPERATIONAL_STATUS_BLOCKED" });
   });
 
   it("throws 400 when guestName is empty", async () => {

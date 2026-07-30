@@ -267,7 +267,7 @@ describe("GetMyTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws NOT_FOUND when the customer has no active turn in this queue", async () => {
@@ -275,7 +275,7 @@ describe("GetMyTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {

@@ -121,7 +121,7 @@ describe("CallNextUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_EMPTY" });
   });
 
   it("throws NOT_FOUND when the queue does not exist", async () => {
@@ -129,7 +129,7 @@ describe("CallNextUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws CONFLICT when the queue is inactive", async () => {
@@ -139,7 +139,7 @@ describe("CallNextUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACTIVE" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {

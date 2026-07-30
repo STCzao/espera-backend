@@ -47,13 +47,13 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
-    if (!queue) throw AppError.notFound("Queue not found.");
+    if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
 
     const turn = await this.turnRepo.findActiveByCustomerInQueue(
       parsed.data.customerId,
       parsed.data.queueId,
     );
-    if (!turn) throw AppError.notFound("No active turn found in this queue.");
+    if (!turn) throw AppError.notFound("No active turn found in this queue.", "TURN_NOT_FOUND");
 
     if (turn.status === "called") {
       return {

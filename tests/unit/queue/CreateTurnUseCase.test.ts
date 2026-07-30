@@ -80,7 +80,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws CONFLICT when the queue is inactive", async () => {
@@ -91,7 +91,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACCEPTING_TURNS" });
   });
 
   it("throws CONFLICT when the business is not approved", async () => {
@@ -102,7 +102,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_NOT_ACCEPTING_CUSTOMERS" });
   });
 
   it("throws CONFLICT when the business is paused", async () => {
@@ -113,7 +113,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OPERATIONAL_STATUS_BLOCKED" });
   });
 
   it("throws CONFLICT when the business is closed", async () => {
@@ -124,7 +124,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OPERATIONAL_STATUS_BLOCKED" });
   });
 
   it("throws CONFLICT when the customer already has an active turn in another business", async () => {
@@ -139,7 +139,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "CUSTOMER_HAS_ACTIVE_TURN" });
   });
 
   it("allows a guest turn without customerId", async () => {
@@ -170,7 +170,7 @@ describe("CreateTurnUseCase", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "CUSTOMER_HAS_ACTIVE_TURN" });
   });
 
   it("throws BAD_REQUEST for a non-uuid queueId", async () => {

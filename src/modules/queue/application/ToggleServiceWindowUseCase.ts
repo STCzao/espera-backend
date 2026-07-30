@@ -22,7 +22,7 @@ export class ToggleServiceWindowUseCase implements UseCase<ToggleServiceWindowIn
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const window = await this.windowRepo.findById(parsed.data.windowId);
-    if (!window) throw AppError.notFound("Service window not found.");
+    if (!window) throw AppError.notFound("Service window not found.", "SERVICE_WINDOW_NOT_FOUND");
 
     return this.windowRepo.save({ ...window, isActive: !window.isActive, updatedAt: new Date() });
   }

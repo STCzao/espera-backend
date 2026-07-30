@@ -135,6 +135,30 @@ Todas las acciones que modifican el estado de la cola emiten un evento
 (ver cada historia). Los clientes suscritos al room reciben el evento y pueden
 actualizar su vista sin hacer polling.
 
+## Códigos de error
+
+Todos los `AppError` funcionales del módulo (404/409/403) incluyen un `code`
+además del `message` en inglés, para que el frontend pueda mapear a texto en
+español sin parsear el mensaje. La respuesta HTTP expone ambos campos en el
+JSON de error. Los errores de validación de input (Zod) no llevan `code` — su
+mensaje ya es específico por campo.
+
+| Código | HTTP | Significado |
+|---|---|---|
+| `QUEUE_NOT_FOUND` | 404 | La cola no existe. |
+| `QUEUE_NOT_ACTIVE` | 409 | La cola existe pero está inactiva (llamar siguiente). |
+| `QUEUE_EMPTY` | 409 | No hay turnos en espera para llamar. |
+| `QUEUE_NOT_ACCEPTING_TURNS` | 409 | La cola está inactiva (sacar turno / turno manual). |
+| `BUSINESS_NOT_FOUND` | 404 | El negocio de la cola no existe (reusa el código de `business`). |
+| `BUSINESS_NOT_ACCEPTING_CUSTOMERS` | 409 | El negocio no está `approved`. |
+| `BUSINESS_OPERATIONAL_STATUS_BLOCKED` | 409 | El negocio está `paused` o `closed`. |
+| `CUSTOMER_HAS_ACTIVE_TURN` | 409 | El cliente ya tiene un turno activo en otro negocio. |
+| `TURN_NOT_FOUND` | 404 | El turno no existe o no hay turno activo para ese cliente/cola. |
+| `TURN_NOT_OWNED` | 403 | El turno no pertenece al `customerId` que intenta cancelarlo. |
+| `TURN_NOT_CANCELLABLE` | 409 | El turno no está en un estado cancelable. |
+| `TURN_INVALID_STATUS_FOR_ATTEND` | 409 | Transición inválida (`attend`, `confirm-transit`, `confirm-arrival`). |
+| `SERVICE_WINDOW_NOT_FOUND` | 404 | La ventanilla de servicio no existe. |
+
 ---
 
 ## HU-3.1 - Sacar turno desde la app

@@ -61,7 +61,7 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     const { queueId } = parsed.data;
 
     const queue = await this.queueRepo.findById(queueId);
-    if (!queue) throw AppError.notFound("Queue not found.");
+    if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
 
     const now = new Date();
     const today = todayUTC();

@@ -97,7 +97,7 @@ describe("CancelTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws 403 when the customer does not own the turn", async () => {
@@ -108,7 +108,7 @@ describe("CancelTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 403, code: "TURN_NOT_OWNED" });
   });
 
   it("throws 409 when trying to cancel a completed turn", async () => {
@@ -119,7 +119,7 @@ describe("CancelTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CANCELLABLE" });
   });
 
   it("throws 409 when trying to cancel an already cancelled turn", async () => {
@@ -130,7 +130,7 @@ describe("CancelTurnUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID, customerId: CUSTOMER_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CANCELLABLE" });
   });
 
   it("throws 400 for an invalid turnId UUID", async () => {
