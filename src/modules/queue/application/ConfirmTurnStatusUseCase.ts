@@ -44,12 +44,13 @@ export class ConfirmTurnStatusUseCase
     const { queueId, customerId, action } = parsed.data;
 
     const turn = await this.turnRepo.findActiveByCustomerInQueue(customerId, queueId);
-    if (!turn) throw AppError.notFound("No active turn found in this queue.");
+    if (!turn) throw AppError.notFound("No active turn found in this queue.", "TURN_NOT_FOUND");
 
     const { from, to } = TRANSITIONS[action];
     if (turn.priority !== from) {
       throw AppError.conflict(
         `Cannot confirm ${action}: current priority is "${turn.priority}".`,
+        "TURN_INVALID_STATUS_FOR_ATTEND",
       );
     }
 

@@ -31,7 +31,7 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
-    if (!turn) throw AppError.notFound("Turn not found.");
+    if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
 
     if (turn.status === "called") {
       const startedAttentionAt = new Date();
@@ -74,6 +74,6 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
       };
     }
 
-    throw AppError.conflict("Only a called or attending turn can be progressed.");
+    throw AppError.conflict("Only a called or attending turn can be progressed.", "TURN_INVALID_STATUS_FOR_ATTEND");
   }
 }

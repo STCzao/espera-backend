@@ -30,9 +30,9 @@ export class CancelTurnByEmployeeUseCase
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
-    if (!turn) throw AppError.notFound("Turn not found.");
+    if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
     if (turn.status !== "waiting" && turn.status !== "called" && turn.status !== "attending") {
-      throw AppError.conflict("This turn cannot be cancelled.");
+      throw AppError.conflict("This turn cannot be cancelled.", "TURN_NOT_CANCELLABLE");
     }
 
     const cancelled = await this.turnRepo.save({

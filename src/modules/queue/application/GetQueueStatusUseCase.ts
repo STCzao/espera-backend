@@ -63,7 +63,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
-    if (!queue) throw AppError.notFound("Queue not found.");
+    if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
 
     const today = todayUTC();
     const [activeTurns, business, avgMinutes, windows, recentCalls] = await Promise.all([

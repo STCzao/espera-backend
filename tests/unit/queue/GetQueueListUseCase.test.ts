@@ -289,7 +289,7 @@ describe("GetQueueListUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws 400 for an invalid queueId", async () => {

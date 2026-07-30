@@ -146,7 +146,7 @@ describe("AttendTurnUseCase — errores", () => {
   it("throws 404 when the turn does not exist", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws 409 when the turn is waiting", async () => {
@@ -155,7 +155,7 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when the turn is already completed", async () => {
@@ -164,7 +164,7 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when the turn is cancelled", async () => {
@@ -173,7 +173,7 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 400 for an invalid turnId", async () => {

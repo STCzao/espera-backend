@@ -60,7 +60,7 @@ describe("ToggleServiceWindowUseCase", () => {
   it("throws 404 when window does not exist", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(useCase.execute({ windowId: WINDOW_ID })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(useCase.execute({ windowId: WINDOW_ID })).rejects.toMatchObject({ statusCode: 404, code: "SERVICE_WINDOW_NOT_FOUND" });
   });
 
   it("throws 400 for invalid windowId", async () => {

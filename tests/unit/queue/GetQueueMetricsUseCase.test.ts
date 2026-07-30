@@ -165,7 +165,7 @@ describe("GetQueueMetricsUseCase — errores", () => {
 
     await expect(
       useCase.execute({ queueId: QUEUE_ID, date: DATE_STR }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {

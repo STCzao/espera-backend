@@ -101,7 +101,7 @@ describe("ListServiceWindowsUseCase", () => {
   it("throws 404 when queue does not exist", async () => {
     const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
-    await expect(useCase.execute({ queueId: QUEUE_ID })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(useCase.execute({ queueId: QUEUE_ID })).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws 400 for an invalid queueId", async () => {

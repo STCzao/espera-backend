@@ -109,7 +109,7 @@ describe("CancelTurnByEmployeeUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws 409 when the turn is already completed", async () => {
@@ -120,7 +120,7 @@ describe("CancelTurnByEmployeeUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CANCELLABLE" });
   });
 
   it("throws 409 when the turn is already cancelled", async () => {
@@ -131,7 +131,7 @@ describe("CancelTurnByEmployeeUseCase — errores", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID }),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CANCELLABLE" });
   });
 
   it("throws 400 for an invalid turnId", async () => {

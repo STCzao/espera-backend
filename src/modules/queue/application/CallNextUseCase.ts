@@ -32,8 +32,8 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
-    if (!queue) throw AppError.notFound("Queue not found.");
-    if (!queue.isActive) throw AppError.conflict("This queue is not active.");
+    if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+    if (!queue.isActive) throw AppError.conflict("This queue is not active.", "QUEUE_NOT_ACTIVE");
 
     // Complete the currently-called turn if there is one
     const calledTurn = await this.turnRepo.findCalledTurnByQueue(parsed.data.queueId);
@@ -46,7 +46,7 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     }
 
     const next = await this.turnRepo.findNextWaitingTurn(parsed.data.queueId);
-    if (!next) throw AppError.conflict("The queue is empty.");
+    if (!next) throw AppError.conflict("The queue is empty.", "QUEUE_EMPTY");
 
     const called = await this.turnRepo.save({
       ...next,
