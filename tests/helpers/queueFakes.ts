@@ -40,6 +40,10 @@ export class InMemoryServiceWindowRepo implements IServiceWindowRepo {
     return entity;
   }
 
+  public async delete(id: string): Promise<void> {
+    this.windows.delete(id);
+  }
+
   public all(): ServiceWindow[] {
     return [...this.windows.values()];
   }
@@ -166,7 +170,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
   public async findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null> {
     return (
       [...this.turns.values()].find(
-        (t) => t.customerId === customerId && (t.status === "waiting" || t.status === "called" || t.status === "attending"),
+        (t) => t.customerId === customerId && (t.status === "waiting" || t.status === "called" || t.status === "attending" || t.status === "redirected"),
       ) ?? null
     );
   }
@@ -177,7 +181,15 @@ export class InMemoryTurnRepo implements ITurnRepo {
         (t) =>
           t.customerId === customerId &&
           t.queueId === queueId &&
-          (t.status === "waiting" || t.status === "called" || t.status === "attending"),
+          (t.status === "waiting" || t.status === "called" || t.status === "attending" || t.status === "redirected"),
+      ) ?? null
+    );
+  }
+
+  public async findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null> {
+    return (
+      [...this.turns.values()].find(
+        (t) => t.serviceWindowId === serviceWindowId && t.status === "attending",
       ) ?? null
     );
   }
@@ -220,7 +232,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,
     };
     const active = [...this.turns.values()].filter(
-      (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called" || t.status === "attending"),
+      (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called" || t.status === "attending" || t.status === "redirected"),
     );
     active.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
@@ -233,7 +245,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       customerName: null,
       guestName: t.guestName ?? null,
       priority: t.priority as TurnPriority,
-      status: t.status as "waiting" | "called" | "attending",
+      status: t.status as "waiting" | "called" | "attending" | "redirected",
       createdAt: t.createdAt,
       serviceWindowId: t.serviceWindowId ?? null,
       startedAttentionAt: t.startedAttentionAt ?? null,

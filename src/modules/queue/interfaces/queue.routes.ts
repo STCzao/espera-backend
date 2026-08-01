@@ -10,13 +10,16 @@ import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCas
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
 import { CreateServiceWindowUseCase } from "../application/CreateServiceWindowUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
+import { DeleteServiceWindowUseCase } from "../application/DeleteServiceWindowUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
 import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
 import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
 import { ListServiceWindowsUseCase } from "../application/ListServiceWindowsUseCase";
+import { RedirectTurnUseCase } from "../application/RedirectTurnUseCase";
 import { ToggleServiceWindowUseCase } from "../application/ToggleServiceWindowUseCase";
+import { UpdateServiceWindowUseCase } from "../application/UpdateServiceWindowUseCase";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 import { QueueController } from "./QueueController";
 
@@ -37,6 +40,9 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new ListServiceWindowsUseCase(),
     new CreateServiceWindowUseCase(),
     new ToggleServiceWindowUseCase(),
+    new UpdateServiceWindowUseCase(),
+    new DeleteServiceWindowUseCase(),
+    new RedirectTurnUseCase(undefined, undefined, emitter),
   );
 
   const router = Router();
@@ -54,10 +60,13 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   router.post("/turns/cancel", authenticate, authorize("turn:cancel"), controller.cancelTurn);
   router.post("/:queueId/turns/:turnId/cancel", authenticate, authorize("turn:cancel_any"), controller.cancelTurnByEmployee);
   router.post("/:queueId/turns/:turnId/attend", authenticate, authorize("turn:attend"), controller.attendTurn);
+  router.post("/:queueId/turns/:turnId/redirect", authenticate, authorize("turn:attend"), controller.redirectTurn);
 
-  router.get("/:queueId/windows",                         authenticate, authorize("queue:read"),      controller.listServiceWindows);
-  router.post("/:queueId/windows",                        authenticate, authorize("queue:configure"), controller.createServiceWindow);
-  router.patch("/:queueId/windows/:windowId/toggle",      authenticate, authorize("queue:configure"), controller.toggleServiceWindow);
+  router.get("/:queueId/windows",                    authenticate, authorize("queue:read"),      controller.listServiceWindows);
+  router.post("/:queueId/windows",                   authenticate, authorize("queue:configure"), controller.createServiceWindow);
+  router.patch("/:queueId/windows/:windowId",         authenticate, authorize("queue:configure"), controller.updateServiceWindow);
+  router.patch("/:queueId/windows/:windowId/toggle",  authenticate, authorize("queue:configure"), controller.toggleServiceWindow);
+  router.delete("/:queueId/windows/:windowId",        authenticate, authorize("queue:configure"), controller.deleteServiceWindow);
 
   return router;
 };

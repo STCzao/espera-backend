@@ -73,6 +73,41 @@ describe("GetMyTurnUseCase — posición", () => {
     expect(result).toMatchObject({ status: "called", position: 0, estimatedWaitMinutes: 0 });
   });
 
+  it("returns position 0 and status attending when the turn is being attended", async () => {
+    const WINDOW_ID = "77777777-7777-4777-8777-777777777777";
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, status: "attending", serviceWindowId: WINDOW_ID, turnDate: TODAY }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(result).toMatchObject({ status: "attending", position: 0, estimatedWaitMinutes: 0, serviceWindowId: WINDOW_ID });
+  });
+
+  it("returns position 0 and status redirected when the turn is being moved to another window", async () => {
+    const WINDOW_ID = "88888888-8888-4888-8888-888888888888";
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, status: "redirected", serviceWindowId: WINDOW_ID, turnDate: TODAY }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(result).toMatchObject({ status: "redirected", position: 0, estimatedWaitMinutes: 0, serviceWindowId: WINDOW_ID });
+  });
+
+  it("returns serviceWindowId null for a waiting turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, status: "waiting", turnDate: TODAY }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(result.serviceWindowId).toBeNull();
+  });
+
   it("does not count cancelled turns as positions ahead", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "cancelled", turnDate: TODAY }),

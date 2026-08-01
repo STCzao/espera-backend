@@ -45,12 +45,13 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     });
   });
 
-  it("counts waiting, called and attending turns separately", async () => {
+  it("counts waiting, called, attending and redirected turns separately", async () => {
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
-      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "waiting",   turnDate: TODAY }),
-      buildTurn({ id: "t-3", queueId: QUEUE_ID, status: "called",    turnDate: TODAY }),
-      buildTurn({ id: "t-4", queueId: QUEUE_ID, status: "attending", turnDate: TODAY }),
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",    turnDate: TODAY }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "waiting",    turnDate: TODAY }),
+      buildTurn({ id: "t-3", queueId: QUEUE_ID, status: "called",     turnDate: TODAY }),
+      buildTurn({ id: "t-4", queueId: QUEUE_ID, status: "attending",  turnDate: TODAY }),
+      buildTurn({ id: "t-5", queueId: QUEUE_ID, status: "redirected", turnDate: TODAY }),
     ]);
     const useCase = buildUseCase({ turnRepo });
 
@@ -59,6 +60,7 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     expect(result.waitingCount).toBe(2);
     expect(result.calledCount).toBe(1);
     expect(result.attendingCount).toBe(1);
+    expect(result.redirectedCount).toBe(1);
   });
 
   it("does not count completed or cancelled turns", async () => {

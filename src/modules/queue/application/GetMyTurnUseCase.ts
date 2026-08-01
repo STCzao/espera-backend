@@ -21,9 +21,10 @@ export interface GetMyTurnOutput {
   turnId: string;
   queueId: string;
   displayNumber: string;
-  status: "waiting" | "called";
+  status: "waiting" | "called" | "attending" | "redirected";
   position: number;
   estimatedWaitMinutes: number | null;
+  serviceWindowId: string | null;
 }
 
 const DEFAULT_SERVICE_MINUTES = 5;
@@ -55,14 +56,15 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
     );
     if (!turn) throw AppError.notFound("No active turn found in this queue.", "TURN_NOT_FOUND");
 
-    if (turn.status === "called") {
+    if (turn.status === "called" || turn.status === "attending" || turn.status === "redirected") {
       return {
         turnId: turn.id,
         queueId: turn.queueId,
         displayNumber: turn.displayNumber,
-        status: "called",
+        status: turn.status,
         position: 0,
         estimatedWaitMinutes: 0,
+        serviceWindowId: turn.serviceWindowId ?? null,
       };
     }
 
@@ -89,6 +91,7 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
       status: "waiting",
       position: ahead + 1,
       estimatedWaitMinutes: estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null,
+      serviceWindowId: null,
     };
   }
 }

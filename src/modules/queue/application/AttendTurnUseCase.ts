@@ -33,13 +33,21 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
     const turn = await this.turnRepo.findById(parsed.data.turnId);
     if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
 
-    if (turn.status === "called") {
-      const startedAttentionAt = new Date();
+    if (turn.status === "called" || turn.status === "redirected") {
+      const targetWindowId = parsed.data.serviceWindowId ?? turn.serviceWindowId;
+      if (targetWindowId) {
+        const occupant = await this.turnRepo.findAttendingByServiceWindow(targetWindowId);
+        if (occupant && occupant.id !== turn.id) {
+          throw AppError.conflict("This service window is already attending another turn.", "SERVICE_WINDOW_OCCUPIED");
+        }
+      }
+
+      const startedAttentionAt = turn.startedAttentionAt ?? new Date();
       const updated = await this.turnRepo.save({
         ...turn,
         status: "attending",
         startedAttentionAt,
-        serviceWindowId: parsed.data.serviceWindowId ?? turn.serviceWindowId,
+        serviceWindowId: targetWindowId,
       });
 
       this.emitter?.emitQueueUpdate(updated.queueId, {

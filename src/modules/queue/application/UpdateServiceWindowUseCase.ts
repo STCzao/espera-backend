@@ -4,36 +4,33 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../domain/ServiceWindow";
-import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
-import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
   windowId: z.string().uuid("Invalid window id."),
+  name:     z.string().min(1, "Name is required.").max(100, "Name is too long.").optional(),
+  type:     z.enum(["cashier", "customer_service", "information", "admin", "technical"]).optional(),
 });
 
-export type ToggleServiceWindowInput = z.infer<typeof schema>;
+export type UpdateServiceWindowInput = z.infer<typeof schema>;
 
-export class ToggleServiceWindowUseCase implements UseCase<ToggleServiceWindowInput, ServiceWindow> {
+export class UpdateServiceWindowUseCase implements UseCase<UpdateServiceWindowInput, ServiceWindow> {
   public constructor(
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
-    private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
   ) {}
 
-  public async execute(input: ToggleServiceWindowInput): Promise<ServiceWindow> {
+  public async execute(input: UpdateServiceWindowInput): Promise<ServiceWindow> {
     const parsed = schema.safeParse(input);
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const window = await this.windowRepo.findById(parsed.data.windowId);
     if (!window) throw AppError.notFound("Service window not found.", "SERVICE_WINDOW_NOT_FOUND");
 
-    if (window.isActive) {
-      const occupant = await this.turnRepo.findAttendingByServiceWindow(window.id);
-      if (occupant) {
-        throw AppError.conflict("Cannot deactivate a service window that is currently attending a turn.", "SERVICE_WINDOW_IN_USE");
-      }
-    }
-
-    return this.windowRepo.save({ ...window, isActive: !window.isActive, updatedAt: new Date() });
+    return this.windowRepo.save({
+      ...window,
+      name:      parsed.data.name ?? window.name,
+      type:      parsed.data.type ?? window.type,
+      updatedAt: new Date(),
+    });
   }
 }

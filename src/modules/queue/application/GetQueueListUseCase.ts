@@ -25,7 +25,7 @@ export interface QueueListItem {
   customerName: string | null;
   guestName: string | null;
   priority: TurnPriority;
-  status: "waiting" | "called" | "attending";
+  status: "waiting" | "called" | "attending" | "redirected";
   waitingMinutes: number;
   estimatedWaitMinutes: number | null;
   serviceWindowId: string | null;

@@ -37,6 +37,7 @@ export interface GetQueueStatusOutput {
   waitingCount: number;
   calledCount: number;
   attendingCount: number;
+  redirectedCount: number;
   estimatedTotalWaitMinutes: number | null;
   recentCalls: RecentCall[];
 }
@@ -74,9 +75,10 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       this.turnRepo.findRecentCalls(parsed.data.queueId, RECENT_CALLS_LIMIT),
     ]);
 
-    const waitingCount   = activeTurns.filter((t) => t.status === "waiting").length;
-    const calledCount    = activeTurns.filter((t) => t.status === "called").length;
-    const attendingCount = activeTurns.filter((t) => t.status === "attending").length;
+    const waitingCount    = activeTurns.filter((t) => t.status === "waiting").length;
+    const calledCount     = activeTurns.filter((t) => t.status === "called").length;
+    const attendingCount  = activeTurns.filter((t) => t.status === "attending").length;
+    const redirectedCount = activeTurns.filter((t) => t.status === "redirected").length;
 
     const activeWindowsCount   = windows.filter((w) => w.isActive).length;
     const activeServiceWindows = windows.length > 0 ? activeWindowsCount : (business?.activeServiceWindows ?? 1);
@@ -97,6 +99,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       waitingCount,
       calledCount,
       attendingCount,
+      redirectedCount,
       estimatedTotalWaitMinutes: estimate.attentionAvailable ? estimate.estimatedWaitMinutes : null,
       recentCalls: recentCalls.map((r) => ({
         turnId:            r.turnId,
