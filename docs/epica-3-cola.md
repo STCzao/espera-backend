@@ -19,7 +19,9 @@ Formato de referencia: `docs/story-documentation-standard.md`
 - Estado: `completo + refinamientos`.
 - Historias implementadas: `HU-3.1`, `HU-3.2`, `HU-3.3`, `HU-3.4`, `HU-3.5`,
   `HU-3.6`, `HU-3.7`, `HU-3.8`, `HU-3.9`, `HU-3.10`, `HU-3.11`, `HU-3.12`.
-- Refinamientos: `estado attending`, `promedio real 7 días`, `ventanillas de servicio`.
+- Refinamientos: `estado attending`, `promedio real 7 días`, `ventanillas de
+  servicio`, `visibilidad de ventanillas`, `ocupación y derivación entre
+  ventanillas`, `CRUD completo de ventanillas`.
 
 ## Contratos principales de la épica
 
@@ -37,9 +39,12 @@ POST   /api/queue/turns/cancel                               turn:cancel
 GET    /api/queue/:queueId/status                            queue:read
 GET    /api/queue/:queueId/turns/history?date=YYYY-MM-DD     queue:read
 GET    /api/queue/:queueId/metrics?date=YYYY-MM-DD           queue:read
-GET    /api/queue/:queueId/windows                           queue:read
-POST   /api/queue/:queueId/windows                          queue:configure
-PATCH  /api/queue/:queueId/windows/:windowId/toggle         queue:configure
+POST   /api/queue/:queueId/turns/:turnId/redirect             turn:attend
+GET    /api/queue/:queueId/windows                            queue:read
+POST   /api/queue/:queueId/windows                            queue:configure
+PATCH  /api/queue/:queueId/windows/:windowId                  queue:configure
+PATCH  /api/queue/:queueId/windows/:windowId/toggle           queue:configure
+DELETE /api/queue/:queueId/windows/:windowId                  queue:configure
 ```
 
 > **Nota de mount**: el router se monta en `/api/queue` (singular) en
@@ -156,8 +161,11 @@ mensaje ya es específico por campo.
 | `TURN_NOT_FOUND` | 404 | El turno no existe o no hay turno activo para ese cliente/cola. |
 | `TURN_NOT_OWNED` | 403 | El turno no pertenece al `customerId` que intenta cancelarlo. |
 | `TURN_NOT_CANCELLABLE` | 409 | El turno no está en un estado cancelable. |
-| `TURN_INVALID_STATUS_FOR_ATTEND` | 409 | Transición inválida (`attend`, `confirm-transit`, `confirm-arrival`). |
-| `SERVICE_WINDOW_NOT_FOUND` | 404 | La ventanilla de servicio no existe. |
+| `TURN_INVALID_STATUS_FOR_ATTEND` | 409 | Transición inválida (`attend`, `confirm-transit`, `confirm-arrival`, `redirect`). |
+| `SERVICE_WINDOW_NOT_FOUND` | 404 | La ventanilla de servicio no existe (o no pertenece a la cola, en `redirect`). |
+| `SERVICE_WINDOW_OCCUPIED` | 409 | La ventanilla ya está atendiendo otro turno (`attend`). |
+| `SERVICE_WINDOW_IN_USE` | 409 | La ventanilla está atendiendo un turno (`toggle` a inactiva / `delete`). |
+| `REDIRECT_SAME_WINDOW` | 400 | Se intentó derivar un turno a la ventanilla en la que ya está. |
 
 ---
 
@@ -322,13 +330,20 @@ Respuesta `200`:
   "displayNumber": "A-003",
   "status": "waiting",
   "position": 3,
-  "estimatedWaitMinutes": 10
+  "estimatedWaitMinutes": 10,
+  "serviceWindowId": null
 }
 ```
 
 - `estimatedWaitMinutes`: entero en minutos, o `null` si `activeServiceWindows`
   es 0.
-- `status: "called"` devuelve `position: 0` y `estimatedWaitMinutes: 0`.
+- `status: "called" | "attending" | "redirected"` devuelven `position: 0` y
+  `estimatedWaitMinutes: 0` — una vez que el turno salió de la fila
+  (`waiting`), la posición/estimado de espera dejan de tener sentido y no se
+  recalculan (antes de este fix, `attending`/`redirected` caían por error en
+  la misma rama que `waiting` y devolvían una posición fantasma).
+- `serviceWindowId`: la ventanilla donde el turno está siendo (o va a ser)
+  atendido. `null` para `waiting` (todavía no hay ventanilla asignada).
 
 ### Reglas de negocio
 
@@ -337,6 +352,9 @@ Respuesta `200`:
 2. Si no hay turnos completados, se usa el default de `5` minutos.
 3. La fórmula es `⌈turnosAdelante / ventanillasActivas⌉ × promedioMinutos`.
 4. `activeServiceWindows` se obtiene del `Business` asociado a la cola.
+5. Solo un turno en `waiting` recalcula posición/estimado en cada consulta;
+   `called`, `attending` y `redirected` devuelven valores fijos (0/0) sin
+   volver a consultar `countWaitingAhead`.
 
 ### Cobertura
 
@@ -966,7 +984,9 @@ Respuesta `200`: objeto `ServiceWindow` con `isActive` invertido.
    `called → attending` (ver HU-3.11).
 2. Una ventanilla inactiva no impide asignar turnos — es solo un indicador
    de disponibilidad para el frontend.
-3. Al eliminar (futuro), la FK en `turns.serviceWindowId` es `SET NULL`.
+3. Al eliminar una ventanilla, la FK en `turns.serviceWindowId` es
+   `SET NULL` — los turnos históricos conservan su registro sin la relación
+   (ver refinamiento *Ocupación, derivación y CRUD de ventanillas*).
 
 ### Cobertura
 
@@ -1046,3 +1066,106 @@ a ventanillas individuales).
 - `tests/unit/queue/ListServiceWindowsUseCase.test.ts` (`currentTurn`)
 - `tests/unit/queue/GetQueueStatusUseCase.test.ts` (secciones *recentCalls*
   y *activeServiceWindows real*)
+
+---
+
+## Refinamiento — Ocupación, derivación y CRUD de ventanillas
+
+Rama: `bugfix/service-window-occupancy-and-redirect`. Migración
+`20260730000000_add_redirected_status` agrega `REDIRECTED` al enum
+`TurnStatus`.
+
+### Contexto
+
+Con varias ventanillas operando en paralelo aparecieron tres gaps: (1) nada
+impedía asignar dos turnos a la misma ventanilla al mismo tiempo; (2) un
+turno siempre completaba en dos pasos (`called → attending → completed`) sin
+forma de pasar por una segunda ventanilla cuando el negocio lo requiere (ej.
+Atención al Cliente → Caja); (3) las ventanillas no se podían editar ni
+eliminar, solo crear/listar/activar-desactivar.
+
+### 1. Ocupación de ventanilla
+
+`POST /:queueId/turns/:turnId/attend` ahora valida, antes de asignar
+`serviceWindowId`, que ninguna otra ventanilla ya tenga un turno `attending`
+con ese mismo `serviceWindowId`. Si la ventanilla está ocupada, responde
+`409 SERVICE_WINDOW_OCCUPIED`. No aplica si el turno que se está atendiendo
+es el mismo que ya ocupa esa ventanilla (reanudar tras un `redirect`).
+
+### 2. Derivar un turno a otra ventanilla
+
+```text
+POST /api/queue/:queueId/turns/:turnId/redirect
+```
+
+Permiso: `turn:attend`.
+
+Request body:
+
+```json
+{ "targetServiceWindowId": "uuid" }
+```
+
+Respuesta `200`:
+
+```json
+{ "turnId": "uuid", "status": "redirected", "serviceWindowId": "uuid" }
+```
+
+Emite `queue:update` con `{ redirectedTurnId, redirectedDisplayNumber, targetServiceWindowId }`.
+
+**Reglas de negocio:**
+
+1. Solo un turno `attending` puede derivarse. Cualquier otro estado responde
+   `409 TURN_INVALID_STATUS_FOR_ATTEND`.
+2. La ventanilla destino debe existir y pertenecer a la misma cola que el
+   turno — si no, `404 SERVICE_WINDOW_NOT_FOUND`.
+3. No se puede derivar a la ventanilla en la que ya está — `400
+   REDIRECT_SAME_WINDOW`.
+4. A diferencia de `attend`, `redirect` **no** valida ocupación del destino:
+   deriva "virtualmente" al turno (pasa a `redirected` con el
+   `serviceWindowId` sugerido) sin iniciar atención ahí. El empleado de esa
+   ventanilla lo retoma llamando `attend` sobre ese mismo `turnId` cuando
+   esté libre — en ese momento sí se valida ocupación (punto 1).
+5. `startedAttentionAt` **no se reinicia** en el redirect ni al retomar la
+   atención: se conserva el timestamp original. El promedio de servicio
+   (`getAverageServiceMinutes`) mide el tiempo total del cliente en el
+   sistema (`attendedAt - startedAttentionAt` de punta a punta), no el
+   tiempo en cada ventanilla individual — no hay tabla de segmentos por
+   ventanilla en este alcance.
+6. Un turno `redirected` cuenta como turno activo (`findActiveByQueue`,
+   `GetQueueStatusOutput.redirectedCount`, `QueueListItem.status`) y bloquea
+   que el mismo cliente saque un turno nuevo en otro negocio, igual que
+   `waiting`/`called`/`attending`.
+
+### 3. CRUD completo de ventanillas
+
+```text
+PATCH  /api/queue/:queueId/windows/:windowId          queue:configure
+DELETE /api/queue/:queueId/windows/:windowId          queue:configure
+```
+
+- **Editar** (`UpdateServiceWindowUseCase`): body `{ name?, type? }`, ambos
+  opcionales — actualiza solo lo provisto. No permite tocar `isActive` (usar
+  el endpoint de toggle para eso).
+- **Eliminar** (`DeleteServiceWindowUseCase`): responde `409
+  SERVICE_WINDOW_IN_USE` si la ventanilla tiene un turno `attending` en este
+  momento. Un turno `redirected` esperando esa ventanilla **no** bloquea el
+  borrado (queda con `serviceWindowId: null` por el `ON DELETE SET NULL`).
+- **Toggle** (`ToggleServiceWindowUseCase`): el mismo guard `409
+  SERVICE_WINDOW_IN_USE` ahora aplica al desactivar (`isActive: true →
+  false`) una ventanilla ocupada. Reactivar (`false → true`) nunca se
+  bloquea.
+
+### Cobertura
+
+- `tests/unit/queue/AttendTurnUseCase.test.ts` (secciones *ocupación de
+  ventanilla* y *redirected → attending*)
+- `tests/unit/queue/RedirectTurnUseCase.test.ts`
+- `tests/unit/queue/UpdateServiceWindowUseCase.test.ts`
+- `tests/unit/queue/DeleteServiceWindowUseCase.test.ts`
+- `tests/unit/queue/ToggleServiceWindowUseCase.test.ts` (sección *ocupación*)
+- `tests/unit/queue/GetQueueStatusUseCase.test.ts` (`redirectedCount`)
+- `tests/unit/queue/GetQueueListUseCase.test.ts` (turnos `redirected`)
+- `tests/unit/queue/GetMyTurnUseCase.test.ts` (estados `attending` y
+  `redirected`, `serviceWindowId`)

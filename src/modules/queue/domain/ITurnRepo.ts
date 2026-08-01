@@ -36,7 +36,7 @@ export interface ActiveTurnSummary {
   customerName: string | null;
   guestName: string | null;
   priority: TurnPriority;
-  status: Extract<TurnStatus, "waiting" | "called" | "attending">;
+  status: Extract<TurnStatus, "waiting" | "called" | "attending" | "redirected">;
   createdAt: Date;
   serviceWindowId: string | null;
   startedAttentionAt: Date | null;
@@ -62,4 +62,5 @@ export interface ITurnRepo extends Repository<Turn> {
   findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]>;
   getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw>;
   findRecentCalls(queueId: string, limit: number): Promise<RecentCallItem[]>;
+  findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null>;
 }

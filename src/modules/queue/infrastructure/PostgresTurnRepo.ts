@@ -115,7 +115,7 @@ export class PostgresTurnRepo implements ITurnRepo {
     const row = await prisma.turn.findFirst({
       where: {
         customerId,
-        status: { in: ["WAITING", "CALLED", "ATTENDING"] },
+        status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] },
       },
     });
     return row ? toTurn(row) : null;
@@ -126,8 +126,15 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: {
         customerId,
         queueId,
-        status: { in: ["WAITING", "CALLED", "ATTENDING"] },
+        status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] },
       },
+    });
+    return row ? toTurn(row) : null;
+  }
+
+  public async findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null> {
+    const row = await prisma.turn.findFirst({
+      where: { serviceWindowId, status: "ATTENDING" },
     });
     return row ? toTurn(row) : null;
   }
@@ -177,7 +184,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
     };
     const rows = await prisma.turn.findMany({
-      where: { queueId, status: { in: ["WAITING", "CALLED", "ATTENDING"] } },
+      where: { queueId, status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] } },
       include: { customer: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: "asc" },
     });
@@ -194,7 +201,7 @@ export class PostgresTurnRepo implements ITurnRepo {
         : null,
       guestName: row.guestName ?? null,
       priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
-      status: row.status.toLowerCase() as "waiting" | "called" | "attending",
+      status: row.status.toLowerCase() as "waiting" | "called" | "attending" | "redirected",
       createdAt: row.createdAt,
       serviceWindowId: row.serviceWindowId ?? null,
       startedAttentionAt: row.startedAttentionAt ?? null,
@@ -261,7 +268,7 @@ export class PostgresTurnRepo implements ITurnRepo {
     const row = await prisma.turn.update({
       where: { id: entity.id },
       data: {
-        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "CANCELLED" | "COMPLETED",
+        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED",
         serviceWindowId: entity.serviceWindowId ?? null,
         calledAt: entity.calledAt ?? null,
         startedAttentionAt: entity.startedAttentionAt ?? null,

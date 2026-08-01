@@ -142,6 +142,73 @@ describe("AttendTurnUseCase — serviceWindowId", () => {
   });
 });
 
+describe("AttendTurnUseCase — ocupación de ventanilla", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("throws 409 when assigning a window already attending another turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+      buildTurn({ id: "other-turn", queueId: QUEUE_ID, status: "attending", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
+  });
+
+  it("allows assigning a window that is free", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+    ).resolves.toMatchObject({ status: "attending" });
+  });
+
+  it("does not conflict with itself when re-attending the same window it already occupies", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID }),
+    ).resolves.toMatchObject({ status: "attending" });
+  });
+});
+
+describe("AttendTurnUseCase — redirected → attending", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("transitions a redirected turn to attending at the suggested window", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ turnId: TURN_ID });
+
+    expect(result.status).toBe("attending");
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
+  });
+
+  it("preserves the original startedAttentionAt when resuming from a redirect", async () => {
+    const originalStart = new Date("2026-01-01T10:00:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_ID, startedAttentionAt: originalStart }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ turnId: TURN_ID });
+
+    expect(result.startedAttentionAt).toBe(originalStart.toISOString());
+    expect(turnRepo.all().find((t) => t.id === TURN_ID)?.startedAttentionAt).toEqual(originalStart);
+  });
+});
+
 describe("AttendTurnUseCase — errores", () => {
   it("throws 404 when the turn does not exist", async () => {
     const { useCase } = buildUseCase();

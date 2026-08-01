@@ -1,4 +1,4 @@
-export type TurnStatus = "waiting" | "called" | "attending" | "cancelled" | "completed";
+export type TurnStatus = "waiting" | "called" | "attending" | "redirected" | "cancelled" | "completed";
 export type TurnPriority = "arrived" | "physical" | "in_transit" | "registered";
 export type TurnSource = "app" | "manual" | "qr" | "web";
 

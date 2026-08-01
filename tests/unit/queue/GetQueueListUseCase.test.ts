@@ -28,19 +28,20 @@ describe("GetQueueListUseCase — lista de turnos", () => {
     expect(result).toEqual({ queueId: QUEUE_ID, items: [] });
   });
 
-  it("returns waiting and called turns, not cancelled or completed", async () => {
+  it("returns waiting, called, attending and redirected turns, not cancelled or completed", async () => {
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "waiting",   turnDate: TODAY }),
-      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "called",    turnDate: TODAY }),
-      buildTurn({ id: "t-3", queueId: QUEUE_ID, number: 3, status: "cancelled", turnDate: TODAY }),
-      buildTurn({ id: "t-4", queueId: QUEUE_ID, number: 4, status: "completed", turnDate: TODAY }),
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "waiting",    turnDate: TODAY }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "called",     turnDate: TODAY }),
+      buildTurn({ id: "t-3", queueId: QUEUE_ID, number: 3, status: "cancelled",  turnDate: TODAY }),
+      buildTurn({ id: "t-4", queueId: QUEUE_ID, number: 4, status: "completed",  turnDate: TODAY }),
+      buildTurn({ id: "t-5", queueId: QUEUE_ID, number: 5, status: "redirected", turnDate: TODAY }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
     const result = await useCase.execute({ queueId: QUEUE_ID });
 
-    expect(result.items).toHaveLength(2);
-    expect(result.items.map((i) => i.turnId)).toEqual(["t-1", "t-2"]);
+    expect(result.items).toHaveLength(3);
+    expect(result.items.map((i) => i.turnId)).toEqual(["t-1", "t-2", "t-5"]);
   });
 
   it("orders by priority rank then FIFO within same priority", async () => {

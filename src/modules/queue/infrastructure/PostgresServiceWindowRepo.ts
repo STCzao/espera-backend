@@ -51,4 +51,8 @@ export class PostgresServiceWindowRepo implements IServiceWindowRepo {
     });
     return toServiceWindow(row);
   }
+
+  public async delete(id: string): Promise<void> {
+    await prisma.serviceWindow.delete({ where: { id } });
+  }
 }

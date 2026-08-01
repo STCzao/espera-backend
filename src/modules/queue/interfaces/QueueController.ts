@@ -9,13 +9,16 @@ import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCas
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
 import { CreateServiceWindowUseCase } from "../application/CreateServiceWindowUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
+import { DeleteServiceWindowUseCase } from "../application/DeleteServiceWindowUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
 import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
 import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
 import { ListServiceWindowsUseCase } from "../application/ListServiceWindowsUseCase";
+import { RedirectTurnUseCase } from "../application/RedirectTurnUseCase";
 import { ToggleServiceWindowUseCase } from "../application/ToggleServiceWindowUseCase";
+import { UpdateServiceWindowUseCase } from "../application/UpdateServiceWindowUseCase";
 
 export class QueueController {
   public constructor(
@@ -34,6 +37,9 @@ export class QueueController {
     private readonly listServiceWindowsUseCase = new ListServiceWindowsUseCase(),
     private readonly createServiceWindowUseCase = new CreateServiceWindowUseCase(),
     private readonly toggleServiceWindowUseCase = new ToggleServiceWindowUseCase(),
+    private readonly updateServiceWindowUseCase = new UpdateServiceWindowUseCase(),
+    private readonly deleteServiceWindowUseCase = new DeleteServiceWindowUseCase(),
+    private readonly redirectTurnUseCase = new RedirectTurnUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -126,6 +132,33 @@ export class QueueController {
       windowId: String(request.params.windowId),
     });
     logger.info({ windowId: result.id, isActive: result.isActive }, "Service window toggled");
+    response.status(200).json(result);
+  };
+
+  public updateServiceWindow = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.updateServiceWindowUseCase.execute({
+      windowId: String(request.params.windowId),
+      name:     request.body.name,
+      type:     request.body.type,
+    });
+    logger.info({ windowId: result.id }, "Service window updated");
+    response.status(200).json(result);
+  };
+
+  public deleteServiceWindow = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.deleteServiceWindowUseCase.execute({
+      windowId: String(request.params.windowId),
+    });
+    logger.info({ windowId: result.windowId }, "Service window deleted");
+    response.status(200).json(result);
+  };
+
+  public redirectTurn = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.redirectTurnUseCase.execute({
+      turnId:                String(request.params.turnId),
+      targetServiceWindowId: String(request.body.targetServiceWindowId),
+    });
+    logger.info({ turnId: result.turnId, serviceWindowId: result.serviceWindowId }, "Turn redirected to another service window");
     response.status(200).json(result);
   };
 
