@@ -93,3 +93,21 @@ businessRouter.post(
   authorize("queue:configure"),
   controller.configureQueue
 );
+businessRouter.get(
+  "/pending",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.listPending
+);
+businessRouter.patch(
+  "/:businessId/approve",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.approve
+);
+businessRouter.patch(
+  "/:businessId/reject",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.reject
+);

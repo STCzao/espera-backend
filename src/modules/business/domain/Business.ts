@@ -6,7 +6,9 @@ export type BusinessOperationalStatus = "normal" | "delayed" | "paused" | "close
  * Business aggregate snapshot used by the panel.
  *
  * `listingStatus` controls public discovery, while `operationalStatus` controls
- * whether the business is currently accepting new turns.
+ * whether the business is currently accepting new turns. `status` is the
+ * commercial approval gate, reviewed independently from its Organization's
+ * own approval (backlog v2.4 — two-level approval).
  */
 export interface Business {
   id: string;
@@ -14,6 +16,10 @@ export interface Business {
   slug: string;
   categoryId: string;
   status: BusinessStatus;
+  approvedByUserId?: string;
+  approvedAt?: Date;
+  rejectedReason?: string;
+  rejectedAt?: Date;
   phone?: string;
   address?: string;
   latitude?: number;

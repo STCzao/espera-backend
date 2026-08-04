@@ -10,6 +10,7 @@ export const buildOrganization = (
 ): Organization => ({
   id: "organization-1",
   name: "Cafe Espera",
+  status: "pending",
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   ...overrides,
@@ -55,6 +56,10 @@ export class InMemoryOrganizationRepo implements IOrganizationRepo {
     return this.organizations.get(id) ?? null;
   }
 
+  public async findPending(): Promise<Organization[]> {
+    return [...this.organizations.values()].filter((o) => o.status === "pending");
+  }
+
   public async save(entity: Organization): Promise<Organization> {
     this.organizations.set(entity.id, entity);
     return entity;
@@ -93,6 +98,14 @@ export class InMemoryMembershipRepo implements IMembershipRepo {
   public async findByUser(userId: string): Promise<Membership[]> {
     return [...this.memberships.values()].filter(
       (membership) => membership.userId === userId,
+    );
+  }
+
+  public async findAdminByOrganization(organizationId: string): Promise<Membership | null> {
+    return (
+      [...this.memberships.values()].find(
+        (membership) => membership.organizationId === organizationId && membership.role === "admin",
+      ) ?? null
     );
   }
 

@@ -14,6 +14,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
 import { businessRouter } from "./modules/business/interfaces/business.routes";
 import { qrRouter } from "./modules/business/interfaces/qr.routes";
+import { organizationRouter } from "./modules/organization/interfaces/organization.routes";
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env } from "./shared/infrastructure/env";
@@ -73,6 +74,7 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
   app.use(`${apiPrefix}/auth`, authRouter);
   app.use(`${apiPrefix}/business`, businessRouter);
   app.use(`${apiPrefix}/qr`, qrRouter);
+  app.use(`${apiPrefix}/organizations`, organizationRouter);
   app.use(`${apiPrefix}/queue`, createQueueRouter(deps.emitter ?? null));
   app.use(errorHandler);
 

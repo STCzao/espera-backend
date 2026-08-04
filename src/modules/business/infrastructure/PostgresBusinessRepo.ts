@@ -1,6 +1,6 @@
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Business } from "../domain/Business";
-import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import type { FindPendingBusinessesFilters, IBusinessRepo } from "../domain/IBusinessRepo";
 
 const toStatusEnum = (status: Business["status"]) =>
   status.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
@@ -17,6 +17,10 @@ const toBusiness = (raw: {
   slug: string;
   categoryId: string;
   status: string;
+  approvedByUserId: string | null;
+  approvedAt: Date | null;
+  rejectedReason: string | null;
+  rejectedAt: Date | null;
   phone: string | null;
   address: string | null;
   latitude: number | null;
@@ -34,6 +38,10 @@ const toBusiness = (raw: {
   slug: raw.slug,
   categoryId: raw.categoryId,
   status: raw.status.toLowerCase() as Business["status"],
+  approvedByUserId: raw.approvedByUserId ?? undefined,
+  approvedAt: raw.approvedAt ?? undefined,
+  rejectedReason: raw.rejectedReason ?? undefined,
+  rejectedAt: raw.rejectedAt ?? undefined,
   phone: raw.phone ?? undefined,
   address: raw.address ?? undefined,
   latitude: raw.latitude ?? undefined,
@@ -63,12 +71,36 @@ export class PostgresBusinessRepo implements IBusinessRepo {
     return rows.map(toBusiness);
   }
 
+  public async findByOrganizationId(organizationId: string): Promise<Business[]> {
+    const rows = await prisma.business.findMany({ where: { organizationId } });
+    return rows.map(toBusiness);
+  }
+
+  public async findPending(filters: FindPendingBusinessesFilters = {}): Promise<Business[]> {
+    const rows = await prisma.business.findMany({
+      where: {
+        status: "PENDING",
+        organizationId: filters.organizationId,
+        categoryId: filters.categoryId,
+        createdAt: (filters.fromDate || filters.toDate)
+          ? { gte: filters.fromDate, lte: filters.toDate }
+          : undefined,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    return rows.map(toBusiness);
+  }
+
   public async save(entity: Business): Promise<Business> {
     const data = {
       name: entity.name,
       slug: entity.slug,
       categoryId: entity.categoryId,
       status: toStatusEnum(entity.status),
+      approvedByUserId: entity.approvedByUserId ?? null,
+      approvedAt: entity.approvedAt ?? null,
+      rejectedReason: entity.rejectedReason ?? null,
+      rejectedAt: entity.rejectedAt ?? null,
       phone: entity.phone ?? null,
       address: entity.address ?? null,
       latitude: entity.latitude ?? null,

@@ -51,6 +51,7 @@ export class CreateOrganizationForOwnerUseCase
     const organization = await this.organizationRepo.save({
       id: randomUUID(),
       name: input.organizationName,
+      status: "pending",
       createdAt: now,
       updatedAt: now,
     });

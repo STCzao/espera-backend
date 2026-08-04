@@ -113,19 +113,22 @@ Estado:
 
 ### queue
 
-Responsabilidades proyectadas:
+Responsabilidades actuales:
 
-- creación de turnos
-- llamada al siguiente
-- cancelación
-- prioridad
-- tiempo real
-- notificaciones
+- creación de turnos (app, manual) y jerarquía de prioridad
+- llamada al siguiente turno, cancelación (cliente y empleado)
+- confirmación de tránsito/llegada, marcar turno atendido
+- ventanillas de servicio individuales por cola: CRUD completo, ocupación,
+  derivación entre ventanillas (estado `redirected`)
+- tiempo real vía Socket.IO (`queue:update`)
+- historial y métricas del día (promedio de atención, hora pico, % cancelación)
 
 Estado:
 
-- contratos y rutas creadas
-- casos de uso actuales en estado base o stub
+- módulo completo, Épica 3 (`HU-3.1` a `HU-3.12`) implementada con varios
+  refinamientos posteriores que superan el alcance original del backlog
+  (ver `docs/epica-3-cola.md`)
+- notificaciones push (Épica 5) no implementadas todavía
 
 ## Arquitectura técnica
 
@@ -364,21 +367,33 @@ Alineación de Google OAuth con la arquitectura HU-1.8:
 
 ## Siguiente épica
 
-La Épica 3 — Cola está completa (`HU-3.1` a `HU-3.12`).
+La Épica 3 — Cola está completa (`HU-3.1` a `HU-3.12`) con refinamientos
+adicionales (ventanillas de servicio, ocupación, derivación).
 
-Las Épicas 1, 2, 2.5 y 3 están completas. Las siguientes candidatas en
-Fase 2 son:
+Las Épicas 1, 2, 2.5 y 3 están completas, incluyendo el refinamiento del
+backlog v2.4 que resuelve la aprobación comercial en dos niveles
+(`Organization` y `Business` por separado, ver
+`docs/epica-2-5-cuentas-organizaciones.md`). La Épica 6 — Panel del Negocio
+está mayormente cubierta de facto por endpoints de `queue`/`business` ya
+existentes, con un gap puntual documentado (`docs/epica-6-panel-negocio.md`).
 
-- `Épica 6 — Panel del Negocio` (19 pts): dashboard, historial, métricas y
-  responsividad del panel de empleado.
-- `Épica 8 — Backoffice Espera` (22 pts): aprobación de negocios, suspensión,
-  métricas globales — panel interno en .NET.
+Candidata siguiente en Fase 2:
+
+- `Épica 8 — Backoffice Espera` (22 pts, backlog v2.4): aprobación de
+  negocios, suspensión, métricas globales. Cambio de decisión arquitectónica
+  en v2.4 — módulo interno Node.js/TypeScript en este mismo repo (`espera-back`),
+  no un proyecto .NET separado. `HU-8.2`/`HU-8.3` (listar y aprobar
+  pendientes) ya tienen su base de datos y use cases construidos por el
+  refinamiento de aprobación en dos niveles — falta la UI de Backoffice y
+  `HU-8.1` (login propio, hoy reusa el login normal con rol `super_admin`),
+  `HU-8.4` a `HU-8.7`.
 
 Documentación de referencia:
 
 - `docs/story-documentation-standard.md`
 - `docs/epica-3-cola.md`
 - `docs/epica-2-5-cuentas-organizaciones.md`
+- `docs/epica-6-panel-negocio.md`
 - `docs/decision-modelo-cuentas-negocios.md`
 
 Avance actual:

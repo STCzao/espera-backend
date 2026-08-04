@@ -1,0 +1,106 @@
+import { randomUUID } from "node:crypto";
+
+import { z } from "zod";
+
+import { AppError } from "@shared/kernel/AppError";
+import { sendBusinessApprovedEmail } from "@shared/infrastructure/email";
+import { logger } from "@shared/infrastructure/logger";
+import type { IUserRepo } from "@modules/auth/public-api";
+import { PostgresUserRepo } from "@modules/auth/public-api";
+import type { IOrganizationRepo, ISubscriptionRepo } from "@modules/organization/public-api";
+import { PostgresOrganizationRepo, PostgresSubscriptionRepo } from "@modules/organization/public-api";
+import type { IQueueRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo } from "@modules/queue/public-api";
+import type { UseCase } from "../../../shared/kernel/UseCase";
+import type { Business } from "../domain/Business";
+import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
+
+const TRIAL_DAYS = 30;
+
+const schema = z.object({
+  businessId:       z.string().uuid("Invalid business id."),
+  approvedByUserId: z.string().uuid("Invalid approver id."),
+});
+
+export type ApproveBusinessInput = z.infer<typeof schema>;
+
+/**
+ * Approves a single Business (HU-8.3). Independent from approving other
+ * Business under the same Organization — this is the second of the two
+ * approval gates, and requires the Organization to already be approved.
+ */
+export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Business> {
+  public constructor(
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly organizationRepo: IOrganizationRepo = new PostgresOrganizationRepo(),
+    private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
+  ) {}
+
+  public async execute(input: ApproveBusinessInput): Promise<Business> {
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
+
+    const business = await this.businessRepo.findById(parsed.data.businessId);
+    if (!business) throw AppError.notFound("Business not found.", "BUSINESS_NOT_FOUND");
+
+    if (business.status === "approved") {
+      throw AppError.conflict("Business is already approved.", "BUSINESS_ALREADY_APPROVED");
+    }
+
+    const organization = await this.organizationRepo.findById(business.organizationId);
+    if (!organization || organization.status !== "approved") {
+      throw AppError.conflict(
+        "The business's organization must be approved before approving this business.",
+        "ORGANIZATION_NOT_APPROVED",
+      );
+    }
+
+    const now = new Date();
+    const updated = await this.businessRepo.save({
+      ...business,
+      status: "approved",
+      approvedByUserId: parsed.data.approvedByUserId,
+      approvedAt: now,
+      rejectedReason: undefined,
+      rejectedAt: undefined,
+      updatedAt: now,
+    });
+
+    const subscription = await this.subscriptionRepo.findByOrganizationId(business.organizationId);
+    if (subscription && subscription.status === "pending") {
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);
+      await this.subscriptionRepo.save({ ...subscription, status: "trial", trialEndsAt });
+    }
+
+    const existingQueue = await this.queueRepo.findActiveByBusinessId(business.id);
+    if (!existingQueue) {
+      await this.queueRepo.save({
+        id:         randomUUID(),
+        businessId: business.id,
+        name:       "Caja principal",
+        prefix:     "A",
+        isActive:   true,
+        createdAt:  now,
+        updatedAt:  now,
+      });
+    }
+
+    const owner = await this.userRepo.findById(business.ownerUserId);
+    if (owner) {
+      try {
+        await sendBusinessApprovedEmail(owner.email, owner.firstName, business.name);
+      } catch (error) {
+        logger.error(
+          { error, businessId: business.id },
+          "Business approved but confirmation email could not be sent",
+        );
+      }
+    }
+
+    return updated;
+  }
+}
