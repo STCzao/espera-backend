@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import {
+  SUPER_ADMIN_BLOCK_DURATION_SECONDS,
   getLoginAttemptStatus,
   recordFailedLoginAttempt,
   resetLoginAttemptStatus,
@@ -53,7 +54,7 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       loginAttemptStatus.blockedUntil.getTime() > Date.now()
     ) {
       throw AppError.tooManyRequests(
-        "Too many failed login attempts. Please try again in 5 minutes.",
+        "Too many failed login attempts. Please try again later.",
         "LOGIN_TEMPORARILY_BLOCKED",
       );
     }
@@ -69,7 +70,10 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       user.passwordHash,
     );
     if (!passwordMatches) {
-      await recordFailedLoginAttempt(email);
+      const blockDurationSeconds = user.role === "super_admin"
+        ? SUPER_ADMIN_BLOCK_DURATION_SECONDS
+        : undefined;
+      await recordFailedLoginAttempt(email, blockDurationSeconds);
       throw AppError.unauthorized("Invalid credentials.");
     }
 

@@ -18,6 +18,7 @@ vi.mock("../../../src/shared/infrastructure/loginAttemptTracker", () => ({
   getLoginAttemptStatus: loginAttemptMocks.getLoginAttemptStatus,
   recordFailedLoginAttempt: loginAttemptMocks.recordFailedLoginAttempt,
   resetLoginAttemptStatus: loginAttemptMocks.resetLoginAttemptStatus,
+  SUPER_ADMIN_BLOCK_DURATION_SECONDS: 15 * 60,
 }));
 
 const tokenService = {
@@ -98,6 +99,31 @@ describe("LoginUseCase", () => {
 
     expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
       "user@example.com",
+      undefined,
+    );
+  });
+
+  it("uses a 15-minute lockout for super_admin accounts (HU-8.1)", async () => {
+    const passwordHash = await bcrypt.hash("Password1", 12);
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ passwordHash, role: "super_admin" }),
+    ]);
+    const useCase = new LoginUseCase(
+      userRepo,
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+    );
+
+    await expect(
+      useCase.execute({
+        email: "user@example.com",
+        password: "WrongPassword1",
+      }),
+    ).rejects.toMatchObject({ statusCode: 401 });
+
+    expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
+      "user@example.com",
+      15 * 60,
     );
   });
 

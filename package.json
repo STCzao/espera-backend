@@ -13,7 +13,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "postinstall": "prisma generate",
-    "backfill:queues": "tsx src/scripts/backfill-queues.ts"
+    "backfill:queues": "tsx src/scripts/backfill-queues.ts",
+    "create:super-admin": "tsx src/scripts/create-super-admin.ts"
   },
   "repository": {
     "type": "git",
