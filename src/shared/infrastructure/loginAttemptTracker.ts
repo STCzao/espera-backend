@@ -15,6 +15,10 @@ const MAX_FAILED_ATTEMPTS = 5;
 const ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const BLOCK_DURATION_SECONDS = 5 * 60;
 
+// Backoffice accounts (HU-8.1) get a longer lockout than regular users
+// (HU-1.3) after the same 5 failed attempts.
+export const SUPER_ADMIN_BLOCK_DURATION_SECONDS = 15 * 60;
+
 const memoryStore = new Map<string, MemoryAttemptState>();
 
 const attemptsKey = (identity: string): string => `login-attempts:${identity}`;
@@ -64,6 +68,7 @@ export const getLoginAttemptStatus = async (
 
 export const recordFailedLoginAttempt = async (
   identity: string,
+  blockDurationSeconds: number = BLOCK_DURATION_SECONDS,
 ): Promise<LoginAttemptStatus> => {
   try {
     await ensureRedisConnection();
@@ -75,8 +80,8 @@ export const recordFailedLoginAttempt = async (
 
     let blockedUntil: Date | undefined;
     if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-      blockedUntil = new Date(Date.now() + BLOCK_DURATION_SECONDS * 1000);
-      await redis.set(blockKey(identity), blockedUntil.getTime().toString(), "EX", BLOCK_DURATION_SECONDS);
+      blockedUntil = new Date(Date.now() + blockDurationSeconds * 1000);
+      await redis.set(blockKey(identity), blockedUntil.getTime().toString(), "EX", blockDurationSeconds);
       await redis.del(attemptsKey(identity));
     }
 
@@ -86,7 +91,7 @@ export const recordFailedLoginAttempt = async (
     const failedAttempts = current.failedAttempts + 1;
     const blockedUntil =
       failedAttempts >= MAX_FAILED_ATTEMPTS
-        ? new Date(Date.now() + BLOCK_DURATION_SECONDS * 1000)
+        ? new Date(Date.now() + blockDurationSeconds * 1000)
         : undefined;
 
     if (blockedUntil) {

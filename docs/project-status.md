@@ -377,16 +377,19 @@ backlog v2.4 que resuelve la aprobación comercial en dos niveles
 está mayormente cubierta de facto por endpoints de `queue`/`business` ya
 existentes, con un gap puntual documentado (`docs/epica-6-panel-negocio.md`).
 
-Candidata siguiente en Fase 2:
+En progreso en Fase 2:
 
 - `Épica 8 — Backoffice Espera` (22 pts, backlog v2.4): aprobación de
   negocios, suspensión, métricas globales. Cambio de decisión arquitectónica
   en v2.4 — módulo interno Node.js/TypeScript en este mismo repo (`espera-back`),
-  no un proyecto .NET separado. `HU-8.2`/`HU-8.3` (listar y aprobar
-  pendientes) ya tienen su base de datos y use cases construidos por el
-  refinamiento de aprobación en dos niveles — falta la UI de Backoffice y
-  `HU-8.1` (login propio, hoy reusa el login normal con rol `super_admin`),
-  `HU-8.4` a `HU-8.7`.
+  no un proyecto .NET separado. `HU-8.1` (login propio — reusa el login
+  normal con rol `super_admin`, bootstrap vía `npm run create:super-admin`),
+  `HU-8.2` y `HU-8.3` (listar y aprobar pendientes, construidas por el
+  refinamiento de aprobación en dos niveles) ya están implementadas.
+  Pendientes: `HU-8.4` (suspender/reactivar), `HU-8.5` (métricas globales),
+  `HU-8.6` (reportes, sin modelo de datos todavía), `HU-8.7` (bloqueada por
+  un gap de modelo — `Organization` no tiene campo de categoría). Ver
+  `docs/epica-8-backoffice.md`.
 
 Documentación de referencia:
 
@@ -394,6 +397,7 @@ Documentación de referencia:
 - `docs/epica-3-cola.md`
 - `docs/epica-2-5-cuentas-organizaciones.md`
 - `docs/epica-6-panel-negocio.md`
+- `docs/epica-8-backoffice.md`
 - `docs/decision-modelo-cuentas-negocios.md`
 
 Avance actual:
