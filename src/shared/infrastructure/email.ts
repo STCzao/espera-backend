@@ -10,7 +10,15 @@ const shouldUseResend = (): boolean =>
   env.NODE_ENV === "production" || !isPlaceholderResendKey(env.RESEND_API_KEY);
 
 const logLocalEmail = (
-  kind: "verification" | "password-reset" | "business-welcome" | "employee-invitation",
+  kind:
+    | "verification"
+    | "password-reset"
+    | "business-welcome"
+    | "employee-invitation"
+    | "organization-approved"
+    | "organization-rejected"
+    | "business-approved"
+    | "business-rejected",
   to: string,
   url: string,
 ): void => {
@@ -100,6 +108,123 @@ export const sendBusinessWelcomeEmail = async (
       <p>Hello ${firstName},</p>
       <p>Your business account has been approved and you can now access the Espera panel.</p>
       <p>You can sign in here:</p>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};
+
+export const sendOrganizationApprovedEmail = async (
+  to: string,
+  firstName: string,
+): Promise<void> => {
+  const appUrl = env.APP_URL ?? "http://localhost:3000";
+  const dashboardUrl = `${appUrl}/login`;
+
+  if (!shouldUseResend()) {
+    logLocalEmail("organization-approved", to, dashboardUrl);
+    return;
+  }
+
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+
+  await resend.emails.send({
+    from: emailConfig.fromEmail,
+    to,
+    subject: "Tu cuenta en Espera fue aprobada",
+    html: `
+      <p>Hola ${firstName},</p>
+      <p>Tu cuenta (Organization) fue aprobada por el equipo de Espera.</p>
+      <p>Cada negocio que registres bajo tu cuenta se revisa por separado antes de poder operar.</p>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};
+
+export const sendOrganizationRejectedEmail = async (
+  to: string,
+  firstName: string,
+  reason: string,
+): Promise<void> => {
+  const appUrl = env.APP_URL ?? "http://localhost:3000";
+  const dashboardUrl = `${appUrl}/login`;
+
+  if (!shouldUseResend()) {
+    logLocalEmail("organization-rejected", to, dashboardUrl);
+    return;
+  }
+
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+
+  await resend.emails.send({
+    from: emailConfig.fromEmail,
+    to,
+    subject: "Tu cuenta en Espera no fue aprobada",
+    html: `
+      <p>Hola ${firstName},</p>
+      <p>Tu cuenta (Organization) no fue aprobada por el siguiente motivo:</p>
+      <p>${reason}</p>
+      <p>Podés corregir los datos y volver a solicitar la aprobación.</p>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};
+
+export const sendBusinessApprovedEmail = async (
+  to: string,
+  firstName: string,
+  businessName: string,
+): Promise<void> => {
+  const appUrl = env.APP_URL ?? "http://localhost:3000";
+  const dashboardUrl = `${appUrl}/login`;
+
+  if (!shouldUseResend()) {
+    logLocalEmail("business-approved", to, dashboardUrl);
+    return;
+  }
+
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+
+  await resend.emails.send({
+    from: emailConfig.fromEmail,
+    to,
+    subject: `Tu negocio "${businessName}" fue aprobado`,
+    html: `
+      <p>Hola ${firstName},</p>
+      <p>Tu negocio "${businessName}" fue aprobado y ya puede operar en Espera.</p>
+      <a href="${dashboardUrl}">${dashboardUrl}</a>
+    `,
+  });
+};
+
+export const sendBusinessRejectedEmail = async (
+  to: string,
+  firstName: string,
+  businessName: string,
+  reason: string,
+): Promise<void> => {
+  const appUrl = env.APP_URL ?? "http://localhost:3000";
+  const dashboardUrl = `${appUrl}/login`;
+
+  if (!shouldUseResend()) {
+    logLocalEmail("business-rejected", to, dashboardUrl);
+    return;
+  }
+
+  const emailConfig = getEmailConfig();
+  const resend = new Resend(emailConfig.resendApiKey);
+
+  await resend.emails.send({
+    from: emailConfig.fromEmail,
+    to,
+    subject: `Tu negocio "${businessName}" no fue aprobado`,
+    html: `
+      <p>Hola ${firstName},</p>
+      <p>Tu negocio "${businessName}" no fue aprobado por el siguiente motivo:</p>
+      <p>${reason}</p>
+      <p>Podés corregir los datos y volver a solicitar la aprobación para ese negocio.</p>
       <a href="${dashboardUrl}">${dashboardUrl}</a>
     `,
   });

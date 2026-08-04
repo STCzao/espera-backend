@@ -42,6 +42,14 @@ export class PostgresMembershipRepo implements IMembershipRepo {
     return memberships.map(toMembership);
   }
 
+  public async findAdminByOrganization(organizationId: string): Promise<Membership | null> {
+    const membership = await prisma.membership.findFirst({
+      where: { organizationId, role: "ADMIN" },
+      orderBy: { createdAt: "asc" },
+    });
+    return membership ? toMembership(membership) : null;
+  }
+
   public async save(entity: Membership): Promise<Membership> {
     const membership = await prisma.membership.upsert({
       where: { id: entity.id },

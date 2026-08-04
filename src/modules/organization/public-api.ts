@@ -1,7 +1,7 @@
 export type { IOrganizationRepo } from "./domain/IOrganizationRepo";
 export type { IMembershipRepo } from "./domain/IMembershipRepo";
 export type { ISubscriptionRepo } from "./domain/ISubscriptionRepo";
-export type { Organization } from "./domain/Organization";
+export type { Organization, OrganizationStatus } from "./domain/Organization";
 export type { Membership, MembershipRole } from "./domain/Membership";
 export type { Subscription, SubscriptionPlan } from "./domain/Subscription";
 export { PLAN_LIMITS } from "./domain/PlanLimits";
@@ -34,3 +34,15 @@ export type {
   UpdateOrganizationSubscriptionInput,
   UpdateOrganizationSubscriptionOutput,
 } from "./application/UpdateOrganizationSubscriptionUseCase";
+
+export { ApproveOrganizationUseCase } from "./application/ApproveOrganizationUseCase";
+export type { ApproveOrganizationInput } from "./application/ApproveOrganizationUseCase";
+
+export { RejectOrganizationUseCase } from "./application/RejectOrganizationUseCase";
+export type { RejectOrganizationInput } from "./application/RejectOrganizationUseCase";
+
+export { ListPendingOrganizationsUseCase } from "./application/ListPendingOrganizationsUseCase";
+export type { ListPendingOrganizationsOutput } from "./application/ListPendingOrganizationsUseCase";
+
+export { UpdateOrganizationUseCase } from "./application/UpdateOrganizationUseCase";
+export type { UpdateOrganizationInput } from "./application/UpdateOrganizationUseCase";

@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
+import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
@@ -13,8 +14,10 @@ import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase"
 import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
+import { ListPendingBusinessesUseCase } from "../application/ListPendingBusinessesUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
+import { RejectBusinessUseCase } from "../application/RejectBusinessUseCase";
 import { RevokeBusinessEmployeeUseCase } from "../application/RevokeBusinessEmployeeUseCase";
 import { UpdateBusinessOperationalStatusUseCase } from "../application/UpdateBusinessOperationalStatusUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
@@ -37,7 +40,10 @@ export class BusinessController {
     private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
     private readonly listMyBusinessesUseCase = new ListMyBusinessesUseCase(),
     private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
-    private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase()
+    private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase(),
+    private readonly listPendingBusinessesUseCase = new ListPendingBusinessesUseCase(),
+    private readonly approveBusinessUseCase = new ApproveBusinessUseCase(),
+    private readonly rejectBusinessUseCase = new RejectBusinessUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -184,6 +190,44 @@ export class BusinessController {
       },
       "Business operational status updated"
     );
+    response.status(200).json(result);
+  };
+
+  public listPending = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.listPendingBusinessesUseCase.execute({
+      organizationId: typeof request.query.organizationId === "string" ? request.query.organizationId : undefined,
+      categoryId:     typeof request.query.categoryId === "string" ? request.query.categoryId : undefined,
+      fromDate:       typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
+      toDate:         typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+    });
+    response.status(200).json(result);
+  };
+
+  public approve = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.approveBusinessUseCase.execute({
+      businessId:       String(request.params.businessId),
+      approvedByUserId: request.user?.id ?? "",
+    });
+    logger.info({ businessId: result.id }, "Business approved");
+    response.status(200).json(result);
+  };
+
+  public reject = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.rejectBusinessUseCase.execute({
+      businessId:       String(request.params.businessId),
+      rejectedByUserId: request.user?.id ?? "",
+      reason:           String(request.body.reason),
+    });
+    logger.info({ businessId: result.id }, "Business rejected");
     response.status(200).json(result);
   };
 

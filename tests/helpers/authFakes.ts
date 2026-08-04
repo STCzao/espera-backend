@@ -228,6 +228,28 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
     ).length;
   }
 
+  public async findByOrganizationId(organizationId: string): Promise<Business[]> {
+    return [...this.businesses.values()].filter(
+      (business) => business.organizationId === organizationId,
+    );
+  }
+
+  public async findPending(filters: {
+    organizationId?: string;
+    categoryId?: string;
+    fromDate?: Date;
+    toDate?: Date;
+  } = {}): Promise<Business[]> {
+    return [...this.businesses.values()].filter((business) => {
+      if (business.status !== "pending") return false;
+      if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
+      if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
+      if (filters.fromDate && business.createdAt.getTime() < filters.fromDate.getTime()) return false;
+      if (filters.toDate && business.createdAt.getTime() > filters.toDate.getTime()) return false;
+      return true;
+    });
+  }
+
   public all(): Business[] {
     return [...this.businesses.values()];
   }

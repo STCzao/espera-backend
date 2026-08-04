@@ -8,7 +8,7 @@ equipo de desarrollo (migración estructural del dominio), no al usuario
 final. Bloquea la Fase 2 (Queue): la Épica 3 opera sobre `Business`/`Queue`
 y necesita conocer cuántas filas y sucursales habilita el plan.
 
-Alcance total estimado: `9 pts`.
+Alcance total estimado: `10 pts` (backlog v2.4 agregó `HU-2.5.5`, 1 pt).
 
 Formato de referencia:
 
@@ -17,10 +17,14 @@ Formato de referencia:
 ## Estado general
 
 - Estado: `implementado` en backend.
-- Historias implementadas: `HU-2.5.1`, `HU-2.5.2`, `HU-2.5.3`, `HU-2.5.4`.
-- Fuera de alcance, documentado explícitamente en el backlog: dónde vive la
-  aprobación comercial (`Organization` vs `Business`) y la migración
-  completa del middleware RBAC (`authorize`) al rol efectivo.
+- Historias implementadas: `HU-2.5.1`, `HU-2.5.2`, `HU-2.5.3`, `HU-2.5.4`,
+  `HU-2.5.5`.
+- Resuelto (backlog v2.4): dónde vive la aprobación comercial — **en dos
+  niveles independientes**, `Organization` y `Business` por separado (ver
+  refinamiento al final de este documento).
+- Sigue fuera de alcance, documentado explícitamente en el backlog: la
+  migración completa del middleware RBAC (`authorize`) al rol efectivo de
+  `Membership`.
 
 ## Modelo de datos
 
@@ -42,12 +46,14 @@ Grilla de planes (`PLAN_LIMITS`, única fuente de verdad en
 
 ## Contratos principales de la épica
 
-No se expone ningún endpoint HTTP nuevo. Las HU de esta épica están
-redactadas para el equipo de desarrollo, no hay UI de panel para gestionar
-organizaciones todavía, y ninguna otra épica consume estos contratos por
-API. El módulo `src/modules/organization/` se consume internamente desde
-`business/` y `auth/` vía `@modules/organization/public-api`, igual que
-`business/` ya consume `@modules/auth/public-api`.
+`HU-2.5.1` a `HU-2.5.4` no exponen ningún endpoint HTTP — están redactadas
+para el equipo de desarrollo y se consumen internamente desde `business/` y
+`auth/` vía `@modules/organization/public-api`, igual que `business/` ya
+consume `@modules/auth/public-api`.
+
+El refinamiento *Aprobación en dos niveles* (ver abajo) sí agrega endpoints
+HTTP reales — es la primera vez que `organization/` tiene su propia capa
+`interfaces/`. Contrato completo en esa sección.
 
 ## HU-2.5.1 - Introducir el modelo Organization sin romper los Business existentes
 
@@ -302,6 +308,41 @@ Cobertura actual:
 - `RegisterBusinessUseCase` rechaza el segundo negocio de una cuenta Basic
   con `PLAN_BUSINESS_LIMIT_REACHED` y no persiste el negocio rechazado
 
+## HU-2.5.5 - Campo legal_id en Organization
+
+Story points: `1`
+
+Estado: `implementado`.
+
+Como equipo de desarrollo, quiero un campo de identificador legal en
+`Organization` para sostener la validación de coherencia en la aprobación de
+nuevos `Business`.
+
+### Criterios de Aceptación
+
+- Dado que se crea una `Organization`, entonces admite un campo `legalId`
+  (razón social o CUIT), opcional al momento de alta y editable después.
+- Dado que una `Organization` no tiene `legalId` cargado, cuando se intenta
+  aprobar un `Business` nuevo bajo esa `Organization`, entonces el
+  Backoffice muestra advertencia de dato faltante sin bloquear la revisión
+  manual.
+
+### Implementación backend
+
+- `Organization.legalId?: string` — columna nullable, sin validación de
+  formato (texto libre; puede ser CUIT o razón social).
+- Editable después de la creación vía `UpdateOrganizationUseCase`
+  (`PATCH /api/organizations/:organizationId`, permiso `organization:edit`)
+  — ver contrato completo en el refinamiento de abajo.
+- La advertencia de "dato faltante" en el Backoffice (HU-8.7) queda diferida
+  a cuando se construya esa UI — `legalId` ya está disponible en el
+  `Organization` devuelto por `ListPendingOrganizationsUseCase` para que el
+  frontend la calcule (`legalId == null`).
+
+### Cobertura
+
+- `tests/unit/organization/UpdateOrganizationUseCase.test.ts`
+
 ## Documentación inline
 
 - `PlanLimits.ts`: aclara que es la única fuente de verdad de la grilla de
@@ -365,18 +406,17 @@ Aprobación por el equipo → status: trial, trialEndsAt = now + 30d
 expired (sin renovar) | cancelled (baja voluntaria)
 ```
 
-### ApproveBusinessAccountUseCase (reescrito)
+### ApproveBusinessAccountUseCase (reescrito dos veces)
 
-Antes: solo marcaba `User.approvalStatus = approved` y enviaba email.
+Primera reescritura (2026-07-03, esta sección original): pasó de marcar solo
+`User.approvalStatus` a cascadear la aprobación a todos los `Business`
+`pending` del usuario y arrancar el trial de su `Subscription`.
 
-Ahora (en orden):
-
-1. Marca `User.approvalStatus = approved`.
-2. Busca todos los `Business` del usuario con `status = pending`.
-3. Los marca `status = approved`.
-4. Para cada `organizationId` único, busca la `Subscription` y la actualiza:
-   `status = trial`, `trialEndsAt = now + 30 days`.
-5. Envía email de bienvenida (best-effort; un fallo no revierta el approve).
+**Esa cascada ya no existe.** El refinamiento *Aprobación en dos niveles*
+(ver más abajo) la reemplazó: `ApproveBusinessAccountUseCase` volvió a ser
+puramente el gate de cuenta/login (`User.approvalStatus`), y la aprobación
+comercial de `Business`/`Organization` vive en use cases propios,
+desacoplados de este.
 
 ### CreateOrganizationForOwnerUseCase (ajuste menor)
 
@@ -416,3 +456,172 @@ El código en `src/modules/organization/domain/PlanLimits.ts` todavía usa
    aprobación/activación; no hay flujo de billing automático en MVP.
 10. El RBAC por `Membership` (diferido a Épica 6) no bloquea el avance de
     Épica 3.
+
+---
+
+## Refinamiento — Aprobación comercial en dos niveles (backlog v2.4)
+
+Rama: `bugfix/two-level-approval`. Migración
+`20260731000000_two_level_approval`.
+
+### Motivación
+
+El backlog v2.4 resolvió una decisión que hasta ahora quedaba abierta
+("Pendiente: aprobación comercial y RBAC por Membership", ver
+`docs/decision-modelo-cuentas-negocios.md`): la aprobación comercial vive en
+**dos niveles independientes**.
+
+- **Nivel 1 — `Organization`**: se aprueba una única vez. Aprobarla **no**
+  aprueba ningún `Business` bajo ella.
+- **Nivel 2 — `Business`**: cada sucursal se revisa por separado, y
+  **requiere que su `Organization` ya esté aprobada**.
+
+Esto reemplaza el modelo anterior (`ApproveBusinessAccountUseCase` cascadeaba
+la aprobación de un `User` a *todos* sus `Business` pendientes en una sola
+operación) — modelo que nunca estuvo en ningún backlog, era deuda de
+implementación previa a que existiera esta decisión de producto.
+
+### `User.approvalStatus` queda intacto y desacoplado
+
+`User.approvalStatus` sigue siendo el gate de cuenta/login (embebido en el
+JWT, bloquea el login si es `rejected` — ver `middleware/authenticate.ts` y
+`LoginUseCase`). No se tocó su semántica. Las aprobaciones de `Organization`
+y `Business` son completamente independientes de este campo.
+
+### Modelo de datos
+
+```typescript
+type OrganizationStatus = "pending" | "approved" | "rejected";
+
+interface Organization {
+  id: string;
+  name: string;
+  legalId?: string;              // HU-2.5.5
+  status: OrganizationStatus;
+  approvedByUserId?: string;
+  approvedAt?: Date;
+  rejectedReason?: string;
+  rejectedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Business {
+  // ...campos existentes...
+  status: BusinessStatus;        // ya existía: pending | approved | rejected | suspended
+  approvedByUserId?: string;     // nuevo
+  approvedAt?: Date;             // nuevo
+  rejectedReason?: string;       // nuevo
+  rejectedAt?: Date;             // nuevo
+}
+```
+
+**Backfill de la migración**: una `Organization` que ya tiene al menos un
+`Business` `APPROVED` se marca `APPROVED` automáticamente (quedó operando
+antes de que existiera este gate — se la da por buena retroactivamente).
+`approvedByUserId`/`approvedAt` quedan `null` en ese caso porque no hay
+ninguna acción de admin real que registrar. El resto de las `Organization`
+quedan `PENDING`.
+
+### Contratos backend
+
+```text
+GET   /api/organizations/pending                    platform:manage_approvals
+PATCH /api/organizations/:organizationId/approve     platform:manage_approvals
+PATCH /api/organizations/:organizationId/reject      platform:manage_approvals
+PATCH /api/organizations/:organizationId             organization:edit
+
+GET   /api/business/pending                          platform:manage_approvals
+PATCH /api/business/:businessId/approve              platform:manage_approvals
+PATCH /api/business/:businessId/reject               platform:manage_approvals
+```
+
+Nuevo permiso `platform:manage_approvals` (solo `super_admin`, vía el mismo
+sistema de auth existente — no hay login de Backoffice separado todavía,
+ver HU-8.1). Nuevo permiso `organization:edit` (otorgado a `business_admin`,
+verificado además a nivel de `Membership.role === "admin"` dentro del use
+case, mismo patrón que el resto de los endpoints de negocio).
+
+#### Aprobar/rechazar Organization
+
+`ApproveOrganizationUseCase`: requiere `status !== "approved"` (permite
+aprobar desde `pending` o `rejected` — cubre la corrección post-rechazo sin
+necesitar un endpoint de "reenviar" separado). Envía
+`sendOrganizationApprovedEmail` al `Membership` `admin` de esa Organization.
+
+`RejectOrganizationUseCase`: requiere `status === "pending"` — no se puede
+rechazar una Organization ya aprobada (eso sería una suspensión, fuera de
+alcance de este refinamiento). Body: `{ "reason": string }`.
+
+#### Aprobar/rechazar Business
+
+`ApproveBusinessUseCase`: requiere `Organization.status === "approved"` —
+si no, `409 ORGANIZATION_NOT_APPROVED`. Preserva toda la lógica que antes
+vivía en la cascada de `ApproveBusinessAccountUseCase`:
+
+1. Marca el `Business` `approved` (con `approvedByUserId`/`approvedAt`).
+2. Si la `Subscription` de la Organization está `pending`, arranca el trial
+   de 30 días (`status: "trial"`).
+3. Crea la cola por defecto ("Caja principal", prefijo `A`) si el `Business`
+   todavía no tiene ninguna — mismo bootstrap que ya existía.
+4. Envía `sendBusinessApprovedEmail` al dueño del `Business`.
+
+`RejectBusinessUseCase`: requiere `status === "pending"`. Body:
+`{ "reason": string }`. Envía `sendBusinessRejectedEmail`.
+
+#### Listar pendientes (HU-8.2)
+
+`ListPendingOrganizationsUseCase`: todas las `Organization` `pending`.
+
+`ListPendingBusinessesUseCase`: `Business` `pending`, con filtros opcionales
+`organizationId`, `categoryId`, `fromDate`/`toDate` (query params en
+`GET /api/business/pending`).
+
+### Códigos de error nuevos
+
+| Código | HTTP | Significado |
+|---|---|---|
+| `ORGANIZATION_NOT_FOUND` | 404 | La Organization no existe. |
+| `ORGANIZATION_ALREADY_APPROVED` | 409 | Ya estaba aprobada (approve). |
+| `ORGANIZATION_NOT_PENDING` | 409 | No está pending (reject). |
+| `ORGANIZATION_NOT_APPROVED` | 409 | Se intentó aprobar un Business cuya Organization no está aprobada. |
+| `ORGANIZATION_OWNERSHIP_REQUIRED` | 403 | El usuario no es admin (Membership) de esa Organization (update). |
+| `BUSINESS_ALREADY_APPROVED` | 409 | Ya estaba aprobado (approve). |
+| `BUSINESS_NOT_PENDING` | 409 | No está pending (reject). |
+
+### Emails nuevos
+
+`src/shared/infrastructure/email.ts`: `sendOrganizationApprovedEmail`,
+`sendOrganizationRejectedEmail`, `sendBusinessApprovedEmail`,
+`sendBusinessRejectedEmail` — mismo patrón que el resto (Resend en
+producción, log local si no está configurado). Todos best-effort: un fallo
+de envío no revierte la aprobación/rechazo.
+
+### Decisiones de alcance explícitas
+
+1. **No hay endpoint de "reenviar tras rechazo"**: el `admin` corrige los
+   datos con los endpoints de edición existentes
+   (`UpdateOrganizationUseCase`, `UpdateBusinessProfileUseCase`) y el equipo
+   Espera vuelve a llamar `approve` directamente — `ApproveOrganizationUseCase`
+   acepta tanto `pending` como `rejected` como estado de entrada
+   específicamente para cubrir este caso sin un paso intermedio.
+2. **Rechazar una Organization ya aprobada no está soportado** — esa acción
+   sería una suspensión (fuera de alcance; no hay HU de suspensión de
+   Organization en el backlog, solo de `Business` vía HU-8.4).
+3. **HTTP expuesto ya**, reusando el sistema de auth existente
+   (`super_admin` vía el mismo login de siempre) en vez de esperar a un
+   Backoffice completo con login propio (HU-8.1 sigue sin implementar como
+   sistema separado).
+
+### Cobertura
+
+- `tests/unit/auth/ApproveBusinessAccountUseCase.test.ts` (reescrito —
+  ya no testea cascada)
+- `tests/unit/organization/ApproveOrganizationUseCase.test.ts`
+- `tests/unit/organization/RejectOrganizationUseCase.test.ts`
+- `tests/unit/organization/ListPendingOrganizationsUseCase.test.ts`
+- `tests/unit/organization/UpdateOrganizationUseCase.test.ts`
+- `tests/unit/business/ApproveBusinessUseCase.test.ts` (incluye trial,
+  bootstrap de cola y guard de Organization no aprobada)
+- `tests/unit/business/RejectBusinessUseCase.test.ts`
+- `tests/unit/business/ListPendingBusinessesUseCase.test.ts`

@@ -6,6 +6,8 @@ type Permission =
   | "*"
   | "auth:read_self"
   | "platform:approve_business_account"
+  | "platform:manage_approvals"
+  | "organization:edit"
   | "turn:create"
   | "turn:cancel"
   | "turn:cancel_any"
@@ -25,8 +27,8 @@ const rolePermissions: Record<
 > = {
   user: ["auth:read_self", "turn:create", "turn:cancel", "turn:read_own", "turn:update_own"],
   employee: ["auth:read_self", "queue:read", "queue:call_next", "turn:create", "turn:cancel", "turn:cancel_any", "turn:create_manual", "turn:attend"],
-  business_admin: ["auth:read_self", "queue:read", "queue:call_next", "queue:configure", "employee:manage", "business:edit", "turn:cancel_any", "turn:create_manual", "turn:attend"],
-  super_admin: ["*", "platform:approve_business_account"]
+  business_admin: ["auth:read_self", "queue:read", "queue:call_next", "queue:configure", "employee:manage", "business:edit", "organization:edit", "turn:cancel_any", "turn:create_manual", "turn:attend"],
+  super_admin: ["*", "platform:approve_business_account", "platform:manage_approvals"]
 };
 
 /**

@@ -26,6 +26,12 @@ enum BusinessStatus {
   SUSPENDED
 }
 
+enum OrganizationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum SubscriptionStatus {
   PENDING
   TRIAL
@@ -184,6 +190,10 @@ model Business {
   updatedAt   DateTime @updatedAt
 
   status      BusinessStatus @default(PENDING)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+  rejectedAt       DateTime?
   category    BusinessCategory @relation(fields: [categoryId], references: [id])
   owner       User     @relation(fields: [ownerUserId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -202,6 +212,12 @@ model Business {
 model Organization {
   id          String   @id @default(uuid())
   name        String
+  legalId     String?
+  status      OrganizationStatus @default(PENDING)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+  rejectedAt       DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

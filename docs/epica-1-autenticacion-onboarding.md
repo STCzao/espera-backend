@@ -290,20 +290,40 @@ PATCH /api/auth/business-accounts/:userId/approve         ← requiere platform:
 `POST /api/auth/register-business` está **deprecado** (flujo anterior a
 backlog v2.2). Permanece activo hasta que el frontend complete la migración.
 
+> **Actualizado (backlog v2.4 — aprobación en dos niveles)**: desde el
+> refinamiento `bugfix/two-level-approval`, `PATCH
+> /api/auth/business-accounts/:userId/approve` **ya no aprueba el
+> `Business` ni arranca el trial**. Solo aprueba la cuenta/login del
+> usuario (`User.approvalStatus`). La aprobación comercial real vive en
+> `PATCH /api/organizations/:organizationId/approve` (una vez) y luego
+> `PATCH /api/business/:businessId/approve` (por cada sucursal, requiere la
+> Organization ya aprobada) — ver
+> `docs/epica-2-5-cuentas-organizaciones.md`, sección de refinamiento, para
+> el contrato completo.
+
 ### Modelo y Persistencia
 
 - `User.role: user → business_admin` (en el momento del registro del negocio)
-- `User.approvalStatus: pending → approved`
-- `Business.status: pending → approved`
-- `Subscription.status: pending → trial` (al aprobar, trial de 30 días)
+- `User.approvalStatus: pending → approved` (vía `PATCH
+  /api/auth/business-accounts/:userId/approve` — solo gate de cuenta/login)
+- `Organization.status: pending → approved` (vía `PATCH
+  /api/organizations/:organizationId/approve` — independiente de lo anterior)
+- `Business.status: pending → approved` (vía `PATCH
+  /api/business/:businessId/approve` — requiere Organization ya aprobada)
+- `Subscription.status: pending → trial` (al aprobar el `Business`, trial de
+  30 días — ya no al aprobar la cuenta)
 
 ### Reglas de Negocio
 
 - El usuario con negocio pendiente **puede iniciar sesión** y ver el estado de revisión en el panel.
 - Solo `role: user` o `role: business_admin` pueden llamar `POST /api/business`.
-- La aprobación requiere permiso `platform:approve_business_account`.
-- La aprobación fuerza `isEmailVerified: true` y envía email de bienvenida best-effort.
-- La aprobación inicia un trial de 30 días en la `Subscription`.
+- La aprobación de cuenta (`platform:approve_business_account`) y la
+  aprobación comercial (`platform:manage_approvals`, Organization/Business
+  por separado) son permisos y flujos distintos — ver refinamiento en
+  `docs/epica-2-5-cuentas-organizaciones.md`.
+- La aprobación de cuenta fuerza `isEmailVerified: true`. Ya no envía email
+  ni toca `Business`/`Subscription`.
+- El trial de 30 días arranca al aprobar el `Business` (no la cuenta).
 
 ### Cobertura
 
