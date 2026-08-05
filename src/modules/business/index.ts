@@ -1,4 +1,3 @@
-export * from "./application/ConfigureQueueUseCase";
 export * from "./application/RegisterBusinessUseCase";
 export * from "./domain/Business";
 export * from "./domain/Category";

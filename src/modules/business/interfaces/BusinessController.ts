@@ -2,10 +2,10 @@ import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
 import type { SocketIOEmitter } from "@modules/queue/public-api";
+import { CreateQueueUseCase, ListBusinessQueuesUseCase } from "@modules/queue/public-api";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
-import { ConfigureQueueUseCase } from "../application/ConfigureQueueUseCase";
 import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
 import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
 import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategoriesUseCase";
@@ -31,7 +31,8 @@ export class BusinessController {
   public constructor(
     private readonly emitter: SocketIOEmitter | null = null,
     private readonly registerBusinessUseCase = new RegisterBusinessUseCase(),
-    private readonly configureQueueUseCase = new ConfigureQueueUseCase(),
+    private readonly createQueueUseCase = new CreateQueueUseCase(),
+    private readonly listBusinessQueuesUseCase = new ListBusinessQueuesUseCase(),
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
     private readonly configureBusinessHoursUseCase = new ConfigureBusinessHoursUseCase(),
     private readonly getBusinessHoursUseCase = new GetBusinessHoursUseCase(),
@@ -323,9 +324,21 @@ export class BusinessController {
     response.status(200).json(result);
   };
 
-  public configureQueue = async (request: Request, response: Response): Promise<void> => {
-    const result = await this.configureQueueUseCase.execute(request.body);
-    logger.info({ businessId: request.body.businessId }, "Queue configured");
+  public createQueue = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.createQueueUseCase.execute({
+      ...request.body,
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info({ businessId: result.businessId, queueId: result.id }, "Queue created");
+    response.status(201).json(result);
+  };
+
+  public listQueues = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.listBusinessQueuesUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
     response.status(200).json(result);
   };
 
