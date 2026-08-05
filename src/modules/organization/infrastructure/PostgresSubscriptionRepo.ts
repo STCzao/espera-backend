@@ -14,6 +14,9 @@ const toSubscription = (record: {
   plan: string;
   status: string;
   trialEndsAt: Date | null;
+  activatedByUserId: string | null;
+  activatedAt: Date | null;
+  cancelledByUserId: string | null;
   cancellationReason: string | null;
   cancelledAt: Date | null;
   createdAt: Date;
@@ -24,6 +27,9 @@ const toSubscription = (record: {
   plan: record.plan.toLowerCase() as SubscriptionPlan,
   status: record.status.toLowerCase() as SubscriptionStatus,
   trialEndsAt: record.trialEndsAt,
+  activatedByUserId: record.activatedByUserId,
+  activatedAt: record.activatedAt,
+  cancelledByUserId: record.cancelledByUserId,
   cancellationReason: record.cancellationReason,
   cancelledAt: record.cancelledAt,
   createdAt: record.createdAt,
@@ -46,6 +52,9 @@ export class PostgresSubscriptionRepo implements ISubscriptionRepo {
       plan: toPlanEnum(entity.plan),
       status: toStatusEnum(entity.status),
       trialEndsAt: entity.trialEndsAt,
+      activatedByUserId: entity.activatedByUserId,
+      activatedAt: entity.activatedAt,
+      cancelledByUserId: entity.cancelledByUserId,
       cancellationReason: entity.cancellationReason,
       cancelledAt: entity.cancelledAt,
     };

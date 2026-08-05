@@ -32,3 +32,27 @@ organizationRouter.patch(
   authorize("organization:edit"),
   controller.update
 );
+organizationRouter.get(
+  "/:organizationId/subscription",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.getSubscription
+);
+organizationRouter.patch(
+  "/:organizationId/subscription/activate",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.activateSubscription
+);
+organizationRouter.patch(
+  "/:organizationId/subscription/cancel",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.cancelSubscription
+);
+organizationRouter.patch(
+  "/:organizationId/subscription/plan",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.changeSubscriptionPlan
+);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GetPlatformMetricsUseCase } from "../../../src/modules/business/application/GetPlatformMetricsUseCase";
 import { InMemoryBusinessCategoryRepo, InMemoryBusinessRepo, InMemoryUserRepo, buildBusiness, buildBusinessCategory, buildUser } from "../../helpers/authFakes";
+import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
 import { InMemoryTurnRepo, buildTurn } from "../../helpers/queueFakes";
 
 const CATEGORY_CAFE = "11111111-1111-4111-8111-111111111111";
@@ -21,6 +22,7 @@ const buildUseCase = (options: {
   userRepo?: InMemoryUserRepo;
   turnRepo?: InMemoryTurnRepo;
   categoryRepo?: InMemoryBusinessCategoryRepo;
+  subscriptionRepo?: InMemorySubscriptionRepo;
 } = {}) => {
   const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
     buildBusiness({ id: BUSINESS_A, categoryId: CATEGORY_CAFE, status: "approved" }),
@@ -32,7 +34,8 @@ const buildUseCase = (options: {
     buildBusinessCategory({ id: CATEGORY_CAFE, name: "Cafetería" }),
     buildBusinessCategory({ id: CATEGORY_SALON, name: "Peluquería" }),
   ]);
-  return new GetPlatformMetricsUseCase(businessRepo, userRepo, turnRepo, categoryRepo);
+  const subscriptionRepo = options.subscriptionRepo ?? new InMemorySubscriptionRepo();
+  return new GetPlatformMetricsUseCase(businessRepo, userRepo, turnRepo, categoryRepo, subscriptionRepo);
 };
 
 describe("GetPlatformMetricsUseCase — conteos generales", () => {
@@ -111,7 +114,7 @@ describe("GetPlatformMetricsUseCase — tasa de cancelación", () => {
 });
 
 describe("GetPlatformMetricsUseCase — negocios y rubros más activos", () => {
-  it("ranks businesses by turn count within the range", async () => {
+  it("ranks businesses by turn count within the range by default", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", businessId: BUSINESS_A, turnDate: todayUTC() }),
       buildTurn({ id: "t-2", businessId: BUSINESS_A, turnDate: todayUTC() }),
@@ -120,8 +123,9 @@ describe("GetPlatformMetricsUseCase — negocios y rubros más activos", () => {
 
     const result = await buildUseCase({ turnRepo }).execute({});
 
-    expect(result.range.topBusinesses[0]).toMatchObject({ businessId: BUSINESS_A, businessName: "Cafe Espera", turnCount: 2 });
-    expect(result.range.topBusinesses[1]).toMatchObject({ businessId: BUSINESS_B, turnCount: 1 });
+    expect(result.range.businesses.items[0]).toMatchObject({ businessId: BUSINESS_A, businessName: "Cafe Espera", turnCount: 2 });
+    expect(result.range.businesses.items[1]).toMatchObject({ businessId: BUSINESS_B, turnCount: 1 });
+    expect(result.range.businesses.total).toBe(2);
   });
 
   it("aggregates turn counts by category across businesses", async () => {
@@ -137,6 +141,78 @@ describe("GetPlatformMetricsUseCase — negocios y rubros más activos", () => {
     const result = await buildUseCase({ businessRepo, turnRepo }).execute({});
 
     expect(result.range.topCategories[0]).toMatchObject({ categoryId: CATEGORY_CAFE, categoryName: "Cafetería", turnCount: 2 });
+  });
+});
+
+describe("GetPlatformMetricsUseCase — filtros, orden y paginación de negocios", () => {
+  const ORG_A = "33333333-3333-4333-8333-333333333333";
+  const ORG_B = "44444444-4444-4444-8444-444444444444";
+
+  const buildFilterFixture = () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_A, categoryId: CATEGORY_CAFE, status: "approved", organizationId: ORG_A, name: "Zeta Cafe" }),
+      buildBusiness({ id: BUSINESS_B, categoryId: CATEGORY_SALON, status: "suspended", organizationId: ORG_B, name: "Alpha Salon" }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", businessId: BUSINESS_A, turnDate: todayUTC() }),
+      buildTurn({ id: "t-2", businessId: BUSINESS_A, turnDate: todayUTC() }),
+      buildTurn({ id: "t-3", businessId: BUSINESS_B, turnDate: todayUTC() }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ id: "sub-a", organizationId: ORG_A, plan: "premium", status: "active" }),
+      buildSubscription({ id: "sub-b", organizationId: ORG_B, plan: "basic", status: "trial" }),
+    ]);
+    return { businessRepo, turnRepo, subscriptionRepo };
+  };
+
+  it("filters by organizationId", async () => {
+    const { businessRepo, turnRepo, subscriptionRepo } = buildFilterFixture();
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({ organizationId: ORG_A });
+
+    expect(result.range.businesses.items).toHaveLength(1);
+    expect(result.range.businesses.items[0].businessId).toBe(BUSINESS_A);
+  });
+
+  it("filters by business status", async () => {
+    const { businessRepo, turnRepo, subscriptionRepo } = buildFilterFixture();
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({ status: "suspended" });
+
+    expect(result.range.businesses.items).toHaveLength(1);
+    expect(result.range.businesses.items[0].businessId).toBe(BUSINESS_B);
+  });
+
+  it("filters by subscriptionPlan and subscriptionStatus", async () => {
+    const { businessRepo, turnRepo, subscriptionRepo } = buildFilterFixture();
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({ subscriptionPlan: "premium" });
+
+    expect(result.range.businesses.items).toHaveLength(1);
+    expect(result.range.businesses.items[0]).toMatchObject({ businessId: BUSINESS_A, subscriptionPlan: "premium", subscriptionStatus: "active" });
+  });
+
+  it("sorts by businessName ascending", async () => {
+    const { businessRepo, turnRepo, subscriptionRepo } = buildFilterFixture();
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({
+      sortBy: "businessName",
+      sortDir: "asc",
+    });
+
+    expect(result.range.businesses.items.map((b) => b.businessId)).toEqual([BUSINESS_B, BUSINESS_A]);
+  });
+
+  it("paginates results", async () => {
+    const { businessRepo, turnRepo, subscriptionRepo } = buildFilterFixture();
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({ page: 2, pageSize: 1 });
+
+    expect(result.range.businesses.items).toHaveLength(1);
+    expect(result.range.businesses.page).toBe(2);
+    expect(result.range.businesses.pageSize).toBe(1);
+    expect(result.range.businesses.total).toBe(2);
+    expect(result.range.businesses.items[0].businessId).toBe(BUSINESS_B);
   });
 });
 

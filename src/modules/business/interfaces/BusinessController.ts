@@ -333,9 +333,22 @@ export class BusinessController {
     request: Request,
     response: Response
   ): Promise<void> => {
+    const query = request.query;
+    const asString = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
+    const asNumber = (value: unknown): number | undefined => typeof value === "string" ? Number(value) : undefined;
+
     const result = await this.getPlatformMetricsUseCase.execute({
-      fromDate: typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
-      toDate:   typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+      fromDate:           asString(query.fromDate),
+      toDate:             asString(query.toDate),
+      organizationId:     asString(query.organizationId),
+      categoryId:         asString(query.categoryId),
+      status:             asString(query.status) as never,
+      subscriptionPlan:   asString(query.subscriptionPlan) as never,
+      subscriptionStatus: asString(query.subscriptionStatus) as never,
+      sortBy:             asString(query.sortBy) as never,
+      sortDir:            asString(query.sortDir) as never,
+      page:               asNumber(query.page),
+      pageSize:           asNumber(query.pageSize),
     });
     response.status(200).json(result);
   };
