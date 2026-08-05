@@ -279,6 +279,9 @@ model Subscription {
   plan               SubscriptionPlan   @default(BASIC)
   status             SubscriptionStatus @default(PENDING)
   trialEndsAt        DateTime?
+  activatedByUserId  String?
+  activatedAt        DateTime?
+  cancelledByUserId  String?
   cancellationReason String?
   cancelledAt        DateTime?
   createdAt          DateTime           @default(now())

@@ -44,6 +44,10 @@ PATCH /api/reports/:reportId/suspend                      platform:manage_approv
 GET   /api/business/:businessId/review                    platform:manage_approvals   → HU-8.7
 PATCH /api/business/:businessId/approve  (body: { note? }) platform:manage_approvals   → HU-8.7 (extiende HU-8.3)
 PATCH /api/organizations/:organizationId (body: categoryId) organization:edit          → HU-8.7 (extiende HU-2.5.5)
+GET   /api/organizations/:organizationId/subscription       platform:manage_approvals   → bugfix (gestión manual de Subscription, ver epica-2-5)
+PATCH /api/organizations/:organizationId/subscription/activate platform:manage_approvals → bugfix
+PATCH /api/organizations/:organizationId/subscription/cancel   platform:manage_approvals → bugfix
+PATCH /api/organizations/:organizationId/subscription/plan     platform:manage_approvals → bugfix
 ```
 
 ---
@@ -271,11 +275,23 @@ concentran más demanda.
 ### Contrato backend
 
 ```text
-GET /api/business/platform/metrics?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD   platform:manage_approvals
+GET /api/business/platform/metrics   platform:manage_approvals
 ```
 
-`fromDate`/`toDate` son opcionales — sin ellos, el rango por defecto son los
-últimos 7 días (mismo criterio que `getAverageServiceMinutes` en Épica 3).
+Query params, todos opcionales:
+
+| Param                 | Tipo                                          | Default      |
+| --------------------- | ---------------------------------------------- | ------------ |
+| `fromDate`/`toDate`    | `YYYY-MM-DD`                                    | últimos 7 días (mismo criterio que `getAverageServiceMinutes` en Épica 3) |
+| `organizationId`       | uuid                                            | sin filtro   |
+| `categoryId`           | uuid                                            | sin filtro   |
+| `status`               | `pending`\|`approved`\|`rejected`\|`suspended`  | sin filtro   |
+| `subscriptionPlan`     | `basic`\|`pro`\|`premium`                       | sin filtro   |
+| `subscriptionStatus`   | `pending`\|`trial`\|`active`\|`expired`\|`cancelled` | sin filtro |
+| `sortBy`               | `turnCount`\|`businessName`                     | `turnCount`  |
+| `sortDir`              | `asc`\|`desc`                                   | `desc`       |
+| `page`                 | entero ≥ 1                                      | `1`          |
+| `pageSize`             | entero 1-50                                     | `5`          |
 
 Response:
 
@@ -291,9 +307,23 @@ Response:
     "totalTurns": 401,
     "cancelledTurns": 37,
     "cancellationRate": 12.4,
-    "topBusinesses": [
-      { "businessId": "...", "businessName": "Cafe Espera", "turnCount": 80 }
-    ],
+    "businesses": {
+      "items": [
+        {
+          "businessId": "...",
+          "businessName": "Cafe Espera",
+          "organizationId": "...",
+          "status": "approved",
+          "categoryId": "...",
+          "subscriptionPlan": "pro",
+          "subscriptionStatus": "active",
+          "turnCount": 80
+        }
+      ],
+      "page": 1,
+      "pageSize": 5,
+      "total": 12
+    },
     "topCategories": [
       { "categoryId": "...", "categoryName": "Cafetería", "turnCount": 210 }
     ]
@@ -318,18 +348,26 @@ cases cross-módulo que ya viven ahí (`ApproveBusinessUseCase`,
   `groupBy businessId` sobre **todos** los turnos del rango (sin importar
   estado) vía Prisma. Se reusa para tres cosas distintas: `turnsToday`
   (llamado con `today, today` y sumado), `turnsThisWeek` (llamado con los
-  últimos 7 días y sumado), y `range.topBusinesses` (top 5 de las filas
-  ordenadas).
+  últimos 7 días y sumado), y `range.businesses` (filtrable/ordenable, ver
+  abajo).
+- `ISubscriptionRepo.findByOrganizationId` (módulo `organization`) — para
+  resolver `subscriptionPlan`/`subscriptionStatus` por negocio (bugfix
+  posterior a la implementación inicial, ver
+  `docs/epica-2-5-cuentas-organizaciones.md`, sección "Gestión manual de
+  Subscription"). Cacheado por `organizationId` dentro de una misma
+  ejecución para no repetir la consulta entre negocios de la misma cuenta.
 
 **"Rubros con más demanda" — join en la capa de aplicación, no en SQL.**
 `Turn` solo tiene `businessId`, no `categoryId` — y un join SQL directo
 entre las tablas de `queue` y `business` violaría el límite entre módulos.
-En cambio, el use case resuelve `businessId → categoryId` llamando
-`businessRepo.findById()` por cada negocio con turnos en el rango, y agrega
-los conteos en memoria por `categoryId` antes de resolver los nombres con
-`categoryRepo.findById()`. Aceptable para un endpoint de solo lectura de
-Backoffice (no hot path); no se optimizó con una query de agregación
-cross-módulo.
+En cambio, el use case resuelve `businessId → categoryId` (y de paso
+`organizationId` → `Subscription`) una sola vez por negocio con turnos en el
+rango, reutilizando esa resolución tanto para `range.businesses` (filtrado)
+como para `range.topCategories` (siempre agregado sobre el total sin
+filtrar, no respeta los filtros de negocio — responde "qué rubros mueven más
+turnos en la plataforma", no "dentro de mi filtro actual"). Aceptable para
+un endpoint de solo lectura de Backoffice (no hot path); no se optimizó con
+una query de agregación cross-módulo.
 
 **`turnsToday`/`turnsThisWeek` son siempre relativos al día real, no al
 rango seleccionado.** El AC pide ambas cosas: cifras fijas de "hoy"/"esta
@@ -344,12 +382,17 @@ separadas en la response en vez de una sola.
 2. `cancellationRate` se redondea a 1 decimal; es `0` cuando no hay turnos
    `completed`/`cancelled` en el rango (evita división por cero).
 3. Sin rango explícito, el default es 7 días (hoy inclusive).
-4. `topBusinesses`/`topCategories` se limitan a 5 resultados cada uno,
-   ordenados por `turnCount` descendente.
+4. `range.businesses` pagina de a 5 por default (máx. 50 por página),
+   ordenado por `turnCount` descendente salvo que se pida otra cosa; los
+   filtros (`organizationId`, `categoryId`, `status`, `subscriptionPlan`,
+   `subscriptionStatus`) se combinan con AND.
+5. `topCategories` siempre se limita a 5, agregado sobre el total sin
+   filtrar (ver nota de implementación arriba).
 
 ### Cobertura
 
-- `tests/unit/business/GetPlatformMetricsUseCase.test.ts`
+- `tests/unit/business/GetPlatformMetricsUseCase.test.ts` (incluye el
+  bloque "filtros, orden y paginación de negocios")
 
 Validación manual: pendiente (requiere datos reales de negocios/turnos en
 la base local para verificar los agregados).

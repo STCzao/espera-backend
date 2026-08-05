@@ -7,6 +7,9 @@ export interface Subscription {
   plan: SubscriptionPlan;
   status: SubscriptionStatus;
   trialEndsAt: Date | null;
+  activatedByUserId: string | null;
+  activatedAt: Date | null;
+  cancelledByUserId: string | null;
   cancellationReason: string | null;
   cancelledAt: Date | null;
   createdAt: Date;

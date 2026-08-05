@@ -3,7 +3,7 @@ export type { IMembershipRepo } from "./domain/IMembershipRepo";
 export type { ISubscriptionRepo } from "./domain/ISubscriptionRepo";
 export type { Organization, OrganizationStatus } from "./domain/Organization";
 export type { Membership, MembershipRole } from "./domain/Membership";
-export type { Subscription, SubscriptionPlan } from "./domain/Subscription";
+export type { Subscription, SubscriptionPlan, SubscriptionStatus } from "./domain/Subscription";
 export { PLAN_LIMITS } from "./domain/PlanLimits";
 export type { PlanLimit } from "./domain/PlanLimits";
 
@@ -46,3 +46,12 @@ export type { ListPendingOrganizationsOutput } from "./application/ListPendingOr
 
 export { UpdateOrganizationUseCase } from "./application/UpdateOrganizationUseCase";
 export type { UpdateOrganizationInput } from "./application/UpdateOrganizationUseCase";
+
+export { GetOrganizationSubscriptionUseCase } from "./application/GetOrganizationSubscriptionUseCase";
+export type { GetOrganizationSubscriptionInput } from "./application/GetOrganizationSubscriptionUseCase";
+
+export { ActivateOrganizationSubscriptionUseCase } from "./application/ActivateOrganizationSubscriptionUseCase";
+export type { ActivateOrganizationSubscriptionInput } from "./application/ActivateOrganizationSubscriptionUseCase";
+
+export { CancelOrganizationSubscriptionUseCase } from "./application/CancelOrganizationSubscriptionUseCase";
+export type { CancelOrganizationSubscriptionInput } from "./application/CancelOrganizationSubscriptionUseCase";

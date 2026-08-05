@@ -55,6 +55,16 @@ El refinamiento *Aprobación en dos niveles* (ver abajo) sí agrega endpoints
 HTTP reales — es la primera vez que `organization/` tiene su propia capa
 `interfaces/`. Contrato completo en esa sección.
 
+El bugfix *Gestión manual de Subscription* (ver sección al final de
+`HU-2.5.4`) agrega los primeros endpoints HTTP para `Subscription`:
+
+```text
+GET   /api/organizations/:organizationId/subscription             platform:manage_approvals
+PATCH /api/organizations/:organizationId/subscription/activate    platform:manage_approvals
+PATCH /api/organizations/:organizationId/subscription/cancel      platform:manage_approvals
+PATCH /api/organizations/:organizationId/subscription/plan        platform:manage_approvals
+```
+
 ## HU-2.5.1 - Introducir el modelo Organization sin romper los Business existentes
 
 Story points: `3`
@@ -260,9 +270,11 @@ implementado como pieza de dominio que Épica 3 debe invocar cuando exista un
 `Business` (ver "Contratos diferidos").
 
 El cambio de plan (downgrade/upgrade) no tiene flujo de billing ni UI en el
-MVP, así que `UpdateOrganizationSubscriptionUseCase` no se expone por HTTP
-en este pase; queda como pieza de dominio invocable desde Backoffice o
-billing cuando exista ese flujo.
+MVP. **Actualización (bugfix, ver sección al final de esta historia):**
+`UpdateOrganizationSubscriptionUseCase` ya se expone por HTTP, junto con el
+resto de la gestión manual de `Subscription` — no hay pasarela de pago, así
+que el equipo Espera confirma el pago por fuera del sistema y lo refleja
+manualmente desde el Backoffice.
 
 ### Implementación backend
 
@@ -287,8 +299,6 @@ billing cuando exista ese flujo.
   real de Épica 3: debe llamarlo antes de insertar una `Queue`, pasándole
   `currentQueueCountForBusiness` contado desde el propio repositorio de
   `Queue`.
-- Exponer `UpdateOrganizationSubscriptionUseCase` por HTTP cuando exista un
-  flujo de billing o de gestión de planes en Backoffice.
 
 ### Cobertura
 
@@ -307,6 +317,59 @@ Cobertura actual:
 - downgrade permitido cuando los recursos actuales entran en el nuevo plan
 - `RegisterBusinessUseCase` rechaza el segundo negocio de una cuenta Basic
   con `PLAN_BUSINESS_LIMIT_REACHED` y no persiste el negocio rechazado
+
+### Bugfix — Gestión manual de Subscription (2026-08-07)
+
+No hay pasarela de pago en el MVP, así que la máquina de estados de
+`SubscriptionStatus` (`pending → trial → active → expired/cancelled`) nunca
+tenía un gatillo manual más allá de las dos transiciones automáticas ya
+existentes (creación → `pending`; aprobación del primer `Business` →
+`trial`, HU-8.3). Surgió al notar que el listado de negocios+métricas del
+Backoffice (HU-8.5) mostraba actividad aislada de cada negocio sin ningún
+contexto comercial — plan, si está pagando o no — que es lo que realmente le
+importa al equipo para gestionar cuentas.
+
+Migración `20260807000000_subscription_manual_management` agrega
+`Subscription.activatedByUserId`/`activatedAt` y `Subscription.
+cancelledByUserId` (`cancellationReason`/`cancelledAt` ya existían).
+
+Use cases nuevos, todos en `organization/application`:
+
+- `GetOrganizationSubscriptionUseCase` — lectura simple.
+- `ActivateOrganizationSubscriptionUseCase` — `pending`/`trial` → `active`
+  (`409 SUBSCRIPTION_CANNOT_BE_ACTIVATED` si ya está en un estado terminal o
+  ya activa). Representa "el equipo confirmó el pago por fuera del
+  sistema".
+- `CancelOrganizationSubscriptionUseCase` — cualquier estado no terminal →
+  `cancelled`, con `reason` obligatorio (`409
+  SUBSCRIPTION_ALREADY_CANCELLED` si ya estaba `cancelled`/`expired`).
+- `UpdateOrganizationSubscriptionUseCase` (ya existía) — ahora se expone por
+  HTTP. Como no puede calcular `currentBusinessCount` sin depender del
+  módulo `business` (crearía un ciclo: `business` ya depende de
+  `organization`, ver `ApproveBusinessUseCase`), ese conteo se resuelve en
+  `OrganizationController` — la capa `interfaces/` sí puede importar
+  `@modules/business/public-api` sin crear un ciclo, porque ese barrel no
+  reexporta nada que a su vez importe `organization/public-api`.
+
+De paso se corrigió un bug real encontrado al tocar `OrganizationController`:
+`UpdateOrganizationUseCase` acepta `categoryId` desde HU-8.7, pero el
+controller nunca lo leía del body — quedó inutilizable por HTTP desde que se
+agregó. Ya se pasa correctamente.
+
+**Conectado con HU-8.5**: `GetPlatformMetricsUseCase` ahora resuelve, para
+cada negocio del rango, el plan/estado de `Subscription` de su
+`Organization` (con cache por `organizationId` para no repetir consultas
+entre negocios de la misma cuenta), y permite filtrar por
+`subscriptionPlan`/`subscriptionStatus` además de `organizationId`,
+`categoryId` y `status` del negocio. Ver contrato actualizado en
+`docs/epica-8-backoffice.md`, sección HU-8.5.
+
+Cobertura:
+- `tests/unit/organization/GetOrganizationSubscriptionUseCase.test.ts`
+- `tests/unit/organization/ActivateOrganizationSubscriptionUseCase.test.ts`
+- `tests/unit/organization/CancelOrganizationSubscriptionUseCase.test.ts`
+- `tests/unit/business/GetPlatformMetricsUseCase.test.ts` (bloque "filtros,
+  orden y paginación de negocios")
 
 ## HU-2.5.5 - Campo legal_id en Organization
 
