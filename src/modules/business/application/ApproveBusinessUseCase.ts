@@ -8,7 +8,7 @@ import { logger } from "@shared/infrastructure/logger";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { IOrganizationRepo, ISubscriptionRepo } from "@modules/organization/public-api";
-import { PostgresOrganizationRepo, PostgresSubscriptionRepo } from "@modules/organization/public-api";
+import { PostgresOrganizationRepo, PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "@modules/queue/public-api";
 import { PostgresQueueRepo } from "@modules/queue/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
@@ -60,6 +60,17 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
       );
     }
 
+    // Reconciled here (not read raw) so a trial that silently expired isn't
+    // treated as still active just because nothing ever flipped it.
+    const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
+      .execute({ organizationId: business.organizationId });
+    if (subscription && (subscription.status === "cancelled" || subscription.status === "expired")) {
+      throw AppError.conflict(
+        "The business's organization subscription is not active.",
+        "SUBSCRIPTION_NOT_ACTIVE",
+      );
+    }
+
     const alerts = computeBusinessCoherenceAlerts(business, organization);
     if (alerts.length > 0 && !parsed.data.note) {
       throw AppError.badRequest(
@@ -81,7 +92,6 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
       updatedAt: now,
     });
 
-    const subscription = await this.subscriptionRepo.findByOrganizationId(business.organizationId);
     if (subscription && subscription.status === "pending") {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + TRIAL_DAYS);

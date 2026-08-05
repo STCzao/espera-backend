@@ -5,6 +5,7 @@ import type { UseCase } from "@shared/kernel/UseCase";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
 import type { Subscription } from "../domain/Subscription";
 import { PostgresSubscriptionRepo } from "../infrastructure/PostgresSubscriptionRepo";
+import { ResolveEffectiveSubscriptionStatusUseCase } from "./ResolveEffectiveSubscriptionStatusUseCase";
 
 const schema = z.object({
   organizationId: z.string().uuid("Invalid organization id."),
@@ -23,7 +24,8 @@ export class GetOrganizationSubscriptionUseCase
     const parsed = schema.safeParse(input);
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
-    const subscription = await this.subscriptionRepo.findByOrganizationId(parsed.data.organizationId);
+    const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
+      .execute({ organizationId: parsed.data.organizationId });
     if (!subscription) throw AppError.notFound("Subscription not found.", "SUBSCRIPTION_NOT_FOUND");
 
     return subscription;

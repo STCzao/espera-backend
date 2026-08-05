@@ -240,3 +240,50 @@ describe("ApproveBusinessUseCase — coherencia con la Organization (HU-8.7)", (
     expect(result.approvalAlertsSnapshot).toEqual(["MISSING_LEGAL_ID"]);
   });
 });
+
+describe("ApproveBusinessUseCase — estado de la subscription", () => {
+  it("rejects approval when the subscription is cancelled", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, status: "cancelled" }),
+    ]);
+    const { useCase } = buildUseCase({ subscriptionRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SUBSCRIPTION_NOT_ACTIVE" });
+  });
+
+  it("rejects approval when the subscription is expired", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, status: "expired" }),
+    ]);
+    const { useCase } = buildUseCase({ subscriptionRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SUBSCRIPTION_NOT_ACTIVE" });
+  });
+
+  it("detects a lazily-expired trial and rejects approval", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, status: "trial", trialEndsAt: new Date(Date.now() - 1000) }),
+    ]);
+    const { useCase } = buildUseCase({ subscriptionRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SUBSCRIPTION_NOT_ACTIVE" });
+    expect(subscriptionRepo.all()[0].status).toBe("expired");
+  });
+
+  it("allows approval when the subscription is active", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, status: "active" }),
+    ]);
+    const { useCase } = buildUseCase({ subscriptionRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).resolves.toMatchObject({ status: "approved" });
+  });
+});

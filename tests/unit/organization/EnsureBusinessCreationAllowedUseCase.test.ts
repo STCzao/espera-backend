@@ -39,4 +39,44 @@ describe("EnsureBusinessCreationAllowedUseCase", () => {
       useCase.execute({ organizationId: "org-1", currentBusinessCount: 5 }),
     ).resolves.toBeUndefined();
   });
+
+  describe("estado de la subscription", () => {
+    it("rejects a cancelled subscription regardless of the plan's business limit", async () => {
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({ organizationId: "org-1", plan: "premium", status: "cancelled" }),
+      ]);
+      const useCase = new EnsureBusinessCreationAllowedUseCase(subscriptionRepo);
+
+      await expect(
+        useCase.execute({ organizationId: "org-1", currentBusinessCount: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "SUBSCRIPTION_INACTIVE" });
+    });
+
+    it("rejects an expired subscription", async () => {
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({ organizationId: "org-1", status: "expired" }),
+      ]);
+      const useCase = new EnsureBusinessCreationAllowedUseCase(subscriptionRepo);
+
+      await expect(
+        useCase.execute({ organizationId: "org-1", currentBusinessCount: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "SUBSCRIPTION_INACTIVE" });
+    });
+
+    it("detects a lazily-expired trial and rejects, persisting the new status", async () => {
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({
+          organizationId: "org-1",
+          status: "trial",
+          trialEndsAt: new Date(Date.now() - 1000),
+        }),
+      ]);
+      const useCase = new EnsureBusinessCreationAllowedUseCase(subscriptionRepo);
+
+      await expect(
+        useCase.execute({ organizationId: "org-1", currentBusinessCount: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "SUBSCRIPTION_INACTIVE" });
+      expect(subscriptionRepo.all()[0].status).toBe("expired");
+    });
+  });
 });

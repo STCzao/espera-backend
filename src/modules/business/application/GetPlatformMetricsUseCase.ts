@@ -5,7 +5,7 @@ import type { UseCase } from "@shared/kernel/UseCase";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { ISubscriptionRepo, SubscriptionPlan, SubscriptionStatus } from "@modules/organization/public-api";
-import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
+import { PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase } from "@modules/organization/public-api";
 import type { ITurnRepo } from "@modules/queue/public-api";
 import { PostgresTurnRepo } from "@modules/queue/public-api";
 import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
@@ -152,7 +152,8 @@ export class GetPlatformMetricsUseCase
       if (!business) continue;
 
       if (!subscriptionByOrgId.has(business.organizationId)) {
-        const subscription = await this.subscriptionRepo.findByOrganizationId(business.organizationId);
+        const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
+          .execute({ organizationId: business.organizationId });
         subscriptionByOrgId.set(
           business.organizationId,
           subscription ? { plan: subscription.plan, status: subscription.status } : null,
