@@ -194,6 +194,11 @@ model Business {
   approvedAt       DateTime?
   rejectedReason   String?
   rejectedAt       DateTime?
+  suspendedByUserId   String?
+  suspendedAt         DateTime?
+  suspensionReason    String?
+  reactivatedByUserId String?
+  reactivatedAt       DateTime?
   category    BusinessCategory @relation(fields: [categoryId], references: [id])
   owner       User     @relation(fields: [ownerUserId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])

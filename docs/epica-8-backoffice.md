@@ -17,12 +17,12 @@ Formato de referencia: `docs/story-documentation-standard.md`
 ## Estado general
 
 - Estado: `en progreso`.
-- Historias implementadas: `HU-8.1`.
+- Historias implementadas: `HU-8.1`, `HU-8.4`.
 - Ya resuelto por el refinamiento de aprobación en dos niveles (ver
   `docs/epica-2-5-cuentas-organizaciones.md`), antes de que existiera esta
   épica formalmente: `HU-8.2`, `HU-8.3`.
-- Pendientes: `HU-8.4`, `HU-8.5`, `HU-8.6`. `HU-8.7` tiene un gap de modelo
-  sin resolver (ver esa sección).
+- Pendientes: `HU-8.5`, `HU-8.6`. `HU-8.7` tiene un gap de modelo sin
+  resolver (ver esa sección).
 
 ## Contratos principales de la épica
 
@@ -34,6 +34,8 @@ PATCH /api/organizations/:organizationId/reject          platform:manage_approva
 GET   /api/business/pending                              platform:manage_approvals   → HU-8.2
 PATCH /api/business/:businessId/approve                  platform:manage_approvals   → HU-8.3
 PATCH /api/business/:businessId/reject                   platform:manage_approvals   → HU-8.3
+PATCH /api/business/:businessId/suspend                  platform:manage_approvals   → HU-8.4
+PATCH /api/business/:businessId/reactivate               platform:manage_approvals   → HU-8.4
 ```
 
 ---
@@ -138,19 +140,101 @@ Aprobación comercial en dos niveles*.
 
 Story points: `3`
 
-Estado: `no implementado`.
+Estado: `implementado`.
 
-`BusinessStatus.SUSPENDED` existe en el enum desde HU-2.5-adyacente
-(`bugfix/pre-e3-schema-debt`) pero ningún use case lo usa todavía. Falta:
+### Objetivo de producto
 
-- `SuspendBusinessUseCase` / `ReactivateBusinessUseCase`.
-- Invalidar sesiones activas de los empleados del negocio al suspender
-  (`RefreshSession` — mismo patrón que `RevokeBusinessEmployeeUseCase`).
-- Cancelar turnos activos del negocio al suspender (sin push real todavía,
-  Épica 5 no implementada — al menos marcar `cancelled` y emitir
-  `queue:update`).
-- Registrar motivo, quién y cuándo (mismo patrón de auditoría que
-  `approvedByUserId`/`rejectedReason` en Organization/Business).
+Que el equipo Espera pueda suspender un negocio operativo (ej. fraude,
+incumplimiento) cortando su operación de inmediato, y reactivarlo más
+adelante sin perder el historial de por qué fue suspendido.
+
+### Criterios de aceptación
+
+- Dado que suspendo un negocio, entonces todos sus turnos activos se
+  cancelan y el negocio no puede operar hasta ser reactivado.
+- Dado que suspendo un negocio, entonces sus empleados pierden acceso al
+  panel inmediatamente (sesiones invalidadas).
+- Dado que reactivo un negocio, entonces puede volver a operar normalmente y
+  sus empleados recuperan acceso.
+- Dado que suspendo o reactivo, entonces queda registrado el motivo, quién
+  lo hizo y cuándo.
+
+### Contrato backend
+
+```text
+PATCH /api/business/:businessId/suspend      platform:manage_approvals
+PATCH /api/business/:businessId/reactivate   platform:manage_approvals
+```
+
+Suspender — body: `{ "reason": string }`. Reactivar — sin body.
+
+Ambos devuelven el `Business` actualizado.
+
+### Implementación backend
+
+`BusinessStatus.SUSPENDED` ya existía en el enum desde
+`bugfix/pre-e3-schema-debt`, pero ningún use case lo usaba. Migración
+`20260801000000_business_suspension` agrega los campos de auditoría:
+`suspendedByUserId`, `suspendedAt`, `suspensionReason`,
+`reactivatedByUserId`, `reactivatedAt` (mismo patrón que
+`approvedByUserId`/`rejectedReason` del refinamiento de aprobación en dos
+niveles).
+
+`SuspendBusinessUseCase`:
+
+1. Requiere `status === "approved"` — no se puede suspender un negocio
+   `pending`/`rejected` (nunca operó) ni uno ya `suspended` (`409
+   BUSINESS_CANNOT_BE_SUSPENDED`).
+2. Marca `status: "suspended"` con auditoría.
+3. Invalida sesiones: junta `ownerUserId` + todos los
+   `BusinessEmployee` con `status: "active"` de ese negocio
+   (`IBusinessEmployeeRepo.findByBusinessId`), y llama
+   `IRefreshSessionRepo.revokeAllByUserId` para cada uno — mismo mecanismo
+   que ya usaba `RevokeBusinessEmployeeUseCase` para un empleado individual.
+4. Cancela turnos activos: recorre todas las `Queue` del negocio
+   (`IQueueRepo.findByBusinessId`), y para cada una cancela sus turnos
+   activos (`waiting`/`called`/`attending`/`redirected`), emitiendo
+   `queue:update` por turno — mismo evento que
+   `CancelTurnByEmployeeUseCase`. Sin push real (Épica 5 no implementada
+   todavía); el criterio de "push de cancelación" queda cubierto solo por
+   el evento de Socket.IO por ahora.
+
+`ReactivateBusinessUseCase`:
+
+1. Requiere `status === "suspended"` (`409 BUSINESS_NOT_SUSPENDED`).
+2. Marca `status: "approved"` con auditoría de reactivación.
+3. **No** restaura sesiones ni reasigna nada — los empleados y el owner
+   simplemente vuelven a loguearse normalmente. Suspender invalidó sesiones,
+   no bloqueó las cuentas.
+4. Conserva `suspendedAt`/`suspensionReason` como historial — no se
+   sobrescriben al reactivar, quedan como registro de auditoría.
+
+### `business.routes.ts` pasó a ser una factory
+
+Para que `SuspendBusinessUseCase` pueda emitir `queue:update` real, el
+router de `business` dejó de exportar una instancia fija (`businessRouter`)
+y pasó a `createBusinessRouter(emitter)`, igual que ya hacía
+`createQueueRouter` — `app.ts` ahora le pasa el mismo `SocketIOEmitter` a
+ambos. `BusinessController` ganó un nuevo primer parámetro de constructor
+`emitter: SocketIOEmitter | null`, usado únicamente para construir el
+default de `suspendBusinessUseCase`.
+
+### Reglas de negocio
+
+1. Suspender es solo posible desde `approved` (negocio realmente operando).
+2. Reactivar solo desde `suspended`.
+3. La cancelación de turnos no distingue prioridad ni estado — cualquier
+   turno activo se cancela, sin excepción, al suspender.
+4. Revocar la sesión de un empleado ya `revoked` es un no-op seguro (el
+   filtro `status === "active"` los excluye).
+
+### Cobertura
+
+- `tests/unit/business/SuspendBusinessUseCase.test.ts`
+- `tests/unit/business/ReactivateBusinessUseCase.test.ts`
+
+Validación manual: pendiente (requiere un negocio aprobado con empleados y
+turnos activos reales en la base local).
 
 ## HU-8.5 - Métricas globales de la plataforma
 
