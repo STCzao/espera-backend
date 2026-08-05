@@ -22,4 +22,9 @@ export interface IUserRepo extends Repository<User> {
    * Deletes a user by id.
    */
   delete(id: string): Promise<void>;
+
+  /**
+   * Total number of registered users, regardless of role.
+   */
+  count(): Promise<number>;
 }

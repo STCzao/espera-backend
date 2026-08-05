@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
+import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
 import type { IServiceWindowRepo } from "../../src/modules/queue/domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../../src/modules/queue/domain/ServiceWindow";
@@ -192,6 +192,29 @@ export class InMemoryTurnRepo implements ITurnRepo {
         (t) => t.serviceWindowId === serviceWindowId && t.status === "attending",
       ) ?? null
     );
+  }
+
+  public async getPlatformTurnCounts(fromDate: Date, toDate: Date): Promise<PlatformTurnCounts> {
+    const inRange = [...this.turns.values()].filter(
+      (t) => t.turnDate.getTime() >= fromDate.getTime() && t.turnDate.getTime() <= toDate.getTime(),
+    );
+    return {
+      completed: inRange.filter((t) => t.status === "completed").length,
+      cancelled: inRange.filter((t) => t.status === "cancelled").length,
+    };
+  }
+
+  public async getTurnCountsByBusiness(fromDate: Date, toDate: Date): Promise<BusinessTurnCount[]> {
+    const inRange = [...this.turns.values()].filter(
+      (t) => t.turnDate.getTime() >= fromDate.getTime() && t.turnDate.getTime() <= toDate.getTime(),
+    );
+    const counts = new Map<string, number>();
+    inRange.forEach((t) => {
+      counts.set(t.businessId, (counts.get(t.businessId) ?? 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([businessId, turnCount]) => ({ businessId, turnCount }))
+      .sort((a, b) => b.turnCount - a.turnCount);
   }
 
   public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {

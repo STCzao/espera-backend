@@ -137,6 +137,10 @@ export class InMemoryUserRepo implements IUserRepo {
     this.users.delete(id);
   }
 
+  public async count(): Promise<number> {
+    return this.users.size;
+  }
+
   public all(): User[] {
     return [...this.users.values()];
   }
@@ -225,6 +229,12 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
   public async countByOrganizationId(organizationId: string): Promise<number> {
     return [...this.businesses.values()].filter(
       (business) => business.organizationId === organizationId,
+    ).length;
+  }
+
+  public async countByStatus(status: Business["status"]): Promise<number> {
+    return [...this.businesses.values()].filter(
+      (business) => business.status === status,
     ).length;
   }
 
