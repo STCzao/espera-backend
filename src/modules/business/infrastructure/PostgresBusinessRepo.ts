@@ -26,6 +26,8 @@ const toBusiness = (raw: {
   suspensionReason: string | null;
   reactivatedByUserId: string | null;
   reactivatedAt: Date | null;
+  approvalNote: string | null;
+  approvalAlertsSnapshot: string[];
   phone: string | null;
   address: string | null;
   latitude: number | null;
@@ -52,6 +54,8 @@ const toBusiness = (raw: {
   suspensionReason: raw.suspensionReason ?? undefined,
   reactivatedByUserId: raw.reactivatedByUserId ?? undefined,
   reactivatedAt: raw.reactivatedAt ?? undefined,
+  approvalNote: raw.approvalNote ?? undefined,
+  approvalAlertsSnapshot: raw.approvalAlertsSnapshot,
   phone: raw.phone ?? undefined,
   address: raw.address ?? undefined,
   latitude: raw.latitude ?? undefined,
@@ -116,6 +120,8 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       suspensionReason: entity.suspensionReason ?? null,
       reactivatedByUserId: entity.reactivatedByUserId ?? null,
       reactivatedAt: entity.reactivatedAt ?? null,
+      approvalNote: entity.approvalNote ?? null,
+      approvalAlertsSnapshot: entity.approvalAlertsSnapshot ?? [],
       phone: entity.phone ?? null,
       address: entity.address ?? null,
       latitude: entity.latitude ?? null,

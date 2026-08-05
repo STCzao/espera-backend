@@ -25,6 +25,8 @@ export interface Business {
   suspensionReason?: string;
   reactivatedByUserId?: string;
   reactivatedAt?: Date;
+  approvalNote?: string;
+  approvalAlertsSnapshot?: string[];
   phone?: string;
   address?: string;
   latitude?: number;

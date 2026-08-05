@@ -12,6 +12,7 @@ import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategori
 import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
 import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
+import { GetBusinessReviewDetailUseCase } from "../application/GetBusinessReviewDetailUseCase";
 import { GetPlatformMetricsUseCase } from "../application/GetPlatformMetricsUseCase";
 import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
@@ -51,7 +52,8 @@ export class BusinessController {
     private readonly rejectBusinessUseCase = new RejectBusinessUseCase(),
     private readonly suspendBusinessUseCase = new SuspendBusinessUseCase(undefined, undefined, undefined, undefined, undefined, emitter),
     private readonly reactivateBusinessUseCase = new ReactivateBusinessUseCase(),
-    private readonly getPlatformMetricsUseCase = new GetPlatformMetricsUseCase()
+    private readonly getPlatformMetricsUseCase = new GetPlatformMetricsUseCase(),
+    private readonly getBusinessReviewDetailUseCase = new GetBusinessReviewDetailUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -221,8 +223,19 @@ export class BusinessController {
     const result = await this.approveBusinessUseCase.execute({
       businessId:       String(request.params.businessId),
       approvedByUserId: request.user?.id ?? "",
+      note:             request.body?.note,
     });
     logger.info({ businessId: result.id }, "Business approved");
+    response.status(200).json(result);
+  };
+
+  public getReviewDetail = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.getBusinessReviewDetailUseCase.execute({
+      businessId: String(request.params.businessId),
+    });
     response.status(200).json(result);
   };
 

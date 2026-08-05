@@ -12,6 +12,7 @@ import { PostgresOrganizationRepo, PostgresSubscriptionRepo } from "@modules/org
 import type { IQueueRepo } from "@modules/queue/public-api";
 import { PostgresQueueRepo } from "@modules/queue/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
+import { computeBusinessCoherenceAlerts } from "./businessCoherence";
 import type { Business } from "../domain/Business";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
@@ -21,6 +22,7 @@ const TRIAL_DAYS = 30;
 const schema = z.object({
   businessId:       z.string().uuid("Invalid business id."),
   approvedByUserId: z.string().uuid("Invalid approver id."),
+  note:             z.string().trim().max(500).optional(),
 });
 
 export type ApproveBusinessInput = z.infer<typeof schema>;
@@ -58,6 +60,14 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
       );
     }
 
+    const alerts = computeBusinessCoherenceAlerts(business, organization);
+    if (alerts.length > 0 && !parsed.data.note) {
+      throw AppError.badRequest(
+        "A note is required to approve a business with coherence alerts.",
+        "APPROVAL_NOTE_REQUIRED",
+      );
+    }
+
     const now = new Date();
     const updated = await this.businessRepo.save({
       ...business,
@@ -66,6 +76,8 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
       approvedAt: now,
       rejectedReason: undefined,
       rejectedAt: undefined,
+      approvalNote: parsed.data.note,
+      approvalAlertsSnapshot: alerts,
       updatedAt: now,
     });
 

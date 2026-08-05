@@ -16,12 +16,12 @@ Formato de referencia: `docs/story-documentation-standard.md`
 
 ## Estado general
 
-- Estado: `en progreso`.
-- Historias implementadas: `HU-8.1`, `HU-8.4`, `HU-8.5`, `HU-8.6`.
+- Estado: `completa` — las 7 historias están implementadas.
+- Historias implementadas directamente en esta épica: `HU-8.1`, `HU-8.4`,
+  `HU-8.5`, `HU-8.6`, `HU-8.7`.
 - Ya resuelto por el refinamiento de aprobación en dos niveles (ver
   `docs/epica-2-5-cuentas-organizaciones.md`), antes de que existiera esta
   épica formalmente: `HU-8.2`, `HU-8.3`.
-- Pendiente: `HU-8.7`, con un gap de modelo sin resolver (ver esa sección).
 
 ## Contratos principales de la épica
 
@@ -41,6 +41,9 @@ GET   /api/reports                                        platform:manage_approv
 PATCH /api/reports/:reportId/resolve                      platform:manage_approvals   → HU-8.6
 PATCH /api/reports/:reportId/dismiss                      platform:manage_approvals   → HU-8.6
 PATCH /api/reports/:reportId/suspend                      platform:manage_approvals   → HU-8.6
+GET   /api/business/:businessId/review                    platform:manage_approvals   → HU-8.7
+PATCH /api/business/:businessId/approve  (body: { note? }) platform:manage_approvals   → HU-8.7 (extiende HU-8.3)
+PATCH /api/organizations/:organizationId (body: categoryId) organization:edit          → HU-8.7 (extiende HU-2.5.5)
 ```
 
 ---
@@ -479,18 +482,113 @@ crear→listar→revisar contra Postgres local).
 
 Story points: `3`
 
-Estado: `bloqueado por gap de modelo — no implementado`.
+Estado: `implementado`.
 
-El criterio de aceptación pide comparar la categoría del `Business` contra
-"el rubro declarado de la `Organization`" — pero `Organization` no tiene
-ningún campo de categoría/rubro propio (solo se agregó `legalId` en
-HU-2.5.5). La alerta de `legalId` faltante sí es implementable ya
-(`Organization.legalId == null`), pero la de categoría no, hasta resolver
-esto:
+### Objetivo de producto
 
-**Decisión pendiente (no tomada)**: agregar `Organization.categoryId`
-(mismo patrón que `legalId` — opcional, editable después) para poder
-comparar de verdad, según lo acordado. Falta implementar.
+Que el equipo Espera, al revisar un `Business` pendiente, vea de un vistazo
+si algo no coincide con la `Organization` a la que pertenece — categoría
+declarada distinta, o falta el `legalId` — sin que eso bloquee la
+aprobación: es una alerta informativa, la decisión sigue siendo manual.
+
+### Criterios de aceptación
+
+- Dado que reviso un Business pendiente, entonces veo junto a sus datos la
+  categoría y `legalId` de su Organization para comparar.
+- Dado que la categoría del Business no coincide con el rubro declarado de
+  la Organization, entonces veo una alerta visual antes de aprobar (no
+  bloqueante, solo informativa).
+- Dado que la Organization no tiene `legalId` cargado, entonces veo la
+  advertencia de dato faltante en la misma vista de revisión.
+- Dado que apruebo un Business pese a la alerta de coherencia, entonces el
+  motivo de aprobación queda registrado junto con la alerta que estaba
+  presente en ese momento.
+
+### Gap resuelto antes de implementar
+
+El AC pedía comparar contra "el rubro declarado de la Organization", pero
+`Organization` no tenía ningún campo de categoría propio (solo `legalId`,
+de HU-2.5.5). Decisión tomada con el usuario: agregar
+`Organization.categoryId` opcional (mismo patrón que `legalId` — vacío al
+alta, editable después vía `UpdateOrganizationUseCase`), aceptando que para
+cuentas Premium con `Business` de rubros distintos bajo la misma
+Organization esto puede generar algún falso positivo — tolerable porque la
+alerta es solo informativa, nunca bloqueante.
+
+### Contrato backend
+
+```text
+GET   /api/business/:businessId/review                     platform:manage_approvals
+PATCH /api/business/:businessId/approve   body: { note? }   platform:manage_approvals   (ya existía, HU-8.3)
+PATCH /api/organizations/:organizationId  body: { categoryId? } organization:edit        (ya existía, HU-2.5.5)
+```
+
+`GET .../review` responde:
+
+```json
+{
+  "business": { "...": "Business completo" },
+  "organization": { "id": "...", "name": "...", "legalId": "30-...", "categoryId": "..." },
+  "alerts": ["CATEGORY_MISMATCH", "MISSING_LEGAL_ID"]
+}
+```
+
+`alerts` es un subconjunto de `["CATEGORY_MISMATCH", "MISSING_LEGAL_ID"]`,
+vacío si no hay nada que señalar.
+
+### Modelo de datos
+
+Migración `20260806000000_business_org_coherence`:
+
+- `Organization.categoryId` (opcional, FK a `BusinessCategory`, `ON DELETE
+  SET NULL`) — el "rubro declarado" contra el que se compara.
+- `Business.approvalNote` (opcional) y `Business.approvalAlertsSnapshot`
+  (`String[]`, default `[]`) — el motivo dado al aprobar y qué alertas
+  estaban presentes en ese momento, congelado como snapshot (si luego la
+  Organization carga su `legalId`, el snapshot de una aprobación previa no
+  cambia retroactivamente).
+
+### Implementación backend
+
+- `computeBusinessCoherenceAlerts(business, organization)` — función pura
+  en `business/application/businessCoherence.ts`, reusada por
+  `GetBusinessReviewDetailUseCase` y `ApproveBusinessUseCase` para no
+  duplicar la regla. Un `Organization.categoryId` vacío **no** genera
+  `CATEGORY_MISMATCH` — no hay nada declarado con qué comparar todavía; solo
+  se alerta cuando hay un valor declarado y no coincide.
+- `GetBusinessReviewDetailUseCase` (nuevo) — trae el `Business`, su
+  `Organization` (id/name/legalId/categoryId) y las alertas calculadas, para
+  la vista de revisión.
+- `ApproveBusinessUseCase` (extendido) — acepta `note` opcional. Si
+  `computeBusinessCoherenceAlerts` devuelve alguna alerta y no se manda
+  `note`, rechaza con `400 APPROVAL_NOTE_REQUIRED`: aprobar pese a una
+  alerta exige justificarlo por escrito. Al aprobar, guarda `approvalNote` y
+  `approvalAlertsSnapshot` (este último se guarda siempre, incluso vacío,
+  como registro de que en ese momento no había nada que señalar).
+- `UpdateOrganizationUseCase` (extendido) — ahora también acepta
+  `categoryId` opcional, mismo patrón editable-después que `legalId`.
+
+### Reglas de negocio
+
+1. La alerta es puramente informativa — nunca bloquea `ApproveBusinessUseCase`
+   más allá de exigir la nota explicativa.
+2. Sin `Organization.categoryId` declarado, no hay alerta de categoría (no
+   se compara contra la ausencia de dato — esa ausencia no es en sí misma
+   sospechosa, a diferencia de `legalId` faltante que sí se señala siempre).
+3. El snapshot de alertas queda fijo en el momento de la aprobación — no se
+   recalcula después.
+
+### Cobertura
+
+- `tests/unit/business/businessCoherence.test.ts`
+- `tests/unit/business/GetBusinessReviewDetailUseCase.test.ts`
+- `tests/unit/business/ApproveBusinessUseCase.test.ts` (bloque "coherencia
+  con la Organization")
+- `tests/unit/organization/UpdateOrganizationUseCase.test.ts` (caso
+  `categoryId`)
+
+Validación manual: pendiente (requiere una Organization con `categoryId`
+declarado distinto al de su Business contra Postgres local).
 
 ---
 

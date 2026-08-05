@@ -13,6 +13,7 @@ const schema = z.object({
   requestingUserId: z.string().uuid("Invalid requesting user id."),
   name:             z.string().trim().min(2, "Organization name is required.").max(120).optional(),
   legalId:          z.string().trim().min(1, "Legal id cannot be empty.").max(50).optional(),
+  categoryId:       z.string().uuid("Invalid category id.").optional(),
 });
 
 export type UpdateOrganizationInput = z.infer<typeof schema>;
@@ -48,9 +49,10 @@ export class UpdateOrganizationUseCase implements UseCase<UpdateOrganizationInpu
 
     return this.organizationRepo.save({
       ...organization,
-      name:      parsed.data.name ?? organization.name,
-      legalId:   parsed.data.legalId ?? organization.legalId,
-      updatedAt: new Date(),
+      name:       parsed.data.name ?? organization.name,
+      legalId:    parsed.data.legalId ?? organization.legalId,
+      categoryId: parsed.data.categoryId ?? organization.categoryId,
+      updatedAt:  new Date(),
     });
   }
 }

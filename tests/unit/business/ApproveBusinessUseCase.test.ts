@@ -33,7 +33,7 @@ const buildUseCase = (options: {
     buildBusiness({ id: BUSINESS_ID, ownerUserId: "user-1", organizationId: ORG_ID, status: "pending" }),
   ]);
   const organizationRepo = options.organizationRepo ?? new InMemoryOrganizationRepo([
-    buildOrganization({ id: ORG_ID, status: "approved" }),
+    buildOrganization({ id: ORG_ID, status: "approved", legalId: "30-1" }),
   ]);
   const subscriptionRepo = options.subscriptionRepo ?? new InMemorySubscriptionRepo([
     buildSubscription({ organizationId: ORG_ID, status: "pending" }),
@@ -176,5 +176,67 @@ describe("ApproveBusinessUseCase", () => {
         useCase.execute({ businessId: "not-a-uuid", approvedByUserId: ADMIN_ID }),
       ).rejects.toMatchObject({ statusCode: 400 });
     });
+  });
+});
+
+describe("ApproveBusinessUseCase — coherencia con la Organization (HU-8.7)", () => {
+  const CATEGORY_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const OTHER_CATEGORY_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+  it("approves without a note when there are no coherence alerts", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_ID, organizationId: ORG_ID, status: "pending", categoryId: CATEGORY_ID }),
+    ]);
+    const organizationRepo = new InMemoryOrganizationRepo([
+      buildOrganization({ id: ORG_ID, status: "approved", legalId: "30-1", categoryId: CATEGORY_ID }),
+    ]);
+    const { useCase } = buildUseCase({ businessRepo, organizationRepo });
+
+    const result = await useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID });
+
+    expect(result.status).toBe("approved");
+    expect(result.approvalAlertsSnapshot).toEqual([]);
+  });
+
+  it("requires a note when the business category does not match the organization's", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_ID, organizationId: ORG_ID, status: "pending", categoryId: CATEGORY_ID }),
+    ]);
+    const organizationRepo = new InMemoryOrganizationRepo([
+      buildOrganization({ id: ORG_ID, status: "approved", legalId: "30-1", categoryId: OTHER_CATEGORY_ID }),
+    ]);
+    const { useCase } = buildUseCase({ businessRepo, organizationRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).rejects.toMatchObject({ statusCode: 400, code: "APPROVAL_NOTE_REQUIRED" });
+  });
+
+  it("requires a note when the organization has no legalId", async () => {
+    const organizationRepo = new InMemoryOrganizationRepo([
+      buildOrganization({ id: ORG_ID, status: "approved" }),
+    ]);
+    const { useCase } = buildUseCase({ organizationRepo });
+
+    await expect(
+      useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+    ).rejects.toMatchObject({ statusCode: 400, code: "APPROVAL_NOTE_REQUIRED" });
+  });
+
+  it("approves and snapshots the alerts present when a note is given", async () => {
+    const organizationRepo = new InMemoryOrganizationRepo([
+      buildOrganization({ id: ORG_ID, status: "approved" }),
+    ]);
+    const { useCase } = buildUseCase({ organizationRepo });
+
+    const result = await useCase.execute({
+      businessId: BUSINESS_ID,
+      approvedByUserId: ADMIN_ID,
+      note: "Verificado por teléfono con el titular",
+    });
+
+    expect(result.status).toBe("approved");
+    expect(result.approvalNote).toBe("Verificado por teléfono con el titular");
+    expect(result.approvalAlertsSnapshot).toEqual(["MISSING_LEGAL_ID"]);
   });
 });

@@ -34,6 +34,15 @@ describe("UpdateOrganizationUseCase", () => {
     expect(result.legalId).toBe("30-12345678-9");
   });
 
+  it("sets categoryId (HU-8.7 — editable after creation)", async () => {
+    const { useCase } = buildUseCase();
+    const categoryId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    const result = await useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, categoryId });
+
+    expect(result.categoryId).toBe(categoryId);
+  });
+
   it("updates the name", async () => {
     const { useCase } = buildUseCase();
 
