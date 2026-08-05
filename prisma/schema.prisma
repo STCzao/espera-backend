@@ -81,6 +81,18 @@ enum MembershipRole {
   EMPLOYEE
 }
 
+enum MembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum MembershipInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 enum ServiceWindowType {
   CASHIER
   CUSTOMER_SERVICE
@@ -268,6 +280,7 @@ model Organization {
   category    BusinessCategory? @relation("OrganizationCategory", fields: [categoryId], references: [id])
   businesses  Business[]
   memberships Membership[]
+  membershipInvitations MembershipInvitation[]
   subscription Subscription?
 
   @@map("organizations")
@@ -293,12 +306,15 @@ model Subscription {
 }
 
 model Membership {
-  id             String   @id @default(uuid())
-  userId         String
-  organizationId String
-  role           MembershipRole
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String           @id @default(uuid())
+  userId           String
+  organizationId   String
+  role             MembershipRole
+  status           MembershipStatus @default(ACTIVE)
+  invitedByUserId  String?
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -306,6 +322,27 @@ model Membership {
   @@unique([userId, organizationId])
   @@index([organizationId])
   @@map("memberships")
+}
+
+model MembershipInvitation {
+  id               String                      @id @default(uuid())
+  organizationId   String
+  email            String
+  role             MembershipRole
+  token            String                      @unique
+  status           MembershipInvitationStatus  @default(PENDING)
+  invitedByUserId  String
+  acceptedUserId   String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("membership_invitations")
 }
 
 model BusinessEmployee {
