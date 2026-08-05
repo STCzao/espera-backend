@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
-import type { ActiveTurnSummary, CreateTurnData, ITurnRepo, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
+import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
 
 const toTurn = (raw: {
   id: string;
@@ -137,6 +137,25 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: { serviceWindowId, status: "ATTENDING" },
     });
     return row ? toTurn(row) : null;
+  }
+
+  public async getPlatformTurnCounts(fromDate: Date, toDate: Date): Promise<PlatformTurnCounts> {
+    const [completed, cancelled] = await Promise.all([
+      prisma.turn.count({ where: { turnDate: { gte: fromDate, lte: toDate }, status: "COMPLETED" } }),
+      prisma.turn.count({ where: { turnDate: { gte: fromDate, lte: toDate }, status: "CANCELLED" } }),
+    ]);
+    return { completed, cancelled };
+  }
+
+  public async getTurnCountsByBusiness(fromDate: Date, toDate: Date): Promise<BusinessTurnCount[]> {
+    const rows = await prisma.turn.groupBy({
+      by: ["businessId"],
+      where: { turnDate: { gte: fromDate, lte: toDate } },
+      _count: { _all: true },
+    });
+    return rows
+      .map((row) => ({ businessId: row.businessId, turnCount: row._count._all }))
+      .sort((a, b) => b.turnCount - a.turnCount);
   }
 
   public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {

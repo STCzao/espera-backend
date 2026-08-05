@@ -125,6 +125,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("platform:manage_approvals"),
     controller.reactivate
   );
+  businessRouter.get(
+    "/platform/metrics",
+    authenticate,
+    authorize("platform:manage_approvals"),
+    controller.getPlatformMetrics
+  );
 
   return businessRouter;
 };

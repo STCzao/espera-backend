@@ -50,6 +50,16 @@ export interface RecentCallItem {
   calledAt: Date;
 }
 
+export interface PlatformTurnCounts {
+  completed: number;
+  cancelled: number;
+}
+
+export interface BusinessTurnCount {
+  businessId: string;
+  turnCount: number;
+}
+
 export interface ITurnRepo extends Repository<Turn> {
   createWithNextNumber(data: CreateTurnData): Promise<Turn>;
   findNextWaitingTurn(queueId: string): Promise<Turn | null>;
@@ -63,4 +73,6 @@ export interface ITurnRepo extends Repository<Turn> {
   getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw>;
   findRecentCalls(queueId: string, limit: number): Promise<RecentCallItem[]>;
   findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null>;
+  getPlatformTurnCounts(fromDate: Date, toDate: Date): Promise<PlatformTurnCounts>;
+  getTurnCountsByBusiness(fromDate: Date, toDate: Date): Promise<BusinessTurnCount[]>;
 }

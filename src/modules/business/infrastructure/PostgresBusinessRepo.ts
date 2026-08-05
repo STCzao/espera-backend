@@ -143,4 +143,8 @@ export class PostgresBusinessRepo implements IBusinessRepo {
   public async countByOrganizationId(organizationId: string): Promise<number> {
     return prisma.business.count({ where: { organizationId } });
   }
+
+  public async countByStatus(status: Business["status"]): Promise<number> {
+    return prisma.business.count({ where: { status: toStatusEnum(status) } });
+  }
 }

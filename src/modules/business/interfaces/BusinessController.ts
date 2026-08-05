@@ -12,6 +12,7 @@ import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategori
 import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
 import { GetBusinessQrCodeUseCase } from "../application/GetBusinessQrCodeUseCase";
 import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase";
+import { GetPlatformMetricsUseCase } from "../application/GetPlatformMetricsUseCase";
 import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
@@ -49,7 +50,8 @@ export class BusinessController {
     private readonly approveBusinessUseCase = new ApproveBusinessUseCase(),
     private readonly rejectBusinessUseCase = new RejectBusinessUseCase(),
     private readonly suspendBusinessUseCase = new SuspendBusinessUseCase(undefined, undefined, undefined, undefined, undefined, emitter),
-    private readonly reactivateBusinessUseCase = new ReactivateBusinessUseCase()
+    private readonly reactivateBusinessUseCase = new ReactivateBusinessUseCase(),
+    private readonly getPlatformMetricsUseCase = new GetPlatformMetricsUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -311,6 +313,17 @@ export class BusinessController {
   public configureQueue = async (request: Request, response: Response): Promise<void> => {
     const result = await this.configureQueueUseCase.execute(request.body);
     logger.info({ businessId: request.body.businessId }, "Queue configured");
+    response.status(200).json(result);
+  };
+
+  public getPlatformMetrics = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.getPlatformMetricsUseCase.execute({
+      fromDate: typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
+      toDate:   typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+    });
     response.status(200).json(result);
   };
 }

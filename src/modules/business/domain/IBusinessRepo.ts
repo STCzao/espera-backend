@@ -1,5 +1,5 @@
 import type { Repository } from "../../../shared/kernel/Repository";
-import type { Business } from "./Business";
+import type { Business, BusinessStatus } from "./Business";
 
 export interface FindPendingBusinessesFilters {
   organizationId?: string;
@@ -15,4 +15,5 @@ export interface IBusinessRepo extends Repository<Business> {
   findPending(filters?: FindPendingBusinessesFilters): Promise<Business[]>;
   delete(id: string): Promise<void>;
   countByOrganizationId(organizationId: string): Promise<number>;
+  countByStatus(status: BusinessStatus): Promise<number>;
 }

@@ -115,6 +115,10 @@ export class PostgresUserRepo implements IUserRepo {
     await prisma.user.delete({ where: { id } });
   }
 
+  public async count(): Promise<number> {
+    return prisma.user.count();
+  }
+
   /**
    * Maps a Prisma model into the auth domain entity.
    */
