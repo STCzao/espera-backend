@@ -115,6 +115,7 @@ export class RegisterBusinessAccountUseCase implements UseCase<
       emailVerificationToken: verificationToken,
       emailVerificationExpiry: verificationExpiry,
       lastVerificationSentAt: verificationDate,
+      isBlocked: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

@@ -90,6 +90,7 @@ export class RegisterBusinessWithGoogleUseCase
       authProvider: "google",
       googleId: profile.googleId,
       isEmailVerified: true,
+      isBlocked: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

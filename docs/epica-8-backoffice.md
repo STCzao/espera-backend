@@ -17,12 +17,11 @@ Formato de referencia: `docs/story-documentation-standard.md`
 ## Estado general
 
 - Estado: `en progreso`.
-- Historias implementadas: `HU-8.1`, `HU-8.4`, `HU-8.5`.
+- Historias implementadas: `HU-8.1`, `HU-8.4`, `HU-8.5`, `HU-8.6`.
 - Ya resuelto por el refinamiento de aprobación en dos niveles (ver
   `docs/epica-2-5-cuentas-organizaciones.md`), antes de que existiera esta
   épica formalmente: `HU-8.2`, `HU-8.3`.
-- Pendientes: `HU-8.6`. `HU-8.7` tiene un gap de modelo sin resolver (ver esa
-  sección).
+- Pendiente: `HU-8.7`, con un gap de modelo sin resolver (ver esa sección).
 
 ## Contratos principales de la épica
 
@@ -37,6 +36,11 @@ PATCH /api/business/:businessId/reject                   platform:manage_approva
 PATCH /api/business/:businessId/suspend                  platform:manage_approvals   → HU-8.4
 PATCH /api/business/:businessId/reactivate               platform:manage_approvals   → HU-8.4
 GET   /api/business/platform/metrics                     platform:manage_approvals   → HU-8.5
+POST  /api/reports                                        authenticate                → HU-8.6
+GET   /api/reports                                        platform:manage_approvals   → HU-8.6
+PATCH /api/reports/:reportId/resolve                      platform:manage_approvals   → HU-8.6
+PATCH /api/reports/:reportId/dismiss                      platform:manage_approvals   → HU-8.6
+PATCH /api/reports/:reportId/suspend                      platform:manage_approvals   → HU-8.6
 ```
 
 ---
@@ -351,11 +355,125 @@ la base local para verificar los agregados).
 
 Story points: `3`
 
-Estado: `no implementado`.
+Estado: `implementado`.
 
-No existe ninguna entidad de reporte en el schema. Es la pieza más grande
-de esta épica sin nada para reusar — necesita modelo de datos nuevo
-(`Report`: quién reporta, qué/a quién, motivo, estado, resolución).
+### Objetivo de producto
+
+Que el equipo Espera pueda ver los usuarios o negocios que fueron
+reportados, y decidir qué hacer con cada reporte: resolverlo sin más acción,
+suspender al reportado, o descartarlo por infundado.
+
+### Criterios de aceptación
+
+- Dado que un usuario o negocio recibe un reporte, entonces aparece en la
+  lista de reportados con el motivo y quien reportó.
+- Dado que reviso un reporte, entonces puedo marcarlo como resuelto,
+  suspender al reportado o descartarlo con nota interna.
+- Dado que descarto un reporte, entonces queda registrado en el historial
+  para evitar spam de reportes del mismo origen.
+
+### Gaps encontrados antes de implementar
+
+Dos huecos reales en el backlog, resueltos con el usuario antes de tocar el
+schema (no eran parte del scope original de HU-8.6 tal como está redactada,
+pero sin resolverlos la historia no es usable):
+
+1. **Ninguna HU crea un reporte.** Revisado el backlog completo (E1-E8): no
+   existe "Como usuario, quiero reportar un negocio" ni equivalente. HU-8.6
+   asume que los reportes "ya existen". Decisión: agregar un endpoint mínimo
+   de creación (`POST /api/reports`, cualquier usuario autenticado) como
+   parte del alcance de esta historia.
+2. **No había mecanismo de suspensión para `User`.** Solo `Business` tenía
+   uno (`SuspendBusinessUseCase`, HU-8.4). Decisión: agregar un bloqueo
+   simple a `User` (`isBlocked` + auditoría), mismo patrón pero sin cascada
+   de turnos/empleados porque un usuario no tiene ese estado.
+
+### Contrato backend
+
+```text
+POST  /api/reports                        authenticate                  → crear reporte
+GET   /api/reports?status=&reportedType=  platform:manage_approvals     → listar (filtros opcionales)
+PATCH /api/reports/:reportId/resolve      platform:manage_approvals     body: { note? }
+PATCH /api/reports/:reportId/dismiss      platform:manage_approvals     body: { note: string }  (obligatoria)
+PATCH /api/reports/:reportId/suspend      platform:manage_approvals     body: { note? }
+```
+
+Los tres endpoints de revisión devuelven el `Report` actualizado.
+
+### Modelo de datos
+
+Nuevo módulo `report` (no encaja en `auth` ni `business` — es un concepto
+que cruza ambos, mismo criterio que llevó a `organization` a ser su propio
+módulo). Migración `20260805000000_reports`.
+
+```
+Report
+  id
+  reportedType: "user" | "business"   (polimórfico — sin FK directa, cross-módulo)
+  reportedId: string
+  reason: string
+  reportedByUserId: string
+  status: "pending" | "resolved" | "suspended" | "dismissed"
+  internalNote?: string
+  reviewedByUserId?: string
+  reviewedAt?: Date
+  createdAt / updatedAt
+```
+
+La misma migración agrega a `User`: `isBlocked` (default `false`),
+`blockedByUserId`, `blockedAt`, `blockReason` — mismo patrón de auditoría que
+`Business.suspendedBy/At/Reason` (HU-8.4).
+
+### Implementación backend
+
+- `CreateReportUseCase` — valida que la entidad reportada exista
+  (`IUserRepo`/`IBusinessRepo` según `reportedType`) y rechaza
+  auto-reportarse (`reportedId === reportedByUserId` con `reportedType:
+  "user"` → `400 CANNOT_REPORT_SELF`).
+- `ListReportsUseCase` — filtros opcionales por `status` y `reportedType`.
+- `ResolveReportUseCase` / `DismissReportUseCase` — solo operan sobre un
+  reporte `pending` (`409 REPORT_NOT_PENDING` si no). `dismiss` exige nota
+  (`note` requerida, min 1 char); `resolve` la deja opcional.
+- `SuspendReportedUseCase` — el más complejo: delega en
+  `SuspendBusinessUseCase` (reusado tal cual, vía `business/public-api`) si
+  `reportedType: "business"`, o en el nuevo `BlockUserUseCase` (vía
+  `auth/public-api`) si `reportedType: "user"`, y **solo si esa suspensión
+  realmente ocurre** marca el reporte como `suspended` — si el target no
+  puede suspenderse ahora mismo (ej. negocio todavía `pending`), la acción
+  completa falla y el reporte queda `pending`, para no mostrarle al revisor
+  un estado que no pasó de verdad.
+- `BlockUserUseCase` (nuevo, en `auth/application`) — marca
+  `isBlocked: true` con auditoría y revoca todas las sesiones activas
+  (`IRefreshSessionRepo.revokeAllByUserId`), igual que
+  `SuspendBusinessUseCase` pero sin cascada de turnos/empleados.
+- `LoginUseCase` — rechaza el login si `user.isBlocked`
+  (`403 ACCOUNT_BLOCKED`), mismo lugar que el chequeo de `ACCOUNT_REJECTED`.
+
+### Reglas de negocio
+
+1. Un reporte solo puede pasar de `pending` a un estado terminal una vez —
+   no se puede revisar dos veces.
+2. Los reportes descartados no se borran — quedan con `status: dismissed`,
+   consultables por `reportedByUserId` (`GET /api/reports` sin filtro de
+   estado, o `IReportRepo.findByReportedByUserId`) para detectar spam de
+   origen repetido, tal como pide el AC.
+3. No se puede reportar a uno mismo.
+4. Suspender vía reporte reutiliza las reglas de negocio existentes de cada
+   entidad (ej. `Business` solo se puede suspender si está `approved`) — no
+   las duplica ni las relaja.
+
+### Cobertura
+
+- `tests/unit/report/CreateReportUseCase.test.ts`
+- `tests/unit/report/ListReportsUseCase.test.ts`
+- `tests/unit/report/ResolveReportUseCase.test.ts`
+- `tests/unit/report/DismissReportUseCase.test.ts`
+- `tests/unit/report/SuspendReportedUseCase.test.ts`
+- `tests/unit/auth/BlockUserUseCase.test.ts`
+- `tests/unit/auth/LoginUseCase.test.ts` (caso `ACCOUNT_BLOCKED`)
+
+Validación manual: pendiente (requiere probar el flujo completo
+crear→listar→revisar contra Postgres local).
 
 ## HU-8.7 - Alerta de coherencia categoría/legalId al revisar un Business
 

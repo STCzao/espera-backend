@@ -21,6 +21,10 @@ export interface User {
   passwordResetToken?: string;
   passwordResetExpiry?: Date;
   passwordResetUsedAt?: Date;
+  isBlocked: boolean;
+  blockedByUserId?: string;
+  blockedAt?: Date;
+  blockReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }

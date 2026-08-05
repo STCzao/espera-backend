@@ -83,6 +83,10 @@ export class PostgresUserRepo implements IUserRepo {
         passwordResetToken: user.passwordResetToken ?? null,
         passwordResetExpiry: user.passwordResetExpiry ?? null,
         passwordResetUsedAt: user.passwordResetUsedAt ?? null,
+        isBlocked: user.isBlocked,
+        blockedByUserId: user.blockedByUserId ?? null,
+        blockedAt: user.blockedAt ?? null,
+        blockReason: user.blockReason ?? null,
       },
       update: {
         email: user.email,
@@ -102,6 +106,10 @@ export class PostgresUserRepo implements IUserRepo {
         passwordResetToken: user.passwordResetToken ?? null,
         passwordResetExpiry: user.passwordResetExpiry ?? null,
         passwordResetUsedAt: user.passwordResetUsedAt ?? null,
+        isBlocked: user.isBlocked,
+        blockedByUserId: user.blockedByUserId ?? null,
+        blockedAt: user.blockedAt ?? null,
+        blockReason: user.blockReason ?? null,
       },
     });
 
@@ -143,6 +151,10 @@ export class PostgresUserRepo implements IUserRepo {
       passwordResetToken: raw.passwordResetToken ?? undefined,
       passwordResetExpiry: raw.passwordResetExpiry ?? undefined,
       passwordResetUsedAt: raw.passwordResetUsedAt ?? undefined,
+      isBlocked: raw.isBlocked,
+      blockedByUserId: raw.blockedByUserId ?? undefined,
+      blockedAt: raw.blockedAt ?? undefined,
+      blockReason: raw.blockReason ?? undefined,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };
