@@ -77,6 +77,10 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       throw AppError.unauthorized("Invalid credentials.");
     }
 
+    if (user.isBlocked) {
+      throw AppError.forbidden("Your account has been blocked.", "ACCOUNT_BLOCKED");
+    }
+
     if (user.role === "business_admin" && user.approvalStatus === "rejected") {
       throw AppError.forbidden(
         "Your account approval request was rejected.",

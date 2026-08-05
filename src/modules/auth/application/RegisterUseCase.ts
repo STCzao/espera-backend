@@ -113,6 +113,7 @@ export class RegisterUseCase implements UseCase<RegisterInput, RegisterOutput> {
       emailVerificationToken: verificationToken,
       emailVerificationExpiry: verificationExpiry,
       lastVerificationSentAt: verificationDate,
+      isBlocked: false,
       createdAt: new Date(),
       updatedAt: new Date()
     });

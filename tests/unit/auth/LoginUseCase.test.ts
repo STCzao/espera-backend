@@ -178,4 +178,26 @@ describe("LoginUseCase", () => {
       code: "ACCOUNT_REJECTED",
     });
   });
+
+  it("blocks a blocked user from logging in (HU-8.6)", async () => {
+    const passwordHash = await bcrypt.hash("Password1", 12);
+    const userRepo = new InMemoryUserRepo([
+      buildUser({ passwordHash, isBlocked: true }),
+    ]);
+    const useCase = new LoginUseCase(
+      userRepo,
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+    );
+
+    await expect(
+      useCase.execute({
+        email: "user@example.com",
+        password: "Password1",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "ACCOUNT_BLOCKED",
+    });
+  });
 });

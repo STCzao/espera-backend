@@ -118,6 +118,18 @@ enum SubscriptionPlan {
   PREMIUM
 }
 
+enum ReportedEntityType {
+  USER
+  BUSINESS
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  SUSPENDED
+  DISMISSED
+}
+
 model User {
   id                      String    @id @default(uuid())
   email                   String    @unique
@@ -136,7 +148,11 @@ model User {
   lastVerificationSentAt  DateTime?
   passwordResetToken      String?   @unique
   passwordResetExpiry     DateTime?
-  passwordResetUsedAt     DateTime? 
+  passwordResetUsedAt     DateTime?
+  isBlocked               Boolean   @default(false)
+  blockedByUserId         String?
+  blockedAt               DateTime?
+  blockReason             String?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   businesses              Business[]
@@ -146,6 +162,25 @@ model User {
   turns                   Turn[]
 
   @@map("users")
+}
+
+model Report {
+  id               String             @id @default(uuid())
+  reportedType     ReportedEntityType
+  reportedId       String
+  reason           String
+  reportedByUserId String
+  status           ReportStatus       @default(PENDING)
+  internalNote     String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([reportedType, reportedId])
+  @@index([reportedByUserId])
+  @@index([status])
+  @@map("reports")
 }
 
 model RefreshSession {

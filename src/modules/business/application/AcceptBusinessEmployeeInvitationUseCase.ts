@@ -117,6 +117,7 @@ export class AcceptBusinessEmployeeInvitationUseCase
           approvalStatus: "approved",
           authProvider: "local",
           isEmailVerified: true,
+          isBlocked: false,
           createdAt: new Date(),
           updatedAt: new Date(),
         });

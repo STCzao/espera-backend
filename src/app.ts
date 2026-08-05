@@ -16,6 +16,7 @@ import { createBusinessRouter } from "./modules/business/interfaces/business.rou
 import { qrRouter } from "./modules/business/interfaces/qr.routes";
 import { organizationRouter } from "./modules/organization/interfaces/organization.routes";
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
+import { reportRouter } from "./modules/report/interfaces/report.routes";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
@@ -76,6 +77,7 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
   app.use(`${apiPrefix}/qr`, qrRouter);
   app.use(`${apiPrefix}/organizations`, organizationRouter);
   app.use(`${apiPrefix}/queue`, createQueueRouter(deps.emitter ?? null));
+  app.use(`${apiPrefix}/reports`, reportRouter);
   app.use(errorHandler);
 
   return app;

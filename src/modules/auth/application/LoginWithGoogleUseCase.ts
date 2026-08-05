@@ -62,6 +62,7 @@ export class LoginWithGoogleUseCase
         authProvider: "google",
         googleId: profile.googleId,
         isEmailVerified: true,
+        isBlocked: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
