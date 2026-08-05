@@ -63,6 +63,11 @@ GET   /api/organizations/:organizationId/subscription             platform:manag
 PATCH /api/organizations/:organizationId/subscription/activate    platform:manage_approvals
 PATCH /api/organizations/:organizationId/subscription/cancel      platform:manage_approvals
 PATCH /api/organizations/:organizationId/subscription/plan        platform:manage_approvals
+POST   /api/organizations/:organizationId/members/invitations     organization:edit
+POST   /api/organizations/membership-invitations/:token/accept    (público)
+GET    /api/organizations/:organizationId/members                 organization:edit
+DELETE /api/organizations/:organizationId/members/:userId          organization:edit
+PATCH  /api/organizations/:organizationId/members/:userId/role     organization:edit
 ```
 
 ## HU-2.5.1 - Introducir el modelo Organization sin romper los Business existentes
@@ -188,6 +193,94 @@ modelo paralelo que todavía no lo reemplaza.
 
 Cubierta junto con HU-2.5.1 (la migración y su backfill son una sola pieza)
 y con HU-2.5.3 (`ResolveEffectiveRoleUseCase` lee `Membership` directamente).
+
+### Bugfix — Gestión self-service de Membership (2026-08-09)
+
+Rama: `bugfix/membership-self-service-management`.
+
+#### Contexto
+
+Encontrado al revisar, con la misma lupa que en los bugfixes de Subscription
+y de colas adicionales, qué se puede gestionar realmente vs. qué solo existe
+a nivel de dominio: **`membershipRepo.save()` se llamaba exactamente una vez
+en todo el código** (crear la Membership `admin` inicial del owner en
+`CreateOrganizationForOwnerUseCase`). No había invitar, revocar, cambiar rol,
+ni siquiera listar — `IMembershipRepo` no tenía `findByOrganizationId`.
+
+`BusinessEmployee` (HU-2.8) ya resolvía exactamente este problema un nivel
+más abajo (por `Business`, no por `Organization`), self-service, gestionado
+por el propio dueño — no por el equipo Espera. Se decidió mirror ese mismo
+patrón acá, un nivel arriba.
+
+**Decisión explícita: la migración de RBAC a rol efectivo sigue fuera de
+alcance** (ver HU-2.5.3). `AcceptMembershipInvitationUseCase` no toca
+`User.role` — solo otorga acceso de `Membership`, nunca permisos reales
+todavía. Esto es una limitación conocida: alguien invitado como `admin` de
+`Membership` no obtiene automáticamente los permisos de `business_admin` en
+`middleware/authorize.ts` hasta que se resuelva esa migración pendiente.
+
+#### Modelo de datos
+
+Migración `20260809000000_membership_self_service`:
+
+- `Membership` gana `status` (`active`/`revoked`, default `active`),
+  `invitedByUserId`, `revokedAt` — mismo patrón que `BusinessEmployee`.
+  **Importante**: `findByUserAndOrganization`/`findAdminByOrganization` en
+  `PostgresMembershipRepo` ahora filtran `status: "active"` — una Membership
+  revocada deja de contar para ownership checks en todo el código existente
+  (`UpdateOrganizationUseCase`, `ApproveOrganizationUseCase`, etc.), sin que
+  esos use cases necesitaran cambiar una línea.
+- `MembershipInvitation` (nuevo modelo) — mismo patrón que
+  `BusinessEmployeeInvitation`: token opaco, expira a los 7 días, estados
+  `pending`/`accepted`/`revoked`/`expired`.
+
+#### Contrato backend
+
+```text
+POST   /api/organizations/:organizationId/members/invitations   organization:edit
+POST   /api/organizations/membership-invitations/:token/accept  (público)
+GET    /api/organizations/:organizationId/members                organization:edit
+DELETE /api/organizations/:organizationId/members/:userId         organization:edit
+PATCH  /api/organizations/:organizationId/members/:userId/role    organization:edit
+```
+
+#### Implementación backend
+
+- `InviteMembershipUseCase` — solo un admin activo puede invitar; rechaza si
+  el invitado ya tiene acceso activo (`409 MEMBERSHIP_ALREADY_ACTIVE`) o si
+  hay una invitación pendiente sin vencer (`409
+  MEMBERSHIP_INVITATION_PENDING`).
+- `AcceptMembershipInvitationUseCase` — si el email no tiene cuenta, la crea
+  (requiere `firstName`/`lastName`/`password`, `400
+  ACCOUNT_DETAILS_REQUIRED` si faltan); si ya existe, **no toca su perfil ni
+  su contraseña**, solo otorga la Membership. Reactivar tras una revocación
+  previa reutiliza la fila (mismo mecanismo `upsert` por `(userId,
+  organizationId)` que `PostgresBusinessEmployeeRepo`).
+- `ListMembershipsUseCase` — cualquier miembro activo (admin o employee)
+  puede ver la lista completa, no solo los admins.
+- `RevokeMembershipUseCase` / `UpdateMembershipRoleUseCase` — comparten la
+  regla real de negocio: **nunca puede quedar la Organization con cero
+  admins activos**, ni por revocación ni por cambio de rol. Deliberadamente
+  **no** hay un bloqueo separado de "no podés revocarte/degradarte a vos
+  mismo" — un admin puede retirarse o degradarse si hay otro admin que
+  tome la posta; el único caso bloqueado es cuando esa acción dejaría la
+  cuenta sin ningún admin (`409 CANNOT_REVOKE_LAST_ADMIN` /
+  `409 CANNOT_DEMOTE_LAST_ADMIN`). Un bloqueo genérico de auto-revocación
+  habría sido código muerto en la práctica: quien llama al endpoint ya tiene
+  que ser admin activo, así que revocar a alguien más siempre deja al
+  solicitante como admin restante — el único momento en que el conteo puede
+  llegar a cero es al revocarse/degradarse a uno mismo siendo el último.
+
+#### Cobertura
+
+- `tests/unit/organization/InviteMembershipUseCase.test.ts`
+- `tests/unit/organization/AcceptMembershipInvitationUseCase.test.ts`
+- `tests/unit/organization/ListMembershipsUseCase.test.ts`
+- `tests/unit/organization/RevokeMembershipUseCase.test.ts`
+- `tests/unit/organization/UpdateMembershipRoleUseCase.test.ts`
+
+Validación manual: pendiente (requiere invitar y aceptar contra Postgres
+local, con y sin cuenta previa).
 
 ## HU-2.5.3 - Resolver el rol efectivo de un usuario a partir de su Membership
 
