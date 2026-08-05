@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import type { SocketIOEmitter } from "@modules/queue/public-api";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
@@ -15,15 +16,18 @@ import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmpl
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
 import { ListPendingBusinessesUseCase } from "../application/ListPendingBusinessesUseCase";
+import { ReactivateBusinessUseCase } from "../application/ReactivateBusinessUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
 import { RegisterBusinessUseCase } from "../application/RegisterBusinessUseCase";
 import { RejectBusinessUseCase } from "../application/RejectBusinessUseCase";
 import { RevokeBusinessEmployeeUseCase } from "../application/RevokeBusinessEmployeeUseCase";
+import { SuspendBusinessUseCase } from "../application/SuspendBusinessUseCase";
 import { UpdateBusinessOperationalStatusUseCase } from "../application/UpdateBusinessOperationalStatusUseCase";
 import { UpdateBusinessProfileUseCase } from "../application/UpdateBusinessProfileUseCase";
 
 export class BusinessController {
   public constructor(
+    private readonly emitter: SocketIOEmitter | null = null,
     private readonly registerBusinessUseCase = new RegisterBusinessUseCase(),
     private readonly configureQueueUseCase = new ConfigureQueueUseCase(),
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
@@ -43,7 +47,9 @@ export class BusinessController {
     private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase(),
     private readonly listPendingBusinessesUseCase = new ListPendingBusinessesUseCase(),
     private readonly approveBusinessUseCase = new ApproveBusinessUseCase(),
-    private readonly rejectBusinessUseCase = new RejectBusinessUseCase()
+    private readonly rejectBusinessUseCase = new RejectBusinessUseCase(),
+    private readonly suspendBusinessUseCase = new SuspendBusinessUseCase(undefined, undefined, undefined, undefined, undefined, emitter),
+    private readonly reactivateBusinessUseCase = new ReactivateBusinessUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -228,6 +234,31 @@ export class BusinessController {
       reason:           String(request.body.reason),
     });
     logger.info({ businessId: result.id }, "Business rejected");
+    response.status(200).json(result);
+  };
+
+  public suspend = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.suspendBusinessUseCase.execute({
+      businessId:        String(request.params.businessId),
+      suspendedByUserId: request.user?.id ?? "",
+      reason:            String(request.body.reason),
+    });
+    logger.info({ businessId: result.id }, "Business suspended");
+    response.status(200).json(result);
+  };
+
+  public reactivate = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.reactivateBusinessUseCase.execute({
+      businessId:          String(request.params.businessId),
+      reactivatedByUserId: request.user?.id ?? "",
+    });
+    logger.info({ businessId: result.id }, "Business reactivated");
     response.status(200).json(result);
   };
 

@@ -12,7 +12,7 @@ import { Server as SocketIOServer } from "socket.io";
 
 import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
-import { businessRouter } from "./modules/business/interfaces/business.routes";
+import { createBusinessRouter } from "./modules/business/interfaces/business.routes";
 import { qrRouter } from "./modules/business/interfaces/qr.routes";
 import { organizationRouter } from "./modules/organization/interfaces/organization.routes";
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
@@ -72,7 +72,7 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
 
   const apiPrefix = env.API_PREFIX;
   app.use(`${apiPrefix}/auth`, authRouter);
-  app.use(`${apiPrefix}/business`, businessRouter);
+  app.use(`${apiPrefix}/business`, createBusinessRouter(deps.emitter ?? null));
   app.use(`${apiPrefix}/qr`, qrRouter);
   app.use(`${apiPrefix}/organizations`, organizationRouter);
   app.use(`${apiPrefix}/queue`, createQueueRouter(deps.emitter ?? null));

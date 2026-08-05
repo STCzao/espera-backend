@@ -20,6 +20,11 @@ export interface Business {
   approvedAt?: Date;
   rejectedReason?: string;
   rejectedAt?: Date;
+  suspendedByUserId?: string;
+  suspendedAt?: Date;
+  suspensionReason?: string;
+  reactivatedByUserId?: string;
+  reactivatedAt?: Date;
   phone?: string;
   address?: string;
   latitude?: number;
