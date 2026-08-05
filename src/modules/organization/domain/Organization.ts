@@ -13,6 +13,7 @@ export interface Organization {
   id: string;
   name: string;
   legalId?: string;
+  categoryId?: string;
   status: OrganizationStatus;
   approvedByUserId?: string;
   approvedAt?: Date;

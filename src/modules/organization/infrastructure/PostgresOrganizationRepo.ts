@@ -9,6 +9,7 @@ const toOrganization = (raw: {
   id: string;
   name: string;
   legalId: string | null;
+  categoryId: string | null;
   status: string;
   approvedByUserId: string | null;
   approvedAt: Date | null;
@@ -20,6 +21,7 @@ const toOrganization = (raw: {
   id: raw.id,
   name: raw.name,
   legalId: raw.legalId ?? undefined,
+  categoryId: raw.categoryId ?? undefined,
   status: raw.status.toLowerCase() as OrganizationStatus,
   approvedByUserId: raw.approvedByUserId ?? undefined,
   approvedAt: raw.approvedAt ?? undefined,
@@ -47,6 +49,7 @@ export class PostgresOrganizationRepo implements IOrganizationRepo {
     const data = {
       name:             entity.name,
       legalId:          entity.legalId ?? null,
+      categoryId:       entity.categoryId ?? null,
       status:           toStatusEnum(entity.status),
       approvedByUserId: entity.approvedByUserId ?? null,
       approvedAt:       entity.approvedAt ?? null,

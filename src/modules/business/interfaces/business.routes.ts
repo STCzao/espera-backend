@@ -101,6 +101,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("platform:manage_approvals"),
     controller.listPending
   );
+  businessRouter.get(
+    "/:businessId/review",
+    authenticate,
+    authorize("platform:manage_approvals"),
+    controller.getReviewDetail
+  );
   businessRouter.patch(
     "/:businessId/approve",
     authenticate,

@@ -199,10 +199,11 @@ model RefreshSession {
 }
 
 model BusinessCategory {
-  id         String     @id
-  name       String
-  slug       String     @unique
-  businesses Business[]
+  id            String         @id
+  name          String
+  slug          String         @unique
+  businesses    Business[]
+  organizations Organization[] @relation("OrganizationCategory")
 
   @@map("business_categories")
 }
@@ -234,6 +235,8 @@ model Business {
   suspensionReason    String?
   reactivatedByUserId String?
   reactivatedAt       DateTime?
+  approvalNote           String?
+  approvalAlertsSnapshot String[] @default([])
   category    BusinessCategory @relation(fields: [categoryId], references: [id])
   owner       User     @relation(fields: [ownerUserId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -253,6 +256,7 @@ model Organization {
   id          String   @id @default(uuid())
   name        String
   legalId     String?
+  categoryId  String?
   status      OrganizationStatus @default(PENDING)
   approvedByUserId String?
   approvedAt       DateTime?
@@ -261,6 +265,7 @@ model Organization {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  category    BusinessCategory? @relation("OrganizationCategory", fields: [categoryId], references: [id])
   businesses  Business[]
   memberships Membership[]
   subscription Subscription?
