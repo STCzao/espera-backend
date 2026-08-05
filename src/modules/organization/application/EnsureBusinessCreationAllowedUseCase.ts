@@ -3,6 +3,7 @@ import type { UseCase } from "../../../shared/kernel/UseCase";
 import { PLAN_LIMITS } from "../domain/PlanLimits";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
 import { PostgresSubscriptionRepo } from "../infrastructure/PostgresSubscriptionRepo";
+import { ResolveEffectiveSubscriptionStatusUseCase } from "./ResolveEffectiveSubscriptionStatusUseCase";
 
 export interface EnsureBusinessCreationAllowedInput {
   organizationId: string;
@@ -24,7 +25,16 @@ export class EnsureBusinessCreationAllowedUseCase
   ) {}
 
   public async execute(input: EnsureBusinessCreationAllowedInput): Promise<void> {
-    const subscription = await this.subscriptionRepo.findByOrganizationId(input.organizationId);
+    const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
+      .execute({ organizationId: input.organizationId });
+
+    if (subscription && (subscription.status === "cancelled" || subscription.status === "expired")) {
+      throw AppError.forbidden(
+        "Your organization's subscription is not active.",
+        "SUBSCRIPTION_INACTIVE",
+      );
+    }
+
     const plan = subscription?.plan ?? "basic";
     const limit = PLAN_LIMITS[plan];
 

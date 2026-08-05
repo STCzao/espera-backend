@@ -371,6 +371,63 @@ Cobertura:
 - `tests/unit/business/GetPlatformMetricsUseCase.test.ts` (bloque "filtros,
   orden y paginación de negocios")
 
+### Bugfix — La Subscription vencida/cancelada ahora bloquea operar (2026-08-08)
+
+Al analizar el bugfix anterior surgieron dos huecos relacionados, tratados
+como uno solo porque el segundo no tiene sentido sin el primero:
+
+1. **Nada movía `trial → expired` automáticamente.** No hay scheduler real
+   en este MVP (`OutboxProcessor` sigue siendo un stub vacío), así que una
+   `Subscription` podía quedar en `trial` para siempre después de vencido
+   `trialEndsAt`, sin que nadie lo notara salvo revisión manual.
+2. **`ApproveBusinessUseCase` no miraba el estado de la `Subscription` en
+   absoluto** — se podía aprobar (y operar) un `Business` de una
+   `Organization` con `Subscription` `cancelled`/`expired`. Bloquear esto
+   sin resolver (1) primero era inútil: el estado `expired` casi nunca se
+   alcanzaba solo.
+
+**Solución — reconciliación perezosa, no cron.** Nuevo
+`ResolveEffectiveSubscriptionStatusUseCase`
+(`organization/application/ResolveEffectiveSubscriptionStatusUseCase.ts`,
+mismo patrón de nombre que `ResolveEffectiveRoleUseCase`): lee la
+`Subscription`, y si está en `trial` con `trialEndsAt` ya pasado, la
+persiste como `expired` antes de devolverla. Cualquier lugar que necesite
+saber si una cuenta puede operar debe pasar por acá en vez de leer
+`ISubscriptionRepo` directo — así un `trial` vencido nunca se trata como
+vigente, sin necesitar infraestructura de scheduler.
+
+Se compone internamente a partir del `ISubscriptionRepo` ya inyectado en
+cada use case (`new ResolveEffectiveSubscriptionStatusUseCase(this.
+subscriptionRepo)`) en vez de agregarlo como dependencia nueva del
+constructor — evita romper la firma pública de los use cases existentes y
+sus tests.
+
+Conectado en:
+
+- `ApproveBusinessUseCase` — antes de aprobar, si la `Subscription`
+  reconciliada es `cancelled`/`expired`, rechaza con `409
+  SUBSCRIPTION_NOT_ACTIVE`. Reusa el mismo fetch para la lógica de inicio de
+  trial que ya existía, en vez de consultarla dos veces.
+- `EnsureBusinessCreationAllowedUseCase` — mismo chequeo antes de validar el
+  límite de negocios por plan, `403 SUBSCRIPTION_INACTIVE` (bloquea incluso
+  si el conteo de negocios entra en el límite del plan).
+- `GetOrganizationSubscriptionUseCase` — el Backoffice ve el estado
+  reconciliado, no uno potencialmente desactualizado.
+- `GetPlatformMetricsUseCase` — el listado de negocios (bugfix anterior)
+  también muestra `subscriptionStatus` reconciliado.
+
+`pending` y `trial` (no vencido) y `active` siguen permitiendo operar sin
+cambios — el gate es exclusivamente para `cancelled`/`expired`.
+
+Cobertura:
+- `tests/unit/organization/ResolveEffectiveSubscriptionStatusUseCase.test.ts`
+- `tests/unit/organization/EnsureBusinessCreationAllowedUseCase.test.ts`
+  (bloque "estado de la subscription")
+- `tests/unit/business/ApproveBusinessUseCase.test.ts` (bloque "estado de la
+  subscription")
+- `tests/unit/business/GetPlatformMetricsUseCase.test.ts` (bloque "estado
+  efectivo de la subscription")
+
 ## HU-2.5.5 - Campo legal_id en Organization
 
 Story points: `1`

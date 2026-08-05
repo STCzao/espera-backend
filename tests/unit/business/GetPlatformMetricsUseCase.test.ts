@@ -144,6 +144,24 @@ describe("GetPlatformMetricsUseCase — negocios y rubros más activos", () => {
   });
 });
 
+describe("GetPlatformMetricsUseCase — estado efectivo de la subscription", () => {
+  it("reflects a lazily-expired trial as expired in the business listing", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_A, categoryId: CATEGORY_CAFE, status: "approved", organizationId: "org-x" }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", businessId: BUSINESS_A, turnDate: todayUTC() }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: "org-x", status: "trial", trialEndsAt: new Date(Date.now() - 1000) }),
+    ]);
+
+    const result = await buildUseCase({ businessRepo, turnRepo, subscriptionRepo }).execute({});
+
+    expect(result.range.businesses.items[0].subscriptionStatus).toBe("expired");
+  });
+});
+
 describe("GetPlatformMetricsUseCase — filtros, orden y paginación de negocios", () => {
   const ORG_A = "33333333-3333-4333-8333-333333333333";
   const ORG_B = "44444444-4444-4444-8444-444444444444";
