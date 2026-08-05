@@ -286,19 +286,13 @@ manualmente desde el Backoffice.
   excede el límite del plan. Conectado en `RegisterBusinessUseCase` antes de
   persistir el negocio.
 - `EnsureQueueCreationAllowedUseCase`: misma idea para filas por negocio,
-  código `PLAN_QUEUE_LIMIT_REACHED`. No conectado a ningún flujo real
-  todavía (ver contratos diferidos).
+  código `PLAN_QUEUE_LIMIT_REACHED`. **Actualización (bugfix, ver
+  `docs/epica-3-cola.md`, sección "Crear colas adicionales"): ya está
+  conectado**, en `CreateQueueUseCase`.
 - `UpdateOrganizationSubscriptionUseCase`: cambia el plan de una
   `Subscription`; si el nuevo plan tiene menos capacidad que los `Business`
   reales de la cuenta, rechaza con `AppError.conflict` / código
   `SUBSCRIPTION_DOWNGRADE_BLOCKED` en vez de borrar datos.
-
-### Contratos diferidos
-
-- Conectar `EnsureQueueCreationAllowedUseCase` al primer `CreateQueueUseCase`
-  real de Épica 3: debe llamarlo antes de insertar una `Queue`, pasándole
-  `currentQueueCountForBusiness` contado desde el propio repositorio de
-  `Queue`.
 
 ### Cobertura
 
@@ -479,6 +473,9 @@ nuevos `Business`.
 
 ## Observaciones técnicas para Épica 3
 
+*(Nota histórica — escrita antes de que Épica 3 tuviera persistencia real;
+ver estado actual en `docs/epica-3-cola.md`)*
+
 - `Queue`/`Turn` siguen sin persistencia real en Postgres; el primer
   `CreateQueueUseCase` de Épica 3 debe importar
   `EnsureQueueCreationAllowedUseCase` desde
@@ -486,6 +483,10 @@ nuevos `Business`.
 - `IBusinessRepo.countByOrganizationId` ya existe y puede reutilizarse como
   referencia para un método equivalente en el futuro `IQueueRepo`
   (`countActiveByBusinessId`).
+
+**Resuelto (bugfix, 2026-08-08)**: ver `docs/epica-3-cola.md`, sección
+"Crear colas adicionales" — `CreateQueueUseCase` ya existe y llama a
+`EnsureQueueCreationAllowedUseCase` tal como se anticipaba acá.
 
 ## Bugfix pre-E3 — Business.status y Subscription.status (2026-07-03)
 

@@ -90,10 +90,16 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     controller.downloadQrPng
   );
   businessRouter.post(
-    "/configure-queue",
+    "/:businessId/queues",
     authenticate,
     authorize("queue:configure"),
-    controller.configureQueue
+    controller.createQueue
+  );
+  businessRouter.get(
+    "/:businessId/queues",
+    authenticate,
+    authorize("queue:read"),
+    controller.listQueues
   );
   businessRouter.get(
     "/pending",

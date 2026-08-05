@@ -1169,3 +1169,73 @@ DELETE /api/queue/:queueId/windows/:windowId          queue:configure
 - `tests/unit/queue/GetQueueListUseCase.test.ts` (turnos `redirected`)
 - `tests/unit/queue/GetMyTurnUseCase.test.ts` (estados `attending` y
   `redirected`, `serviceWindowId`)
+
+## Refinamiento — Crear colas adicionales (bugfix, 2026-08-08)
+
+Rama: `bugfix/additional-queue-creation`.
+
+### Contexto
+
+La grilla de planes (`PLAN_LIMITS`, Épica 2.5) promete varias `Queue` por
+`Business` desde el plan Pro — pero no había ninguna forma real de crear una
+segunda. `ApproveBusinessUseCase` crea automáticamente una única cola
+("Caja principal") al aprobar el negocio, y `EnsureQueueCreationAllowedUseCase`
+(el chequeo de límite por plan) existía desde Épica 2.5 pero nunca se
+llamaba desde ningún lado — quedó documentado como "contrato diferido" hasta
+ahora.
+
+De paso se encontró y eliminó `ConfigureQueueUseCase`: un stub sin uso real
+(`return {configured: true, businessId}`, no persistía nada) montado en
+`POST /api/business/configure-queue`, sin tests, sin chequeo de ownership.
+Se reemplazó por el contrato real de abajo.
+
+### Contrato backend
+
+```text
+POST /api/business/:businessId/queues   queue:configure   body: { name, prefix }
+GET  /api/business/:businessId/queues   queue:read
+```
+
+`POST` devuelve la `Queue` creada (`201`). `GET` devuelve el array completo
+de `Queue` del negocio (antes solo se podía consultar internamente vía
+`IQueueRepo.findByBusinessId`).
+
+### Implementación backend
+
+- `CreateQueueUseCase` (`queue/application/`) — valida ownership
+  (`business.ownerUserId !== ownerUserId` → `403
+  BUSINESS_OWNERSHIP_REQUIRED`, mismo patrón que
+  `ConfigureBusinessServiceWindowsUseCase`), llama a
+  `EnsureQueueCreationAllowedUseCase` (Épica 2.5) pasándole el conteo real
+  de colas del negocio (`403 PLAN_QUEUE_LIMIT_REACHED` si excede el plan), y
+  rechaza un `prefix` duplicado dentro del mismo negocio (`409
+  QUEUE_PREFIX_ALREADY_IN_USE` — evita que dos colas del mismo negocio
+  generen el mismo `displayNumber`, ej. dos "A-001" distintos y confusos
+  para el público).
+- `ListBusinessQueuesUseCase` (`queue/application/`) — mismo chequeo de
+  ownership, expone `IQueueRepo.findByBusinessId`.
+- Ambos importan `IBusinessRepo`/`PostgresBusinessRepo` directo desde
+  `@modules/business/domain` e `infrastructure` (no vía `public-api.ts`) —
+  mismo patrón ya usado por `CreateTurnUseCase` dentro de este módulo, no
+  una convención nueva.
+
+### Reglas de negocio
+
+1. El límite de colas es por `Business`, no por `Organization` — cada
+   negocio de una cuenta Premium puede tener varias colas cada uno, según
+   `PLAN_LIMITS`.
+2. El `prefix` se normaliza a mayúsculas y debe ser único dentro del mismo
+   `Business` (no globalmente).
+3. La cola automática creada al aprobar el negocio (HU-8.3) cuenta para el
+   límite del plan igual que cualquier otra.
+
+### Cobertura
+
+- `tests/unit/queue/CreateQueueUseCase.test.ts`
+- `tests/unit/queue/ListBusinessQueuesUseCase.test.ts`
+- `tests/unit/organization/EnsureQueueCreationAllowedUseCase.test.ts` (ya
+  existía, ahora ejercitado por un flujo real además de en aislamiento)
+
+Validación manual: pendiente (requiere una Organization en plan Pro/Premium
+con un Business aprobado, para crear una segunda cola real contra Postgres
+local).
