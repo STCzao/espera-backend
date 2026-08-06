@@ -8,11 +8,19 @@ export interface FindPendingBusinessesFilters {
   toDate?: Date;
 }
 
+export interface FindManyBusinessesFilters {
+  organizationId?: string;
+  categoryId?: string;
+  status?: BusinessStatus;
+}
+
 export interface IBusinessRepo extends Repository<Business> {
   findBySlug(slug: string): Promise<Business | null>;
   findByOwnerUserId(ownerUserId: string): Promise<Business[]>;
   findByOrganizationId(organizationId: string): Promise<Business[]>;
   findPending(filters?: FindPendingBusinessesFilters): Promise<Business[]>;
+  /** Unfiltered by date/Turn activity — every Business matching the given filters, regardless of status. */
+  findMany(filters?: FindManyBusinessesFilters): Promise<Business[]>;
   delete(id: string): Promise<void>;
   countByOrganizationId(organizationId: string): Promise<number>;
   countByStatus(status: BusinessStatus): Promise<number>;
