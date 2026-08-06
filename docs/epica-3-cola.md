@@ -1239,3 +1239,63 @@ de `Queue` del negocio (antes solo se podía consultar internamente vía
 Validación manual: pendiente (requiere una Organization en plan Pro/Premium
 con un Business aprobado, para crear una segunda cola real contra Postgres
 local).
+
+## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
+
+Rama: `bugfix/service-window-ownership-check`.
+
+### Contexto
+
+Al auditar sistemáticamente los gaps de `business.status` en flujos de
+negocio (ver `docs/epica-2-gestion-negocios.md` para el resto del barrido),
+apareció algo más grave y de otra naturaleza en el CRUD de `ServiceWindow`:
+`CreateServiceWindowUseCase`, `UpdateServiceWindowUseCase`,
+`ToggleServiceWindowUseCase` y `DeleteServiceWindowUseCase` no verificaban
+**ownership en absoluto** — ni siquiera parcialmente. Los cuatro operaban
+sobre un `queueId`/`windowId` recibido del caller sin comparar nunca contra
+`business.ownerUserId`. Las rutas (`/:queueId/windows*`) solo están
+protegidas por el permiso de rol genérico `queue:configure` (no por
+instancia), así que cualquier `business_admin` autenticado podía mutar
+ventanillas de **un negocio que no era el suyo**, con solo conocer o
+adivinar el `queueId`/`windowId` ajeno.
+
+No es el mismo tipo de gap que "negocio no aprobado sigue operando" — acá no
+había ningún control de instancia, ni siquiera bloqueado por estado.
+
+### Implementación backend
+
+Los cuatro use cases ganaron `ownerUserId` como input obligatorio y
+resuelven la cadena `window → queue (IServiceWindowRepo/IQueueRepo) →
+business (IBusinessRepo, importado directo desde `@modules/business/...`,
+mismo patrón ya usado por `CreateTurnUseCase`)`, comparando
+`business.ownerUserId` antes de mutar — `403
+BUSINESS_OWNERSHIP_REQUIRED` si no coincide. `CreateServiceWindowUseCase`
+resuelve la cadena más corta (`queue → business`) porque recibe `queueId`
+directo; los otros tres parten de `windowId` y resuelven `window.queueId →
+queue.businessId → business`.
+
+`QueueController` pasa `request.user?.id` como `ownerUserId` en las cuatro
+rutas (`createServiceWindow`, `updateServiceWindow`, `toggleServiceWindow`,
+`deleteServiceWindow`) — no hizo falta tocar las rutas, `authenticate` ya
+corre antes de `authorize("queue:configure")` en todas.
+
+### Alcance explícitamente NO cubierto en este bugfix
+
+El mismo patrón (permiso de rol sin chequeo de instancia) existe también en
+otros endpoints de `queue` de solo lectura o de operación de turnos
+(`GetQueueStatusUseCase`, `GetQueueListUseCase`, `GetQueueMetricsUseCase`,
+`GetTurnHistoryUseCase`, `CallNextUseCase`, `AttendTurnUseCase`,
+`RedirectTurnUseCase`, `CancelTurnByEmployeeUseCase`, `CreateManualTurnUseCase`).
+Se detectó al revisar esto pero se dejó fuera a propósito — es un barrido
+mucho más grande (prácticamente todo el módulo `queue`) y amerita su propia
+rama, no mezclarse con el fix puntual de `ServiceWindow`.
+
+### Cobertura
+
+- `tests/unit/queue/CreateServiceWindowUseCase.test.ts` (caso
+  `BUSINESS_OWNERSHIP_REQUIRED` agregado)
+- `tests/unit/queue/UpdateServiceWindowUseCase.test.ts` (ídem)
+- `tests/unit/queue/ToggleServiceWindowUseCase.test.ts` (ídem)
+- `tests/unit/queue/DeleteServiceWindowUseCase.test.ts` (ídem)
+
+Validación manual: pendiente.

@@ -119,9 +119,10 @@ export class QueueController {
 
   public createServiceWindow = async (request: Request, response: Response): Promise<void> => {
     const result = await this.createServiceWindowUseCase.execute({
-      queueId: String(request.params.queueId),
-      name:    String(request.body.name),
-      type:    request.body.type,
+      queueId:     String(request.params.queueId),
+      ownerUserId: request.user?.id ?? "",
+      name:        String(request.body.name),
+      type:        request.body.type,
     });
     logger.info({ windowId: result.id, queueId: result.queueId }, "Service window created");
     response.status(201).json(result);
@@ -129,7 +130,8 @@ export class QueueController {
 
   public toggleServiceWindow = async (request: Request, response: Response): Promise<void> => {
     const result = await this.toggleServiceWindowUseCase.execute({
-      windowId: String(request.params.windowId),
+      windowId:    String(request.params.windowId),
+      ownerUserId: request.user?.id ?? "",
     });
     logger.info({ windowId: result.id, isActive: result.isActive }, "Service window toggled");
     response.status(200).json(result);
@@ -137,9 +139,10 @@ export class QueueController {
 
   public updateServiceWindow = async (request: Request, response: Response): Promise<void> => {
     const result = await this.updateServiceWindowUseCase.execute({
-      windowId: String(request.params.windowId),
-      name:     request.body.name,
-      type:     request.body.type,
+      windowId:    String(request.params.windowId),
+      ownerUserId: request.user?.id ?? "",
+      name:        request.body.name,
+      type:        request.body.type,
     });
     logger.info({ windowId: result.id }, "Service window updated");
     response.status(200).json(result);
@@ -147,7 +150,8 @@ export class QueueController {
 
   public deleteServiceWindow = async (request: Request, response: Response): Promise<void> => {
     const result = await this.deleteServiceWindowUseCase.execute({
-      windowId: String(request.params.windowId),
+      windowId:    String(request.params.windowId),
+      ownerUserId: request.user?.id ?? "",
     });
     logger.info({ windowId: result.windowId }, "Service window deleted");
     response.status(200).json(result);
