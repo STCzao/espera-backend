@@ -13,6 +13,7 @@ describe("ResolveBusinessQrCodeUseCase", () => {
     const business = buildBusiness({
       id: "11111111-1111-4111-8111-111111111111",
       listingStatus: "published",
+      status: "approved",
     });
     const useCase = new ResolveBusinessQrCodeUseCase(
       new InMemoryBusinessRepo([business]),
@@ -50,6 +51,7 @@ describe("ResolveBusinessQrCodeUseCase", () => {
   it("keeps a retiring QR token resolvable until its transition window expires", async () => {
     const business = buildBusiness({
       id: "11111111-1111-4111-8111-111111111111",
+      status: "approved",
     });
     const useCase = new ResolveBusinessQrCodeUseCase(
       new InMemoryBusinessRepo([business]),
@@ -92,6 +94,29 @@ describe("ResolveBusinessQrCodeUseCase", () => {
     ).rejects.toMatchObject({
       statusCode: 404,
       code: "QR_CODE_NOT_FOUND",
+    });
+  });
+
+  it("rejects a business that is not currently accepting customers", async () => {
+    const business = buildBusiness({
+      id: "11111111-1111-4111-8111-111111111111",
+      status: "suspended",
+    });
+    const useCase = new ResolveBusinessQrCodeUseCase(
+      new InMemoryBusinessRepo([business]),
+      new InMemoryBusinessQrCodeRepo([
+        buildBusinessQrCode({
+          businessId: business.id,
+          token: "active-token-1234567890",
+        }),
+      ]),
+    );
+
+    await expect(
+      useCase.execute({ token: "active-token-1234567890" }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "BUSINESS_NOT_ACCEPTING_CUSTOMERS",
     });
   });
 });

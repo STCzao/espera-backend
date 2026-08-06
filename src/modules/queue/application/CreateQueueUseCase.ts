@@ -49,6 +49,13 @@ export class CreateQueueUseCase implements UseCase<CreateQueueInput, Queue> {
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     const existingQueues = await this.queueRepo.findByBusinessId(business.id);
 
     await this.ensureQueueCreationAllowedUseCase.execute({

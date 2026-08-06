@@ -15,6 +15,7 @@ describe("ConfigureBusinessServiceWindowsUseCase", () => {
       buildBusiness({
         id: validInput.businessId,
         ownerUserId: validInput.ownerUserId,
+        status: "approved",
       }),
     ]);
     const useCase = new ConfigureBusinessServiceWindowsUseCase(businessRepo);
@@ -36,6 +37,7 @@ describe("ConfigureBusinessServiceWindowsUseCase", () => {
         id: validInput.businessId,
         ownerUserId: validInput.ownerUserId,
         activeServiceWindows: 2,
+        status: "approved",
       }),
     ]);
     const useCase = new ConfigureBusinessServiceWindowsUseCase(businessRepo);
@@ -49,6 +51,22 @@ describe("ConfigureBusinessServiceWindowsUseCase", () => {
       businessId: validInput.businessId,
       activeServiceWindows: 0,
       attentionAvailable: false,
+    });
+  });
+
+  it("rejects updates when the business is not operating", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({
+        id: validInput.businessId,
+        ownerUserId: validInput.ownerUserId,
+        status: "suspended",
+      }),
+    ]);
+    const useCase = new ConfigureBusinessServiceWindowsUseCase(businessRepo);
+
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "BUSINESS_NOT_OPERATING",
     });
   });
 

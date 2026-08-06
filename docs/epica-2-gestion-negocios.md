@@ -1189,6 +1189,87 @@ La configuración de atributos por categoría (`BusinessCategoryConfig`) sigue
 viviendo en código (`BusinessCategoryConfigRegistry`). Llevarla a la DB queda
 para cuando el producto defina atributos que impacten reglas operativas reales.
 
+## Bugfix - `business.status` faltante en flujos del panel (2026-08-10)
+
+Rama: `bugfix/business-status-guards`.
+
+Estado: `implementado`.
+
+### Problema
+
+Auditoría sistemática (arrancó al revisar la creación automática de cola al
+aprobar un negocio, ver `docs/epica-3-cola.md` y
+`docs/epica-2-5-cuentas-organizaciones.md` para los hallazgos relacionados
+de `Subscription`) encontró que, salvo `CreateTurnUseCase`,
+`CreateManualTurnUseCase` y `SuspendBusinessUseCase`, ningún use case
+de negocio verificaba `business.status` — solo ownership. Un negocio
+`pending`, `rejected` o `suspended` podía seguir invitando empleados,
+generando/regenerando QR, configurando horarios y ventanillas, cambiando su
+estado operativo, y creando colas nuevas — todo antes de chocar (si es que
+llegaba a chocar) contra el único chequeo real, en la creación de turnos.
+
+Un caso concreto y más severo: `AcceptBusinessEmployeeInvitationUseCase` ni
+siquiera cargaba el `Business` — una invitación emitida antes de suspender
+un negocio seguía siendo aceptable durante toda su ventana de 7 días,
+creando acceso de empleado real (`role: employee`) a un negocio que
+HU-8.4 dice que debería estar cerrado.
+
+Además, `ApproveBusinessUseCase` aceptaba re-aprobar un negocio
+`suspended` (su guard solo bloqueaba `status === "approved"`), saltando por
+completo `ReactivateBusinessUseCase` y su registro de auditoría
+(`reactivatedByUserId`/`reactivatedAt`).
+
+### Fix
+
+Se agregó `if (business.status !== "approved") throw AppError.conflict(...,
+"BUSINESS_NOT_OPERATING")` (mismo código en todos, para no inventar uno por
+use case) en:
+
+- `InviteBusinessEmployeeUseCase`
+- `AcceptBusinessEmployeeInvitationUseCase` (ahora carga `IBusinessRepo` —
+  dependencia nueva; se re-chequea en el momento de aceptar, no solo al
+  invitar, porque el negocio puede haber cambiado de estado durante la
+  ventana de 7 días de la invitación)
+- `GetBusinessQrCodeUseCase`
+- `RegenerateBusinessQrCodeUseCase`
+- `ConfigureBusinessHoursUseCase`
+- `ConfigureBusinessServiceWindowsUseCase`
+- `UpdateBusinessOperationalStatusUseCase`
+- `CreateQueueUseCase` (módulo `queue`)
+
+`ResolveBusinessQrCodeUseCase` (el resolver público que corre al escanear el
+QR) usa un código distinto, `BUSINESS_NOT_ACCEPTING_CUSTOMERS` — mismo que
+`CreateTurnUseCase` — porque es cliente-facing, no panel-facing: en vez de
+mandar al cliente a un flujo que muere al final en `CreateTurnUseCase`, corta
+antes con un mensaje coherente.
+
+`ApproveBusinessUseCase` gana un chequeo explícito para `suspended` —
+`409 BUSINESS_SUSPENDED_USE_REACTIVATE` — separado del ya existente
+`BUSINESS_ALREADY_APPROVED`, dejando el guard efectivo en
+`status ∈ {pending, rejected}`.
+
+### Deliberadamente afuera de este bugfix
+
+- `RevokeBusinessEmployeeUseCase` — revocar acceso debe poder hacerse
+  siempre, incluso con el negocio suspendido/rechazado.
+- `UpdateBusinessProfileUseCase` — bloquear edición en `rejected` impediría
+  corregir los datos que motivaron el rechazo antes de re-solicitar,
+  contradiciendo el flujo que promete el AC de HU-8.3.
+
+### Cobertura
+
+- `tests/unit/business/InviteBusinessEmployeeUseCase.test.ts`
+- `tests/unit/business/AcceptBusinessEmployeeInvitationUseCase.test.ts`
+- `tests/unit/business/GetBusinessQrCodeUseCase.test.ts`
+- `tests/unit/business/RegenerateBusinessQrCodeUseCase.test.ts`
+- `tests/unit/business/ResolveBusinessQrCodeUseCase.test.ts`
+- `tests/unit/business/ConfigureBusinessHoursUseCase.test.ts`
+- `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts`
+- `tests/unit/business/UpdateBusinessOperationalStatusUseCase.test.ts`
+- `tests/unit/queue/CreateQueueUseCase.test.ts`
+- `tests/unit/business/ApproveBusinessUseCase.test.ts` (caso
+  `BUSINESS_SUSPENDED_USE_REACTIVATE`)
+
 ## Observaciones técnicas iniciales
 
 - Algunos criterios dependen de épicas posteriores:

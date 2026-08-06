@@ -68,6 +68,13 @@ export class InviteBusinessEmployeeUseCase
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     // Employees are scoped to a business; the owner already has full access and
     // should not also receive a delegated membership for the same business.
     const invitedUser = await this.userRepo.findByEmail(parsed.data.email);

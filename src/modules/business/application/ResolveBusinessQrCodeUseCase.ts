@@ -69,6 +69,15 @@ export class ResolveBusinessQrCodeUseCase
       throw AppError.notFound("Business not found.", "BUSINESS_NOT_FOUND");
     }
 
+    // A pending/rejected/suspended business can't actually take turns —
+    // don't send the customer into a flow that dies at CreateTurnUseCase.
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently accepting customers.",
+        "BUSINESS_NOT_ACCEPTING_CUSTOMERS",
+      );
+    }
+
     return {
       token: qrCode.token,
       qrUrl: buildBusinessQrUrl(qrCode.token),

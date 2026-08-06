@@ -64,6 +64,13 @@ export class ConfigureBusinessServiceWindowsUseCase
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     const updatedBusiness = await this.businessRepo.save({
       ...business,
       activeServiceWindows: parsed.data.activeServiceWindows,

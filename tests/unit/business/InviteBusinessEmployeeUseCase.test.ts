@@ -39,6 +39,7 @@ describe("InviteBusinessEmployeeUseCase", () => {
         buildBusiness({
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
+          status: "approved",
         }),
       ]),
       new InMemoryBusinessEmployeeRepo(),
@@ -79,6 +80,26 @@ describe("InviteBusinessEmployeeUseCase", () => {
     });
   });
 
+  it("rejects invitations when the business is not operating", async () => {
+    const useCase = new InviteBusinessEmployeeUseCase(
+      new InMemoryBusinessRepo([
+        buildBusiness({
+          id: validInput.businessId,
+          ownerUserId: validInput.ownerUserId,
+          status: "suspended",
+        }),
+      ]),
+      new InMemoryBusinessEmployeeRepo(),
+      new InMemoryBusinessEmployeeInvitationRepo(),
+      new InMemoryUserRepo(),
+    );
+
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "BUSINESS_NOT_OPERATING",
+    });
+  });
+
   it("rejects employees that already have active access", async () => {
     const employeeUser = buildUser({
       id: "33333333-3333-4333-8333-333333333333",
@@ -90,6 +111,7 @@ describe("InviteBusinessEmployeeUseCase", () => {
         buildBusiness({
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
+          status: "approved",
         }),
       ]),
       new InMemoryBusinessEmployeeRepo([
@@ -114,6 +136,7 @@ describe("InviteBusinessEmployeeUseCase", () => {
         buildBusiness({
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
+          status: "approved",
         }),
       ]),
       new InMemoryBusinessEmployeeRepo(),

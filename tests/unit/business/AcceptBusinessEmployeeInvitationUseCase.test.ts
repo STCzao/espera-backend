@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { AcceptBusinessEmployeeInvitationUseCase } from "../../../src/modules/business/application/AcceptBusinessEmployeeInvitationUseCase";
 import {
+  buildBusiness,
   buildBusinessEmployeeInvitation,
   buildUser,
   InMemoryBusinessEmployeeInvitationRepo,
   InMemoryBusinessEmployeeRepo,
+  InMemoryBusinessRepo,
   InMemoryUserRepo,
 } from "../../helpers/authFakes";
 
@@ -15,6 +17,9 @@ const validInput = {
   lastName: "Person",
   password: "Password1",
 };
+
+const buildApprovedBusinessRepo = () =>
+  new InMemoryBusinessRepo([buildBusiness({ id: "business-1", status: "approved" })]);
 
 describe("AcceptBusinessEmployeeInvitationUseCase", () => {
   it("creates an employee user and active business membership", async () => {
@@ -27,6 +32,7 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
       invitationRepo,
       employeeRepo,
       userRepo,
+      buildApprovedBusinessRepo(),
     );
 
     const result = await useCase.execute(validInput);
@@ -70,6 +76,7 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
       ]),
       employeeRepo,
       userRepo,
+      buildApprovedBusinessRepo(),
     );
 
     await useCase.execute(validInput);
@@ -92,6 +99,7 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
       invitationRepo,
       new InMemoryBusinessEmployeeRepo(),
       new InMemoryUserRepo(),
+      buildApprovedBusinessRepo(),
     );
 
     await expect(useCase.execute(validInput)).rejects.toMatchObject({
@@ -99,5 +107,24 @@ describe("AcceptBusinessEmployeeInvitationUseCase", () => {
       code: "EMPLOYEE_INVITATION_EXPIRED",
     });
     expect(invitationRepo.all()[0].status).toBe("expired");
+  });
+
+  describe("errores", () => {
+    it("throws 409 when the business is not operating", async () => {
+      const businessRepo = new InMemoryBusinessRepo([buildBusiness({ id: "business-1", status: "suspended" })]);
+      const useCase = new AcceptBusinessEmployeeInvitationUseCase(
+        new InMemoryBusinessEmployeeInvitationRepo([
+          buildBusinessEmployeeInvitation({ token: validInput.token }),
+        ]),
+        new InMemoryBusinessEmployeeRepo(),
+        new InMemoryUserRepo(),
+        businessRepo,
+      );
+
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "BUSINESS_NOT_OPERATING",
+      });
+    });
   });
 });

@@ -41,6 +41,7 @@ describe("ConfigureBusinessHoursUseCase", () => {
       buildBusiness({
         id: validInput.businessId,
         ownerUserId: validInput.ownerUserId,
+        status: "approved",
       }),
     ]);
     const businessHoursRepo = new InMemoryBusinessHoursRepo();
@@ -59,6 +60,25 @@ describe("ConfigureBusinessHoursUseCase", () => {
     });
     expect(savedConfig.weeklyHours).toHaveLength(3);
     expect(savedConfig.nonWorkingDays).toHaveLength(1);
+  });
+
+  it("rejects updates when the business is not operating", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({
+        id: validInput.businessId,
+        ownerUserId: validInput.ownerUserId,
+        status: "suspended",
+      }),
+    ]);
+    const useCase = new ConfigureBusinessHoursUseCase(
+      businessRepo,
+      new InMemoryBusinessHoursRepo(),
+    );
+
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "BUSINESS_NOT_OPERATING",
+    });
   });
 
   it("rejects updates from users that do not own the business", async () => {
