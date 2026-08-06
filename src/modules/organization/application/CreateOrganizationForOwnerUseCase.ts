@@ -76,7 +76,6 @@ export class CreateOrganizationForOwnerUseCase
       userId: input.ownerUserId,
       organizationId: organization.id,
       role: "admin",
-      status: "active",
       createdAt: now,
       updatedAt: now,
     });

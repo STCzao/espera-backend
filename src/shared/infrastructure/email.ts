@@ -15,7 +15,6 @@ const logLocalEmail = (
     | "password-reset"
     | "business-welcome"
     | "employee-invitation"
-    | "membership-invitation"
     | "organization-approved"
     | "organization-rejected"
     | "business-approved"
@@ -252,34 +251,6 @@ export const sendBusinessEmployeeInvitationEmail = async (
     subject: "Te invitaron a operar un negocio en Espera",
     html: `
       <p>Recibiste una invitación para operar un panel de negocio en Espera.</p>
-      <p>Hacé clic en el siguiente enlace para aceptar la invitación:</p>
-      <a href="${url}">${url}</a>
-      <p>El enlace expira en 7 días.</p>
-    `,
-  });
-};
-
-export const sendMembershipInvitationEmail = async (
-  to: string,
-  token: string,
-): Promise<void> => {
-  const appUrl = env.APP_URL ?? "http://localhost:3000";
-  const url = `${appUrl}/organizations/membership-invitations/${token}`;
-
-  if (!shouldUseResend()) {
-    logLocalEmail("membership-invitation", to, url);
-    return;
-  }
-
-  const emailConfig = getEmailConfig();
-  const resend = new Resend(emailConfig.resendApiKey);
-
-  await resend.emails.send({
-    from: emailConfig.fromEmail,
-    to,
-    subject: "Te invitaron a administrar una cuenta en Espera",
-    html: `
-      <p>Recibiste una invitación para administrar una cuenta de Espera.</p>
       <p>Hacé clic en el siguiente enlace para aceptar la invitación:</p>
       <a href="${url}">${url}</a>
       <p>El enlace expira en 7 días.</p>
