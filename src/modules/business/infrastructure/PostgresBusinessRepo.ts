@@ -1,6 +1,6 @@
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Business } from "../domain/Business";
-import type { FindPendingBusinessesFilters, IBusinessRepo } from "../domain/IBusinessRepo";
+import type { FindManyBusinessesFilters, FindPendingBusinessesFilters, IBusinessRepo } from "../domain/IBusinessRepo";
 
 const toStatusEnum = (status: Business["status"]) =>
   status.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
@@ -101,6 +101,18 @@ export class PostgresBusinessRepo implements IBusinessRepo {
           : undefined,
       },
       orderBy: { createdAt: "asc" },
+    });
+    return rows.map(toBusiness);
+  }
+
+  public async findMany(filters: FindManyBusinessesFilters = {}): Promise<Business[]> {
+    const rows = await prisma.business.findMany({
+      where: {
+        organizationId: filters.organizationId,
+        categoryId: filters.categoryId,
+        status: filters.status ? toStatusEnum(filters.status) : undefined,
+      },
+      orderBy: { createdAt: "desc" },
     });
     return rows.map(toBusiness);
   }

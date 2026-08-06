@@ -4,53 +4,27 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
-import type { ISubscriptionRepo, SubscriptionPlan, SubscriptionStatus } from "@modules/organization/public-api";
-import { PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase } from "@modules/organization/public-api";
 import type { ITurnRepo } from "@modules/queue/public-api";
 import { PostgresTurnRepo } from "@modules/queue/public-api";
 import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
-import type { BusinessStatus } from "../domain/Business";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessCategoryRepo } from "../infrastructure/PostgresBusinessCategoryRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-const TOP_CATEGORIES_N = 5;
-const DEFAULT_PAGE_SIZE = 5;
-const MAX_PAGE_SIZE = 50;
+const TOP_N = 5;
 const WEEK_DAYS = 7;
 
-const BUSINESS_STATUSES = ["pending", "approved", "rejected", "suspended"] as const;
-const SUBSCRIPTION_PLANS = ["basic", "pro", "premium"] as const;
-const SUBSCRIPTION_STATUSES = ["pending", "trial", "active", "expired", "cancelled"] as const;
-
 const schema = z.object({
-  fromDate:           z.string().regex(DATE_REGEX, "fromDate must be in YYYY-MM-DD format.").optional(),
-  toDate:             z.string().regex(DATE_REGEX, "toDate must be in YYYY-MM-DD format.").optional(),
-  organizationId:     z.string().uuid("Invalid organization id.").optional(),
-  categoryId:         z.string().uuid("Invalid category id.").optional(),
-  status:             z.enum(BUSINESS_STATUSES).optional(),
-  subscriptionPlan:   z.enum(SUBSCRIPTION_PLANS).optional(),
-  subscriptionStatus: z.enum(SUBSCRIPTION_STATUSES).optional(),
-  sortBy:             z.enum(["turnCount", "businessName"]).default("turnCount"),
-  sortDir:            z.enum(["asc", "desc"]).default("desc"),
-  page:               z.number().int().min(1).default(1),
-  pageSize:           z.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+  fromDate: z.string().regex(DATE_REGEX, "fromDate must be in YYYY-MM-DD format.").optional(),
+  toDate:   z.string().regex(DATE_REGEX, "toDate must be in YYYY-MM-DD format.").optional(),
 });
 
-// z.input (not z.infer/z.output) so callers can omit the fields that carry
-// a .default() — Zod fills them in during parsing, but the *input* type
-// still needs to allow undefined for that to typecheck at call sites.
-export type GetPlatformMetricsInput = z.input<typeof schema>;
+export type GetPlatformMetricsInput = z.infer<typeof schema>;
 
-export interface BusinessMetricItem {
+export interface TopBusinessMetric {
   businessId: string;
   businessName: string;
-  organizationId: string;
-  status: BusinessStatus;
-  categoryId: string;
-  subscriptionPlan?: SubscriptionPlan;
-  subscriptionStatus?: SubscriptionStatus;
   turnCount: number;
 }
 
@@ -71,12 +45,7 @@ export interface GetPlatformMetricsOutput {
     totalTurns: number;
     cancelledTurns: number;
     cancellationRate: number;
-    businesses: {
-      items: BusinessMetricItem[];
-      page: number;
-      pageSize: number;
-      total: number;
-    };
+    topBusinesses: TopBusinessMetric[];
     topCategories: TopCategoryMetric[];
   };
 }
@@ -94,12 +63,15 @@ const todayUTC = (): Date => {
 const toDateStr = (date: Date): string => date.toISOString().slice(0, 10);
 
 /**
- * Platform-wide metrics for the Backoffice dashboard (HU-8.5, extended with
- * filters/sort/pagination + Subscription plan/status per business — plain
- * metrics without any commercial context weren't useful for actually
- * managing accounts). Unlike GetQueueMetricsUseCase (Épica 3), which scopes
- * to a single Queue, this aggregates across every Business/Turn/Subscription
- * in the system.
+ * Platform-wide aggregate metrics for the Backoffice dashboard (HU-8.5).
+ * Deliberately scoped to activity/date-range concerns only — browsing or
+ * filtering the actual business directory (independent of whether a
+ * business had any turns in a given window) lives in
+ * ListAllBusinessesUseCase instead. The two got conflated in an earlier
+ * pass (this endpoint grew filters/pagination/subscription info on
+ * `topBusinesses`), which silently hid any business with zero turns in the
+ * selected range from that list — a real bug for anyone trying to browse
+ * businesses by status/plan rather than by activity. Split back apart.
  */
 export class GetPlatformMetricsUseCase
   implements UseCase<GetPlatformMetricsInput, GetPlatformMetricsOutput>
@@ -109,7 +81,6 @@ export class GetPlatformMetricsUseCase
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly categoryRepo: IBusinessCategoryRepo = new PostgresBusinessCategoryRepo(),
-    private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
   ) {}
 
   public async execute(input: GetPlatformMetricsInput): Promise<GetPlatformMetricsOutput> {
@@ -143,69 +114,30 @@ export class GetPlatformMetricsUseCase
       ? Math.round((rangeCounts.cancelled / totalResolved) * 1000) / 10
       : 0;
 
-    // Resolved once and reused for both the business listing and the
-    // category aggregation below, to avoid fetching each Business twice.
-    const subscriptionByOrgId = new Map<string, { plan: SubscriptionPlan; status: SubscriptionStatus } | null>();
-    const businessDetails: BusinessMetricItem[] = [];
-    for (const row of rangeRows) {
+    const topBusinessRows = rangeRows.slice(0, TOP_N);
+    const topBusinesses: TopBusinessMetric[] = [];
+    for (const row of topBusinessRows) {
       const business = await this.businessRepo.findById(row.businessId);
-      if (!business) continue;
-
-      if (!subscriptionByOrgId.has(business.organizationId)) {
-        const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
-          .execute({ organizationId: business.organizationId });
-        subscriptionByOrgId.set(
-          business.organizationId,
-          subscription ? { plan: subscription.plan, status: subscription.status } : null,
-        );
-      }
-      const subscription = subscriptionByOrgId.get(business.organizationId);
-
-      businessDetails.push({
-        businessId: business.id,
-        businessName: business.name,
-        organizationId: business.organizationId,
-        status: business.status,
-        categoryId: business.categoryId,
-        subscriptionPlan: subscription?.plan,
-        subscriptionStatus: subscription?.status,
+      topBusinesses.push({
+        businessId: row.businessId,
+        businessName: business?.name ?? "Unknown business",
         turnCount: row.turnCount,
       });
     }
 
-    const filtered = businessDetails.filter((item) => {
-      if (parsed.data.organizationId && item.organizationId !== parsed.data.organizationId) return false;
-      if (parsed.data.categoryId && item.categoryId !== parsed.data.categoryId) return false;
-      if (parsed.data.status && item.status !== parsed.data.status) return false;
-      if (parsed.data.subscriptionPlan && item.subscriptionPlan !== parsed.data.subscriptionPlan) return false;
-      if (parsed.data.subscriptionStatus && item.subscriptionStatus !== parsed.data.subscriptionStatus) return false;
-      return true;
-    });
-
-    const sortDir = parsed.data.sortDir === "asc" ? 1 : -1;
-    filtered.sort((a, b) => {
-      const cmp = parsed.data.sortBy === "businessName"
-        ? a.businessName.localeCompare(b.businessName)
-        : a.turnCount - b.turnCount;
-      return cmp * sortDir;
-    });
-
-    const total = filtered.length;
-    const page = parsed.data.page;
-    const pageSize = parsed.data.pageSize;
-    const items = filtered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
-
     const turnCountByCategory = new Map<string, number>();
-    for (const item of businessDetails) {
+    for (const row of rangeRows) {
+      const business = await this.businessRepo.findById(row.businessId);
+      if (!business) continue;
       turnCountByCategory.set(
-        item.categoryId,
-        (turnCountByCategory.get(item.categoryId) ?? 0) + item.turnCount,
+        business.categoryId,
+        (turnCountByCategory.get(business.categoryId) ?? 0) + row.turnCount,
       );
     }
 
     const topCategoryEntries = [...turnCountByCategory.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, TOP_CATEGORIES_N);
+      .slice(0, TOP_N);
     const topCategories: TopCategoryMetric[] = [];
     for (const [categoryId, turnCount] of topCategoryEntries) {
       const category = await this.categoryRepo.findById(categoryId);
@@ -227,7 +159,7 @@ export class GetPlatformMetricsUseCase
         totalTurns: sum(rangeRows),
         cancelledTurns: rangeCounts.cancelled,
         cancellationRate,
-        businesses: { items, page, pageSize, total },
+        topBusinesses,
         topCategories,
       },
     };

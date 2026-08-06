@@ -11,6 +11,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
   const businessRouter = Router();
 
   businessRouter.post("/", authenticate, controller.register);
+  businessRouter.get(
+    "/",
+    authenticate,
+    authorize("platform:manage_approvals"),
+    controller.listAll
+  );
   businessRouter.get("/me", authenticate, controller.listMine);
   businessRouter.get("/categories", controller.listCategories);
   businessRouter.get(

@@ -36,6 +36,7 @@ PATCH /api/business/:businessId/reject                   platform:manage_approva
 PATCH /api/business/:businessId/suspend                  platform:manage_approvals   → HU-8.4
 PATCH /api/business/:businessId/reactivate               platform:manage_approvals   → HU-8.4
 GET   /api/business/platform/metrics                     platform:manage_approvals   → HU-8.5
+GET   /api/business                                       platform:manage_approvals   → HU-8.5 (bugfix, listado de negocios)
 POST  /api/reports                                        authenticate                → HU-8.6
 GET   /api/reports                                        platform:manage_approvals   → HU-8.6
 PATCH /api/reports/:reportId/resolve                      platform:manage_approvals   → HU-8.6
@@ -280,18 +281,9 @@ GET /api/business/platform/metrics   platform:manage_approvals
 
 Query params, todos opcionales:
 
-| Param                 | Tipo                                          | Default      |
-| --------------------- | ---------------------------------------------- | ------------ |
-| `fromDate`/`toDate`    | `YYYY-MM-DD`                                    | últimos 7 días (mismo criterio que `getAverageServiceMinutes` en Épica 3) |
-| `organizationId`       | uuid                                            | sin filtro   |
-| `categoryId`           | uuid                                            | sin filtro   |
-| `status`               | `pending`\|`approved`\|`rejected`\|`suspended`  | sin filtro   |
-| `subscriptionPlan`     | `basic`\|`pro`\|`premium`                       | sin filtro   |
-| `subscriptionStatus`   | `pending`\|`trial`\|`active`\|`expired`\|`cancelled` | sin filtro |
-| `sortBy`               | `turnCount`\|`businessName`                     | `turnCount`  |
-| `sortDir`              | `asc`\|`desc`                                   | `desc`       |
-| `page`                 | entero ≥ 1                                      | `1`          |
-| `pageSize`             | entero 1-50                                     | `5`          |
+| Param               | Tipo        | Default                                                                   |
+| ------------------- | ----------- | -------------------------------------------------------------------------- |
+| `fromDate`/`toDate`  | `YYYY-MM-DD`| últimos 7 días (mismo criterio que `getAverageServiceMinutes` en Épica 3) |
 
 Response:
 
@@ -307,23 +299,9 @@ Response:
     "totalTurns": 401,
     "cancelledTurns": 37,
     "cancellationRate": 12.4,
-    "businesses": {
-      "items": [
-        {
-          "businessId": "...",
-          "businessName": "Cafe Espera",
-          "organizationId": "...",
-          "status": "approved",
-          "categoryId": "...",
-          "subscriptionPlan": "pro",
-          "subscriptionStatus": "active",
-          "turnCount": 80
-        }
-      ],
-      "page": 1,
-      "pageSize": 5,
-      "total": 12
-    },
+    "topBusinesses": [
+      { "businessId": "...", "businessName": "Cafe Espera", "turnCount": 80 }
+    ],
     "topCategories": [
       { "categoryId": "...", "categoryName": "Cafetería", "turnCount": 210 }
     ]
@@ -338,36 +316,25 @@ módulo `platform`/`backoffice` nuevo) porque es consistente con otros use
 cases cross-módulo que ya viven ahí (`ApproveBusinessUseCase`,
 `SuspendBusinessUseCase`, `ListPendingBusinessesUseCase`). Reutiliza:
 
-- `IUserRepo.count()` — nuevo, cuenta total de usuarios sin filtrar por rol.
-- `IBusinessRepo.countByStatus("approved")` — nuevo, cuenta negocios activos.
-- `ITurnRepo.getPlatformTurnCounts(fromDate, toDate)` — nuevo, cuenta
+- `IUserRepo.count()` — cuenta total de usuarios sin filtrar por rol.
+- `IBusinessRepo.countByStatus("approved")` — cuenta negocios activos.
+- `ITurnRepo.getPlatformTurnCounts(fromDate, toDate)` — cuenta
   `completed`/`cancelled` en un rango (para `cancellationRate`, con el mismo
   criterio que `GetQueueMetricsUseCase`: `total = completed + cancelled`,
   excluye turnos aún activos).
-- `ITurnRepo.getTurnCountsByBusiness(fromDate, toDate)` — nuevo,
+- `ITurnRepo.getTurnCountsByBusiness(fromDate, toDate)` —
   `groupBy businessId` sobre **todos** los turnos del rango (sin importar
   estado) vía Prisma. Se reusa para tres cosas distintas: `turnsToday`
   (llamado con `today, today` y sumado), `turnsThisWeek` (llamado con los
-  últimos 7 días y sumado), y `range.businesses` (filtrable/ordenable, ver
-  abajo).
-- `ISubscriptionRepo.findByOrganizationId` (módulo `organization`) — para
-  resolver `subscriptionPlan`/`subscriptionStatus` por negocio (bugfix
-  posterior a la implementación inicial, ver
-  `docs/epica-2-5-cuentas-organizaciones.md`, sección "Gestión manual de
-  Subscription"). Cacheado por `organizationId` dentro de una misma
-  ejecución para no repetir la consulta entre negocios de la misma cuenta.
+  últimos 7 días y sumado), y `range.topBusinesses` (top 5 fijo, ver abajo).
 
 **"Rubros con más demanda" — join en la capa de aplicación, no en SQL.**
 `Turn` solo tiene `businessId`, no `categoryId` — y un join SQL directo
 entre las tablas de `queue` y `business` violaría el límite entre módulos.
-En cambio, el use case resuelve `businessId → categoryId` (y de paso
-`organizationId` → `Subscription`) una sola vez por negocio con turnos en el
-rango, reutilizando esa resolución tanto para `range.businesses` (filtrado)
-como para `range.topCategories` (siempre agregado sobre el total sin
-filtrar, no respeta los filtros de negocio — responde "qué rubros mueven más
-turnos en la plataforma", no "dentro de mi filtro actual"). Aceptable para
-un endpoint de solo lectura de Backoffice (no hot path); no se optimizó con
-una query de agregación cross-módulo.
+En cambio, el use case resuelve `businessId → categoryId` una sola vez por
+negocio con turnos en el rango. Aceptable para un endpoint de solo lectura
+de Backoffice (no hot path); no se optimizó con una query de agregación
+cross-módulo.
 
 **`turnsToday`/`turnsThisWeek` son siempre relativos al día real, no al
 rango seleccionado.** El AC pide ambas cosas: cifras fijas de "hoy"/"esta
@@ -382,20 +349,90 @@ separadas en la response en vez de una sola.
 2. `cancellationRate` se redondea a 1 decimal; es `0` cuando no hay turnos
    `completed`/`cancelled` en el rango (evita división por cero).
 3. Sin rango explícito, el default es 7 días (hoy inclusive).
-4. `range.businesses` pagina de a 5 por default (máx. 50 por página),
-   ordenado por `turnCount` descendente salvo que se pida otra cosa; los
-   filtros (`organizationId`, `categoryId`, `status`, `subscriptionPlan`,
-   `subscriptionStatus`) se combinan con AND.
-5. `topCategories` siempre se limita a 5, agregado sobre el total sin
-   filtrar (ver nota de implementación arriba).
+4. `topBusinesses`/`topCategories` siempre se limitan a 5, sin filtros ni
+   paginación — es una foto rápida de "quién concentra más demanda", no un
+   listado navegable (para eso ver "Listado de negocios" abajo).
 
 ### Cobertura
 
-- `tests/unit/business/GetPlatformMetricsUseCase.test.ts` (incluye el
-  bloque "filtros, orden y paginación de negocios")
+- `tests/unit/business/GetPlatformMetricsUseCase.test.ts`
 
 Validación manual: pendiente (requiere datos reales de negocios/turnos en
 la base local para verificar los agregados).
+
+## Bugfix — separación del listado de negocios y las métricas (2026-08-06)
+
+**Problema.** `GetPlatformMetricsUseCase` originalmente exponía
+`range.businesses` como un listado filtrable/ordenable/paginable
+(`organizationId`, `categoryId`, `status`, `subscriptionPlan`,
+`subscriptionStatus`, `sortBy`, `page`, `pageSize`) — pero ese listado se
+construía iterando `ITurnRepo.getTurnCountsByBusiness(fromDate, toDate)`.
+Un negocio sin turnos en el rango seleccionado (por ejemplo, uno recién
+suspendido y sin actividad reciente) quedaba invisible en el listado, sin
+importar que cumpliera todos los filtros. Esto rompía cualquier pantalla de
+Backoffice que necesitara **navegar/gestionar** el directorio completo de
+negocios (ej. "mostrar todos los negocios suspendidos") en vez de
+consultar actividad.
+
+**Solución.** Se separaron ambas responsabilidades en dos endpoints:
+
+- `GET /api/business/platform/metrics` (`GetPlatformMetricsUseCase`) —
+  vuelve a su shape original: agregados de actividad estrictamente
+  dependientes de un rango de fechas (`topBusinesses`/`topCategories` como
+  top-5 fijo, sin filtros/paginación). Ver contrato arriba.
+- `GET /api/business` (`ListAllBusinessesUseCase`, nuevo) — directorio de
+  negocios independiente de `Turn`: cualquier negocio que matchee los
+  filtros aparece, tenga o no actividad reciente.
+
+```text
+GET /api/business   platform:manage_approvals
+```
+
+Query params, todos opcionales:
+
+| Param                 | Tipo                                                  | Default      |
+| --------------------- | ------------------------------------------------------ | ------------ |
+| `organizationId`       | uuid                                                    | sin filtro   |
+| `categoryId`           | uuid                                                    | sin filtro   |
+| `status`               | `pending`\|`approved`\|`rejected`\|`suspended`          | sin filtro   |
+| `subscriptionPlan`     | `basic`\|`pro`\|`premium`                               | sin filtro   |
+| `subscriptionStatus`   | `pending`\|`trial`\|`active`\|`expired`\|`cancelled`    | sin filtro   |
+| `sortBy`               | `businessName`\|`createdAt`                             | `createdAt`  |
+| `sortDir`              | `asc`\|`desc`                                           | `desc`       |
+| `page`                 | entero ≥ 1                                              | `1`          |
+| `pageSize`             | entero 1-50                                             | `20`         |
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "businessId": "...",
+      "businessName": "Cafe Espera",
+      "organizationId": "...",
+      "status": "approved",
+      "categoryId": "...",
+      "subscriptionPlan": "pro",
+      "subscriptionStatus": "active",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "total": 12
+}
+```
+
+`IBusinessRepo.findMany(filters)` (nuevo) resuelve `organizationId`/
+`categoryId`/`status` directo contra `Business`, sin tocar `Turn`. La
+resolución de `subscriptionPlan`/`subscriptionStatus` reutiliza
+`ResolveEffectiveSubscriptionStatusUseCase` (módulo `organization`),
+cacheada por `organizationId` dentro de una misma ejecución.
+
+Cobertura: `tests/unit/business/ListAllBusinessesUseCase.test.ts`,
+`tests/unit/business/GetPlatformMetricsUseCase.test.ts` (actualizado al
+shape revertido).
 
 ## HU-8.6 - Ver y gestionar reportes
 

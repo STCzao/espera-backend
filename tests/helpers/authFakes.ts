@@ -2,7 +2,7 @@ import type { IUserRepo } from "../../src/modules/auth/domain/IUserRepo";
 import type { IRefreshSessionRepo } from "../../src/modules/auth/domain/IRefreshSessionRepo";
 import type { RefreshSession } from "../../src/modules/auth/domain/RefreshSession";
 import type { User } from "../../src/modules/auth/domain/User";
-import type { IBusinessRepo } from "../../src/modules/business/domain/IBusinessRepo";
+import type { FindManyBusinessesFilters, IBusinessRepo } from "../../src/modules/business/domain/IBusinessRepo";
 import type { Business } from "../../src/modules/business/domain/Business";
 import type { BusinessCategory } from "../../src/modules/business/domain/BusinessCategory";
 import type { IBusinessCategoryRepo } from "../../src/modules/business/domain/IBusinessCategoryRepo";
@@ -237,6 +237,15 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
     return [...this.businesses.values()].filter(
       (business) => business.status === status,
     ).length;
+  }
+
+  public async findMany(filters: FindManyBusinessesFilters = {}): Promise<Business[]> {
+    return [...this.businesses.values()].filter((business) => {
+      if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
+      if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
+      if (filters.status && business.status !== filters.status) return false;
+      return true;
+    });
   }
 
   public async findByOrganizationId(organizationId: string): Promise<Business[]> {

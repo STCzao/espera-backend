@@ -15,6 +15,7 @@ import { GetBusinessHoursUseCase } from "../application/GetBusinessHoursUseCase"
 import { GetBusinessReviewDetailUseCase } from "../application/GetBusinessReviewDetailUseCase";
 import { GetPlatformMetricsUseCase } from "../application/GetPlatformMetricsUseCase";
 import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmployeeUseCase";
+import { ListAllBusinessesUseCase } from "../application/ListAllBusinessesUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
 import { ListPendingBusinessesUseCase } from "../application/ListPendingBusinessesUseCase";
@@ -54,7 +55,8 @@ export class BusinessController {
     private readonly suspendBusinessUseCase = new SuspendBusinessUseCase(undefined, undefined, undefined, undefined, undefined, emitter),
     private readonly reactivateBusinessUseCase = new ReactivateBusinessUseCase(),
     private readonly getPlatformMetricsUseCase = new GetPlatformMetricsUseCase(),
-    private readonly getBusinessReviewDetailUseCase = new GetBusinessReviewDetailUseCase()
+    private readonly getBusinessReviewDetailUseCase = new GetBusinessReviewDetailUseCase(),
+    private readonly listAllBusinessesUseCase = new ListAllBusinessesUseCase()
   ) {}
 
   public register = async (request: Request, response: Response): Promise<void> => {
@@ -346,13 +348,19 @@ export class BusinessController {
     request: Request,
     response: Response
   ): Promise<void> => {
+    const result = await this.getPlatformMetricsUseCase.execute({
+      fromDate: typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
+      toDate:   typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+    });
+    response.status(200).json(result);
+  };
+
+  public listAll = async (request: Request, response: Response): Promise<void> => {
     const query = request.query;
     const asString = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
     const asNumber = (value: unknown): number | undefined => typeof value === "string" ? Number(value) : undefined;
 
-    const result = await this.getPlatformMetricsUseCase.execute({
-      fromDate:           asString(query.fromDate),
-      toDate:             asString(query.toDate),
+    const result = await this.listAllBusinessesUseCase.execute({
       organizationId:     asString(query.organizationId),
       categoryId:         asString(query.categoryId),
       status:             asString(query.status) as never,
