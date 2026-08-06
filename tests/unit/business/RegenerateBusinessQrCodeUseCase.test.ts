@@ -19,6 +19,7 @@ describe("RegenerateBusinessQrCodeUseCase", () => {
       buildBusiness({
         id: validInput.businessId,
         ownerUserId: validInput.ownerUserId,
+        status: "approved",
       }),
     ]);
     const qrCodeRepo = new InMemoryBusinessQrCodeRepo([
@@ -52,5 +53,26 @@ describe("RegenerateBusinessQrCodeUseCase", () => {
       status: "active",
     });
     expect(newQrCode?.validUntil).toBeUndefined();
+  });
+
+  describe("errores", () => {
+    it("rejects regeneration when the business is not operating", async () => {
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({
+          id: validInput.businessId,
+          ownerUserId: validInput.ownerUserId,
+          status: "rejected",
+        }),
+      ]);
+      const useCase = new RegenerateBusinessQrCodeUseCase(
+        businessRepo,
+        new InMemoryBusinessQrCodeRepo(),
+      );
+
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "BUSINESS_NOT_OPERATING",
+      });
+    });
   });
 });

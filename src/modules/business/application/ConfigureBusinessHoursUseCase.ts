@@ -92,6 +92,13 @@ export class ConfigureBusinessHoursUseCase
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     const now = new Date();
     const config: BusinessHoursConfig = {
       businessId: parsed.data.businessId,

@@ -96,6 +96,13 @@ export class UpdateBusinessOperationalStatusUseCase
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     const previousStatus = business.operationalStatus;
     const updatedBusiness = await this.businessRepo.save({
       ...business,

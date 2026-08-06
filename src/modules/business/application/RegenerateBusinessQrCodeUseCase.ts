@@ -66,6 +66,13 @@ export class RegenerateBusinessQrCodeUseCase
       );
     }
 
+    if (business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
+      );
+    }
+
     const previousQrValidUntil = new Date(
       Date.now() + QR_RETIREMENT_WINDOW_MS,
     );

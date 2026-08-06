@@ -17,7 +17,7 @@ const buildUseCase = (options: {
   subscriptionRepo?: InMemorySubscriptionRepo;
 } = {}) => {
   const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
-    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID }),
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID, status: "approved" }),
   ]);
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo([
     buildQueue({ id: "queue-existing", businessId: BUSINESS_ID, prefix: "A" }),
@@ -64,6 +64,17 @@ describe("CreateQueueUseCase", () => {
       await expect(
         useCase.execute({ businessId: BUSINESS_ID, ownerUserId: OTHER_USER_ID, name: "Caja 2", prefix: "B" }),
       ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_OWNERSHIP_REQUIRED" });
+    });
+
+    it("throws 409 when the business is not operating", async () => {
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID, status: "suspended" }),
+      ]);
+      const { useCase } = buildUseCase({ businessRepo });
+
+      await expect(
+        useCase.execute({ businessId: BUSINESS_ID, ownerUserId: OWNER_ID, name: "Caja 2", prefix: "B" }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_NOT_OPERATING" });
     });
 
     it("throws 403 when the plan's queue limit is reached", async () => {

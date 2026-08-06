@@ -16,6 +16,7 @@ describe("UpdateBusinessOperationalStatusUseCase", () => {
       buildBusiness({
         id: validInput.businessId,
         ownerUserId: validInput.ownerUserId,
+        status: "approved",
       }),
     ]);
     const useCase = new UpdateBusinessOperationalStatusUseCase(
@@ -42,6 +43,7 @@ describe("UpdateBusinessOperationalStatusUseCase", () => {
         buildBusiness({
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
+          status: "approved",
         }),
       ]),
       new EventBus(),
@@ -69,6 +71,7 @@ describe("UpdateBusinessOperationalStatusUseCase", () => {
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
           operationalStatus: "delayed",
+          status: "approved",
         }),
       ]),
       eventBus,
@@ -104,6 +107,7 @@ describe("UpdateBusinessOperationalStatusUseCase", () => {
           id: validInput.businessId,
           ownerUserId: validInput.ownerUserId,
           operationalStatus: "closed",
+          status: "approved",
         }),
       ]),
       eventBus,
@@ -115,6 +119,24 @@ describe("UpdateBusinessOperationalStatusUseCase", () => {
     });
 
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("rejects updates when the business is not operating", async () => {
+    const useCase = new UpdateBusinessOperationalStatusUseCase(
+      new InMemoryBusinessRepo([
+        buildBusiness({
+          id: validInput.businessId,
+          ownerUserId: validInput.ownerUserId,
+          status: "pending",
+        }),
+      ]),
+      new EventBus(),
+    );
+
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "BUSINESS_NOT_OPERATING",
+    });
   });
 
   it("rejects updates from users that do not own the business", async () => {

@@ -9,8 +9,10 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessEmployeeInvitationRepo } from "../domain/IBusinessEmployeeInvitationRepo";
 import type { IBusinessEmployeeRepo } from "../domain/IBusinessEmployeeRepo";
+import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessEmployeeInvitationRepo } from "../infrastructure/PostgresBusinessEmployeeInvitationRepo";
 import { PostgresBusinessEmployeeRepo } from "../infrastructure/PostgresBusinessEmployeeRepo";
+import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
@@ -50,6 +52,7 @@ export class AcceptBusinessEmployeeInvitationUseCase
     private readonly invitationRepo: IBusinessEmployeeInvitationRepo = new PostgresBusinessEmployeeInvitationRepo(),
     private readonly employeeRepo: IBusinessEmployeeRepo = new PostgresBusinessEmployeeRepo(),
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
+    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
   ) {}
 
   public async execute(
@@ -65,6 +68,17 @@ export class AcceptBusinessEmployeeInvitationUseCase
       throw AppError.notFound(
         "Employee invitation not found.",
         "EMPLOYEE_INVITATION_NOT_FOUND",
+      );
+    }
+
+    // Re-checked at acceptance time, not just at invite time — the business
+    // may have been suspended or rejected during the invitation's 7-day
+    // window.
+    const business = await this.businessRepo.findById(invitation.businessId);
+    if (!business || business.status !== "approved") {
+      throw AppError.conflict(
+        "This business is not currently operating.",
+        "BUSINESS_NOT_OPERATING",
       );
     }
 

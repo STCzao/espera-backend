@@ -147,6 +147,17 @@ describe("ApproveBusinessUseCase", () => {
       ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_ALREADY_APPROVED" });
     });
 
+    it("throws 409 when business is suspended, directing to reactivate instead", async () => {
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({ id: BUSINESS_ID, organizationId: ORG_ID, status: "suspended" }),
+      ]);
+      const { useCase } = buildUseCase({ businessRepo });
+
+      await expect(
+        useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_SUSPENDED_USE_REACTIVATE" });
+    });
+
     it("throws 409 when the organization is not approved yet", async () => {
       const organizationRepo = new InMemoryOrganizationRepo([
         buildOrganization({ id: ORG_ID, status: "pending" }),

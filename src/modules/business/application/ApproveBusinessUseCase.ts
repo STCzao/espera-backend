@@ -52,6 +52,16 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
       throw AppError.conflict("Business is already approved.", "BUSINESS_ALREADY_APPROVED");
     }
 
+    // A suspended business has its own, more specific flow (ReactivateBusinessUseCase,
+    // HU-8.4) that records reactivatedByUserId/At — approving it here instead
+    // would silently skip that audit trail.
+    if (business.status === "suspended") {
+      throw AppError.conflict(
+        "A suspended business must be reactivated, not approved.",
+        "BUSINESS_SUSPENDED_USE_REACTIVATE",
+      );
+    }
+
     const organization = await this.organizationRepo.findById(business.organizationId);
     if (!organization || organization.status !== "approved") {
       throw AppError.conflict(
