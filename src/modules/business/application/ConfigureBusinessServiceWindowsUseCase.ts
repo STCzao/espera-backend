@@ -2,10 +2,17 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { PLAN_LIMITS } from "@modules/organization/public-api";
+import type { ISubscriptionRepo } from "@modules/organization/public-api";
+import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
-const MAX_ACTIVE_SERVICE_WINDOWS = 50;
+// Absolute sanity ceiling for the input, regardless of plan — the actual
+// per-plan limit (checked below, after resolving the Subscription) is
+// almost always lower than this. Reuses Premium's cap, the highest tier,
+// as the single source of truth instead of a second hardcoded number.
+const MAX_ACTIVE_SERVICE_WINDOWS = PLAN_LIMITS.premium.maxServiceWindowsPerQueue;
 
 const configureBusinessServiceWindowsSchema = z.object({
   businessId: z.string().uuid("Invalid business id."),
@@ -42,6 +49,7 @@ export class ConfigureBusinessServiceWindowsUseCase
 {
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
   ) {}
 
   public async execute(
@@ -68,6 +76,16 @@ export class ConfigureBusinessServiceWindowsUseCase
       throw AppError.conflict(
         "This business is not currently operating.",
         "BUSINESS_NOT_OPERATING",
+      );
+    }
+
+    const subscription = await this.subscriptionRepo.findByOrganizationId(business.organizationId);
+    const plan = subscription?.plan ?? "basic";
+    const limit = PLAN_LIMITS[plan].maxServiceWindowsPerQueue;
+    if (parsed.data.activeServiceWindows > limit) {
+      throw AppError.forbidden(
+        `Your plan allows up to ${limit} service window(s) per queue.`,
+        "PLAN_SERVICE_WINDOW_LIMIT_REACHED",
       );
     }
 

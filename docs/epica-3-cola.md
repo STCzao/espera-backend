@@ -1299,3 +1299,84 @@ rama, no mezclarse con el fix puntual de `ServiceWindow`.
 - `tests/unit/queue/DeleteServiceWindowUseCase.test.ts` (ídem)
 
 Validación manual: pendiente.
+
+---
+
+## Bugfix — límite de ventanillas por plan (2026-08-07)
+
+Rama: `feature/service-window-plan-limit`.
+
+### Contexto
+
+`PLAN_LIMITS` (`src/modules/organization/domain/PlanLimits.ts`) ya limitaba
+`Business` por `Organization` y `Queue` ("fila") por `Business` según el
+plan de la `Subscription` — pero nada limitaba cuántas `ServiceWindow`
+("ventanilla") podía tener una `Queue`. Un negocio en plan Basic (pensado
+para una sola fila con atención simple) podía crear ventanillas paralelas
+sin límite, lo mismo que uno en Pro o Premium — el plan no distinguía nada
+en ese eje.
+
+Además, existían **dos caminos distintos** para declarar ventanillas: el
+CRUD real (`CreateServiceWindowUseCase` y compañía, ver refinamiento
+arriba) y un contador legado en `Business.activeServiceWindows`
+(`ConfigureBusinessServiceWindowsUseCase`, HU-2.3), que la lectura de
+espera ya trata como fallback de las ventanillas reales (ver sección
+*"Fix: `activeServiceWindows` usaba el contador legado del negocio"*
+arriba) pero que seguía teniendo su propio tope fijo e independiente
+(`MAX_ACTIVE_SERVICE_WINDOWS = 50`), sin relación con el plan. Poner el
+límite solo en el CRUD real habría dejado ese segundo camino como bypass.
+
+### Solución
+
+`PLAN_LIMITS` gana un tercer eje, `maxServiceWindowsPerQueue`:
+
+| Plan    | Ventanillas por fila |
+| ------- | ---------------------- |
+| Basic   | 1                       |
+| Pro     | 3                       |
+| Premium | 20                      |
+
+Premium no usa `Infinity`: comercialmente "sin límite" es el mensaje
+correcto (20 excede cualquier uso real), pero un límite realmente infinito
+en el CRUD dejaría `CreateServiceWindowUseCase` sin ningún guardrail ante
+un bug o un abuso que intente crear filas de `service_windows` sin freno.
+20 es a la vez el tope de Premium y el sanity cap absoluto de
+`ConfigureBusinessServiceWindowsUseCase` (antes `MAX_ACTIVE_SERVICE_WINDOWS
+= 50`, ahora derivado de `PLAN_LIMITS.premium.maxServiceWindowsPerQueue`
+para no mantener dos números arbitrarios distintos).
+
+- `EnsureServiceWindowCreationAllowedUseCase` (nuevo, en
+  `organization/application/`, mismo patrón que
+  `EnsureQueueCreationAllowedUseCase`): recibe `organizationId` y la
+  cantidad actual de ventanillas de la fila, y rechaza con
+  `403 PLAN_SERVICE_WINDOW_LIMIT_REACHED` si ya se alcanzó el tope del
+  plan. Resuelve el plan vía `ISubscriptionRepo.findByOrganizationId`,
+  default `"basic"` si la Organization no tiene `Subscription` todavía.
+- `CreateServiceWindowUseCase` cuenta `windowRepo.findByQueueId(queueId)`
+  antes de insertar y llama a ese nuevo use case.
+- `ConfigureBusinessServiceWindowsUseCase` (el contador legado) resuelve el
+  mismo plan y rechaza con el mismo código si el valor pedido supera
+  `maxServiceWindowsPerQueue` — ya no puede usarse para esquivar el tope
+  real.
+
+### Reglas de negocio
+
+1. El límite es por `Queue`, no agregado a nivel `Business` — un negocio
+   Pro con varias filas puede tener hasta 3 ventanillas en **cada** una,
+   no 3 en total.
+2. Sin `Subscription` para la `Organization`, se asume plan `basic`
+   (mismo criterio que `EnsureQueueCreationAllowedUseCase`).
+3. `Toggle`/`Update`/`Delete` de una ventanilla existente no re-chequean
+   el límite — activar o desactivar no crea ventanillas nuevas.
+
+### Cobertura
+
+- `tests/unit/organization/EnsureServiceWindowCreationAllowedUseCase.test.ts`
+  (nuevo)
+- `tests/unit/queue/CreateServiceWindowUseCase.test.ts` (sección *límite por
+  plan*)
+- `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts`
+  (sección *límite por plan*)
+
+Validación manual: pendiente (requiere `Subscription` real por plan en la
+base local).
