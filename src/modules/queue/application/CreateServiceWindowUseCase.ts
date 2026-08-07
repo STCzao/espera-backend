@@ -6,6 +6,7 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import { EnsureServiceWindowCreationAllowedUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../domain/ServiceWindow";
@@ -19,13 +20,16 @@ const schema = z.object({
   type:        z.enum(["cashier", "customer_service", "information", "admin", "technical"]).optional().default("cashier"),
 });
 
-export type CreateServiceWindowInput = z.infer<typeof schema>;
+// z.input (not z.infer/z.output) so callers can omit `type`, which carries
+// a .default() — see the same note in ListAllBusinessesUseCase.
+export type CreateServiceWindowInput = z.input<typeof schema>;
 
 export class CreateServiceWindowUseCase implements UseCase<CreateServiceWindowInput, ServiceWindow> {
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly ensureServiceWindowCreationAllowedUseCase: EnsureServiceWindowCreationAllowedUseCase = new EnsureServiceWindowCreationAllowedUseCase(),
   ) {}
 
   public async execute(input: CreateServiceWindowInput): Promise<ServiceWindow> {
@@ -43,6 +47,12 @@ export class CreateServiceWindowUseCase implements UseCase<CreateServiceWindowIn
         "BUSINESS_OWNERSHIP_REQUIRED",
       );
     }
+
+    const existingWindows = await this.windowRepo.findByQueueId(parsed.data.queueId);
+    await this.ensureServiceWindowCreationAllowedUseCase.execute({
+      organizationId: business.organizationId,
+      currentServiceWindowCountForQueue: existingWindows.length,
+    });
 
     const now = new Date();
     const window: ServiceWindow = {

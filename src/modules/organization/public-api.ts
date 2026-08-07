@@ -29,6 +29,9 @@ export type { EnsureBusinessCreationAllowedInput } from "./application/EnsureBus
 export { EnsureQueueCreationAllowedUseCase } from "./application/EnsureQueueCreationAllowedUseCase";
 export type { EnsureQueueCreationAllowedInput } from "./application/EnsureQueueCreationAllowedUseCase";
 
+export { EnsureServiceWindowCreationAllowedUseCase } from "./application/EnsureServiceWindowCreationAllowedUseCase";
+export type { EnsureServiceWindowCreationAllowedInput } from "./application/EnsureServiceWindowCreationAllowedUseCase";
+
 export { UpdateOrganizationSubscriptionUseCase } from "./application/UpdateOrganizationSubscriptionUseCase";
 export type {
   UpdateOrganizationSubscriptionInput,

@@ -38,11 +38,17 @@ Formato de referencia:
 Grilla de planes (`PLAN_LIMITS`, única fuente de verdad en
 `src/modules/organization/domain/PlanLimits.ts`):
 
-| Plan    | Negocios | Filas por negocio |
-| ------- | -------- | ------------------ |
-| Basic   | 1        | 1                   |
-| Pro     | 1        | Varias              |
-| Premium | Varios   | Varias cada uno     |
+| Plan    | Negocios | Filas por negocio | Ventanillas por fila |
+| ------- | -------- | ------------------ | --------------------- |
+| Basic   | 1        | 1                   | 1                      |
+| Pro     | 1        | Varias              | Hasta 3                |
+| Premium | Varios   | Varias cada uno     | Hasta 20               |
+
+La columna "Ventanillas por fila" se agregó en un bugfix posterior (ver
+`docs/epica-3-cola.md`, sección *"Bugfix — límite de ventanillas por
+plan"*): hasta entonces `maxServiceWindowsPerQueue` no existía y cualquier
+plan podía crear ventanillas sin tope real (ver esa sección para el
+detalle).
 
 ## Contratos principales de la épica
 
