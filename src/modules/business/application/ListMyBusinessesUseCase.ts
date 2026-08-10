@@ -4,8 +4,8 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { ISubscriptionRepo, SubscriptionPlan } from "@modules/organization/public-api";
 import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
-import type { IQueueRepo } from "@modules/queue/public-api";
-import { PostgresQueueRepo } from "@modules/queue/public-api";
+import type { IQueueRepo, IServiceWindowRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
@@ -43,6 +43,7 @@ export class ListMyBusinessesUseCase
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: ListMyBusinessesInput): Promise<ListMyBusinessesOutput> {
@@ -59,6 +60,8 @@ export class ListMyBusinessesUseCase
           this.subscriptionRepo.findByOrganizationId(business.organizationId),
           this.queueRepo.findActiveByBusinessId(business.id),
         ]);
+        const windows = queue ? await this.windowRepo.findByQueueId(queue.id) : [];
+        const activeServiceWindows = windows.filter((w) => w.isActive).length;
 
         return {
           id: business.id,
@@ -70,7 +73,7 @@ export class ListMyBusinessesUseCase
           address: business.address,
           latitude: business.latitude,
           longitude: business.longitude,
-          activeServiceWindows: business.activeServiceWindows,
+          activeServiceWindows,
           listingStatus: business.listingStatus,
           operationalStatus: business.operationalStatus,
           plan: subscription?.plan ?? "basic",

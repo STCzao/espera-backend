@@ -3,6 +3,7 @@ import type { BusinessHoursConfig } from "./BusinessHours";
 
 interface BusinessAvailabilityInput {
   business: Business;
+  activeServiceWindowCount: number;
   hoursConfig: BusinessHoursConfig;
   now: Date;
   timeZone?: string;
@@ -62,6 +63,7 @@ const getLocalTimeParts = (now: Date, timeZone: string): LocalTimeParts => {
 export class BusinessAvailabilityService {
   public isAvailableNow({
     business,
+    activeServiceWindowCount,
     hoursConfig,
     now,
     timeZone = "America/Argentina/Buenos_Aires",
@@ -70,7 +72,7 @@ export class BusinessAvailabilityService {
       return false;
     }
 
-    if (business.activeServiceWindows <= 0) {
+    if (activeServiceWindowCount <= 0) {
       return false;
     }
 

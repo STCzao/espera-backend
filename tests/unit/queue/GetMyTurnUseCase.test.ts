@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { GetMyTurnUseCase } from "../../../src/modules/queue/application/GetMyTurnUseCase";
-import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
+  InMemoryServiceWindowRepo,
   InMemoryTurnRepo,
   buildQueue,
+  buildServiceWindow,
   buildTurn,
 } from "../../helpers/queueFakes";
 
@@ -14,19 +15,21 @@ const BUSINESS_ID = "22222222-2222-4222-8222-222222222222";
 const CUSTOMER_ID = "33333333-3333-4333-8333-333333333333";
 const TODAY = new Date("2026-01-01T00:00:00.000Z");
 
+const oneActiveWindow = () => new InMemoryServiceWindowRepo([
+  buildServiceWindow({ id: "window-1", queueId: QUEUE_ID, isActive: true }),
+]);
+
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?: InMemoryTurnRepo;
-  businessRepo?: InMemoryBusinessRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
 } = {}) => {
   const queueRepo =
     options.queueRepo ??
     new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, businessId: BUSINESS_ID })]);
-  const businessRepo =
-    options.businessRepo ??
-    new InMemoryBusinessRepo([buildBusiness({ id: BUSINESS_ID, activeServiceWindows: 1 })]);
+  const windowRepo = options.windowRepo ?? oneActiveWindow();
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
-  return { useCase: new GetMyTurnUseCase(queueRepo, turnRepo, businessRepo), turnRepo };
+  return { useCase: new GetMyTurnUseCase(queueRepo, turnRepo, windowRepo), turnRepo };
 };
 
 describe("GetMyTurnUseCase — posición", () => {
@@ -181,14 +184,14 @@ describe("GetMyTurnUseCase — tiempo estimado (HU-3.3)", () => {
     expect(result.estimatedWaitMinutes).toBe(0);
   });
 
-  it("returns null when activeServiceWindows is 0", async () => {
-    const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ id: BUSINESS_ID, activeServiceWindows: 0 }),
+  it("returns null when there are no active service windows", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "window-1", queueId: QUEUE_ID, isActive: false }),
     ]);
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, status: "waiting", turnDate: TODAY }),
     ]);
-    const { useCase } = buildUseCase({ turnRepo, businessRepo });
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
     const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
 
@@ -196,8 +199,9 @@ describe("GetMyTurnUseCase — tiempo estimado (HU-3.3)", () => {
   });
 
   it("divides wait across multiple service windows", async () => {
-    const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ id: BUSINESS_ID, activeServiceWindows: 2 }),
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "window-1", queueId: QUEUE_ID, isActive: true }),
+      buildServiceWindow({ id: "window-2", queueId: QUEUE_ID, isActive: true }),
     ]);
     // 4 people ahead of me → ceil(4/2) * 5 = 10 min
     const turnRepo = new InMemoryTurnRepo([
@@ -214,7 +218,7 @@ describe("GetMyTurnUseCase — tiempo estimado (HU-3.3)", () => {
         turnDate: TODAY,
       }),
     ]);
-    const { useCase } = buildUseCase({ turnRepo, businessRepo });
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
     const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
 

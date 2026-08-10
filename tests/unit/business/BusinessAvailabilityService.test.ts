@@ -38,6 +38,7 @@ describe("BusinessAvailabilityService", () => {
 
     const isAvailable = service.isAvailableNow({
       business: buildBusiness({ listingStatus: "published" }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -51,6 +52,7 @@ describe("BusinessAvailabilityService", () => {
 
     const isAvailable = service.isAvailableNow({
       business: buildBusiness({ listingStatus: "published" }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayEighteenUtc,
       timeZone: "UTC",
@@ -64,6 +66,7 @@ describe("BusinessAvailabilityService", () => {
 
     const isAvailable = service.isAvailableNow({
       business: buildBusiness({ listingStatus: "draft" }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -76,10 +79,8 @@ describe("BusinessAvailabilityService", () => {
     const service = new BusinessAvailabilityService();
 
     const isAvailable = service.isAvailableNow({
-      business: buildBusiness({
-        listingStatus: "published",
-        activeServiceWindows: 0,
-      }),
+      business: buildBusiness({ listingStatus: "published" }),
+      activeServiceWindowCount: 0,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -96,6 +97,7 @@ describe("BusinessAvailabilityService", () => {
         listingStatus: "published",
         operationalStatus: "delayed",
       }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -112,6 +114,7 @@ describe("BusinessAvailabilityService", () => {
         listingStatus: "published",
         operationalStatus: "paused",
       }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -121,6 +124,7 @@ describe("BusinessAvailabilityService", () => {
         listingStatus: "published",
         operationalStatus: "closed",
       }),
+      activeServiceWindowCount: 1,
       hoursConfig,
       now: mondayTenUtc,
       timeZone: "UTC",
@@ -135,6 +139,7 @@ describe("BusinessAvailabilityService", () => {
 
     const isAvailable = service.isAvailableNow({
       business: buildBusiness({ listingStatus: "published" }),
+      activeServiceWindowCount: 1,
       hoursConfig: {
         ...hoursConfig,
         nonWorkingDays: [

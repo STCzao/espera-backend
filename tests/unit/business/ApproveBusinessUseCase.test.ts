@@ -8,7 +8,7 @@ import {
   buildOrganization,
   buildSubscription,
 } from "../../helpers/organizationFakes";
-import { InMemoryQueueRepo } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo } from "../../helpers/queueFakes";
 
 const emailMocks = vi.hoisted(() => ({
   sendBusinessApprovedEmail: vi.fn(),
@@ -28,6 +28,7 @@ const buildUseCase = (options: {
   subscriptionRepo?: InMemorySubscriptionRepo;
   userRepo?: InMemoryUserRepo;
   queueRepo?: InMemoryQueueRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
 } = {}) => {
   const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
     buildBusiness({ id: BUSINESS_ID, ownerUserId: "user-1", organizationId: ORG_ID, status: "pending" }),
@@ -40,9 +41,10 @@ const buildUseCase = (options: {
   ]);
   const userRepo = options.userRepo ?? new InMemoryUserRepo([buildUser({ id: "user-1" })]);
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo();
+  const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
   return {
-    businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo,
-    useCase: new ApproveBusinessUseCase(businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo),
+    businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo, windowRepo,
+    useCase: new ApproveBusinessUseCase(businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo, windowRepo),
   };
 };
 
@@ -85,25 +87,31 @@ describe("ApproveBusinessUseCase", () => {
     expect(subscriptionRepo.all()[0].status).toBe("active");
   });
 
-  it("creates a default queue when the business has none", async () => {
-    const { useCase, queueRepo } = buildUseCase();
+  it("creates a default queue with a default service window when the business has none", async () => {
+    const { useCase, queueRepo, windowRepo } = buildUseCase();
 
     await useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID });
 
     const queues = queueRepo.all();
     expect(queues).toHaveLength(1);
     expect(queues[0]).toMatchObject({ name: "Caja principal", prefix: "A", isActive: true });
+
+    const windows = await windowRepo.findByQueueId(queues[0].id);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toMatchObject({ name: "Ventanilla 1", type: "cashier", isActive: true });
   });
 
-  it("does not create a duplicate queue if one already exists", async () => {
+  it("does not create a duplicate queue or window if a queue already exists", async () => {
     const queueRepo = new InMemoryQueueRepo([
       { id: "q-1", businessId: BUSINESS_ID, name: "Caja principal", prefix: "A", isActive: true, createdAt: new Date(), updatedAt: new Date() },
     ]);
-    const { useCase } = buildUseCase({ queueRepo });
+    const windowRepo = new InMemoryServiceWindowRepo();
+    const { useCase } = buildUseCase({ queueRepo, windowRepo });
 
     await useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID });
 
     expect(queueRepo.all()).toHaveLength(1);
+    expect(await windowRepo.findByQueueId("q-1")).toHaveLength(0);
   });
 
   it("sends the approval email to the business owner", async () => {

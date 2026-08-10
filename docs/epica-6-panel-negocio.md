@@ -17,9 +17,7 @@ Formato de referencia: `docs/story-documentation-standard.md`
 
 - Estado: `parcialmente implementado, sin trackear formalmente hasta ahora`.
 - Cubiertas de facto por endpoints de `queue`/`business` ya existentes:
-  `HU-6.1`, `HU-6.2`, `HU-6.4`, `HU-6.5`.
-- Con un gap de diseño a resolver antes de darla por completa: `HU-6.3`
-  (conviven dos modelos de "ventanillas", ver más abajo).
+  `HU-6.1`, `HU-6.2`, `HU-6.3`, `HU-6.4`, `HU-6.5`.
 - Sin ningún backend involucrado, 100% frontend: `HU-6.6`.
 
 ## Contratos principales de la épica
@@ -29,8 +27,7 @@ Todos preexistentes, ninguno se creó para esta épica:
 ```text
 GET   /api/queue/:queueId/status                          queue:read        → HU-6.1
 PATCH /api/business/:businessId/operational-status         business:edit     → HU-6.2
-PUT   /api/business/:businessId/service-windows             business:edit     → HU-6.3 (modelo legado, ver nota)
-GET   /api/queue/:queueId/windows                          queue:read        → HU-6.3 (modelo real, ver nota)
+GET   /api/queue/:queueId/windows                          queue:read        → HU-6.3
 GET   /api/queue/:queueId/turns/history?date=YYYY-MM-DD    queue:read        → HU-6.4
 GET   /api/queue/:queueId/metrics?date=YYYY-MM-DD          queue:read        → HU-6.5
 ```
@@ -121,20 +118,19 @@ Ninguno a nivel backend.
 
 Story points: `2`
 
-Estado: `implementado dos veces, con modelos distintos sin unificar — gap
-real`.
+Estado: `implementado — gap de los dos modelos cerrado por completo (Fase A + B)`.
 
 ### Objetivo de producto
 
 Que el negocio pueda ajustar cuántas ventanillas tiene operando, y que el
 tiempo estimado de espera se recalcule con ese número.
 
-### El gap: dos modelos de "ventanillas" conviven hoy
+### El gap que existió: dos modelos de "ventanillas" convivían
 
-**Modelo legado (HU-2.3, Épica 2)**: `Business.activeServiceWindows` es un
-entero simple. Se edita con `PUT /api/business/:businessId/service-windows`
-(`ConfigureBusinessServiceWindowsUseCase`). No tiene identidad individual —
-es solo un contador.
+**Modelo legado (HU-2.3, Épica 2)**: `Business.activeServiceWindows` era un
+entero simple, editable con `PUT /api/business/:businessId/service-windows`
+(`ConfigureBusinessServiceWindowsUseCase`). No tenía identidad individual —
+era solo un contador.
 
 **Modelo real (Épica 3, refinamiento `bugfix/service-windows` y
 siguientes)**: `ServiceWindow` es una entidad propia por cola
@@ -142,29 +138,46 @@ siguientes)**: `ServiceWindow` es una entidad propia por cola
 (`GET/POST/PATCH/DELETE /api/queue/:queueId/windows`, ver
 `docs/epica-3-cola.md`) y lógica real de ocupación/derivación de turnos.
 
-**Cómo se reconcilian hoy** (`GetQueueStatusUseCase` /
-`GetQueueListUseCase`, ver `docs/epica-3-cola.md`): si la cola tiene al
-menos una `ServiceWindow` creada, el estimado de espera usa el conteo real
-de ventanillas activas (modelo nuevo) e **ignora** el contador legado. Si la
-cola no tiene ninguna `ServiceWindow` creada todavía, cae al contador legado
-como fallback. Es decir, el modelo nuevo ya "gana" en la práctica — el
-legado solo sigue vivo para negocios que nunca migraron a ventanillas
-individuales.
+La lectura de espera (`GetQueueStatusUseCase`/`GetQueueListUseCase`) ya
+priorizaba el modelo real y caía al legado solo como fallback si la cola no
+tenía ninguna `ServiceWindow` creada — pero el legado seguía siendo
+necesario, porque `ApproveBusinessUseCase` creaba la primera `Queue` al
+aprobar un negocio sin crear ninguna `ServiceWindow` real para ella. Todo
+negocio nuevo dependía 100% del contador legado hasta que el dueño usara el
+CRUD nuevo por su cuenta.
 
-### Decisión pendiente (no tomada en este documento)
+### Decisión: cerrado (bugfix `bugfix/resolve-service-window-model-gap`, 2026-08-10)
 
-¿Se deprecia `PUT /api/business/:businessId/service-windows` y
-`Business.activeServiceWindows` una vez que todo negocio tenga al menos una
-`ServiceWindow`? Requiere decisión de producto (¿hay negocios en
-producción que dependan solo del contador?) antes de tocar código — no se
-resuelve acá.
+Se completó el modelo real en vez de mantener los dos:
+
+1. Tanto `ApproveBusinessUseCase` (primera `Queue`) como
+   `CreateQueueUseCase` (`Queue` adicionales) crean ahora una
+   `ServiceWindow` por defecto junto con cada `Queue` nueva — el modelo
+   real queda autosuficiente desde el día uno, sin depender de que el
+   dueño configure nada a mano.
+2. `PUT /api/business/:businessId/service-windows` y
+   `ConfigureBusinessServiceWindowsUseCase` **se eliminaron** — ya no hacía
+   falta un segundo camino de escritura.
+3. (Fase B, misma rama) `Business.activeServiceWindows` se eliminó por
+   completo del schema (migración
+   `20260810010000_drop_business_active_service_windows`) y de los ~13
+   archivos que todavía lo leían o le asignaban un default (estimación de
+   espera, disponibilidad, QR público, flujos de registro). Los casos que
+   necesitaban un número a nivel negocio sin cola específica
+   (`ListMyBusinessesUseCase`, `ResolveBusinessQrCodeUseCase`) pasan a
+   resolverlo contra la `Queue` activa/principal, mismo criterio que ya usa
+   `activeQueueId`.
+
+Detalle completo en `docs/epica-3-cola.md`, secciones *"Bugfix — cierre del
+modelo de ventanillas, Fase A"* y *"Fase B"*.
 
 ### Cobertura de tests
 
-- `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts` (modelo legado)
+- `tests/unit/business/ApproveBusinessUseCase.test.ts`,
+  `tests/unit/queue/CreateQueueUseCase.test.ts` (ventanilla por defecto)
 - `tests/unit/queue/CreateServiceWindowUseCase.test.ts`,
   `UpdateServiceWindowUseCase.test.ts`, `DeleteServiceWindowUseCase.test.ts`,
-  `ToggleServiceWindowUseCase.test.ts` (modelo real)
+  `ToggleServiceWindowUseCase.test.ts` (CRUD del modelo real)
 
 ---
 
@@ -257,13 +270,9 @@ frontend cuando se aborde.
 
 ## Resumen de gaps reales de esta épica
 
-1. **HU-6.3**: decidir si se deprecia el contador legado
-   (`Business.activeServiceWindows` / `PUT
-   /api/business/:businessId/service-windows`) ahora que el modelo de
-   `ServiceWindow` individual ya lo reemplaza en la práctica para colas que
-   lo adoptaron.
-2. **HU-6.6**: sin empezar, 100% frontend, no bloquea nada de backend.
+1. **HU-6.6**: sin empezar, 100% frontend, no bloquea nada de backend.
 
-Todo lo demás de esta épica ya está resuelto por trabajo de Épica 2 y Épica
-3 — no hace falta ninguna implementación de backend adicional para cerrarla
-formalmente, salvo la decisión del punto 1.
+Todo lo demás de esta épica ya está resuelto — HU-6.3 se cerró por completo
+(bugfix `bugfix/resolve-service-window-model-gap`, ver esa sección arriba).
+No hace falta ninguna implementación de backend adicional para cerrar esta
+épica formalmente, salvo HU-6.6 del lado frontend.

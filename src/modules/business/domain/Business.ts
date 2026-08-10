@@ -32,7 +32,6 @@ export interface Business {
   latitude?: number;
   longitude?: number;
   listingStatus: BusinessListingStatus;
-  activeServiceWindows: number;
   operationalStatus: BusinessOperationalStatus;
   ownerUserId: string;
   organizationId: string;

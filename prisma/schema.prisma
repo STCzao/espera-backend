@@ -218,7 +218,6 @@ model Business {
   latitude    Float?
   longitude   Float?
   listingStatus BusinessListingStatus @default(DRAFT)
-  activeServiceWindows Int @default(1)
   operationalStatus BusinessOperationalStatus @default(NORMAL)
   ownerUserId String
   organizationId String

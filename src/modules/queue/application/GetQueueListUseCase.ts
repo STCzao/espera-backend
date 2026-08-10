@@ -2,8 +2,6 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
-import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { TurnPriority } from "../domain/Turn";
 import type { IQueueRepo } from "../domain/IQueueRepo";
@@ -50,7 +48,6 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
-    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
@@ -66,16 +63,14 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     const now = new Date();
     const today = todayUTC();
 
-    const [summaries, business, avgMinutes, windows] = await Promise.all([
+    const [summaries, avgMinutes, windows] = await Promise.all([
       this.turnRepo.findActiveByQueue(queueId),
-      this.businessRepo.findById(queue.businessId),
       this.turnRepo.getAverageServiceMinutes(queueId, today),
       this.windowRepo.findByQueueId(queueId),
     ]);
 
     const windowNameById = new Map(windows.map((w) => [w.id, w.name]));
-    const activeWindowsCount = windows.filter((w) => w.isActive).length;
-    const activeServiceWindows = windows.length > 0 ? activeWindowsCount : (business?.activeServiceWindows ?? 1);
+    const activeServiceWindows = windows.filter((w) => w.isActive).length;
     const serviceMinutes = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
 
     let waitingPosition = 0;

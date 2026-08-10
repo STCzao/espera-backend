@@ -7,7 +7,6 @@ import { createApp } from "../../../src/app";
 const businessMocks = vi.hoisted(() => ({
   acceptBusinessEmployeeInvitationExecute: vi.fn(),
   configureBusinessHoursExecute: vi.fn(),
-  configureBusinessServiceWindowsExecute: vi.fn(),
   generateBusinessQrPngExecute: vi.fn(),
   getBusinessCategoryConfigExecute: vi.fn(),
   getBusinessQrCodeExecute: vi.fn(),
@@ -29,12 +28,6 @@ vi.mock("../../../src/modules/business/application/AcceptBusinessEmployeeInvitat
 vi.mock("../../../src/modules/business/application/ConfigureBusinessHoursUseCase", () => ({
   ConfigureBusinessHoursUseCase: class {
     public execute = businessMocks.configureBusinessHoursExecute;
-  },
-}));
-
-vi.mock("../../../src/modules/business/application/ConfigureBusinessServiceWindowsUseCase", () => ({
-  ConfigureBusinessServiceWindowsUseCase: class {
-    public execute = businessMocks.configureBusinessServiceWindowsExecute;
   },
 }));
 
@@ -129,7 +122,6 @@ describe("business API", () => {
   beforeEach(() => {
     businessMocks.acceptBusinessEmployeeInvitationExecute.mockReset();
     businessMocks.configureBusinessHoursExecute.mockReset();
-    businessMocks.configureBusinessServiceWindowsExecute.mockReset();
     businessMocks.generateBusinessQrPngExecute.mockReset();
     businessMocks.getBusinessCategoryConfigExecute.mockReset();
     businessMocks.getBusinessQrCodeExecute.mockReset();
@@ -183,31 +175,6 @@ describe("business API", () => {
       ...hoursPayload,
       businessId,
       ownerUserId: "22222222-2222-4222-8222-222222222222",
-    });
-  });
-
-  it("configures active service windows for the owner panel", async () => {
-    businessMocks.configureBusinessServiceWindowsExecute.mockResolvedValue({
-      businessId,
-      activeServiceWindows: 2,
-      attentionAvailable: true,
-    });
-
-    const response = await request(createApp())
-      .put(`/api/business/${businessId}/service-windows`)
-      .set("Authorization", `Bearer ${accessToken}`)
-      .send({ activeServiceWindows: 2 });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      businessId,
-      activeServiceWindows: 2,
-      attentionAvailable: true,
-    });
-    expect(businessMocks.configureBusinessServiceWindowsExecute).toHaveBeenCalledWith({
-      businessId,
-      ownerUserId: "22222222-2222-4222-8222-222222222222",
-      activeServiceWindows: 2,
     });
   });
 

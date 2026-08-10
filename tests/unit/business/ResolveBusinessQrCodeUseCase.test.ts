@@ -7,6 +7,7 @@ import {
   InMemoryBusinessQrCodeRepo,
   InMemoryBusinessRepo,
 } from "../../helpers/authFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue, buildServiceWindow } from "../../helpers/queueFakes";
 
 describe("ResolveBusinessQrCodeUseCase", () => {
   it("resolves an active QR token to the business turn flow contract", async () => {
@@ -15,6 +16,7 @@ describe("ResolveBusinessQrCodeUseCase", () => {
       listingStatus: "published",
       status: "approved",
     });
+    const queue = buildQueue({ id: "queue-1", businessId: business.id, isActive: true });
     const useCase = new ResolveBusinessQrCodeUseCase(
       new InMemoryBusinessRepo([business]),
       new InMemoryBusinessQrCodeRepo([
@@ -22,6 +24,10 @@ describe("ResolveBusinessQrCodeUseCase", () => {
           businessId: business.id,
           token: "active-token-1234567890",
         }),
+      ]),
+      new InMemoryQueueRepo([queue]),
+      new InMemoryServiceWindowRepo([
+        buildServiceWindow({ id: "window-1", queueId: queue.id, isActive: true }),
       ]),
     );
 
@@ -63,6 +69,8 @@ describe("ResolveBusinessQrCodeUseCase", () => {
           validUntil: new Date(Date.now() + 60_000),
         }),
       ]),
+      new InMemoryQueueRepo(),
+      new InMemoryServiceWindowRepo(),
     );
 
     const result = await useCase.execute({
@@ -87,6 +95,8 @@ describe("ResolveBusinessQrCodeUseCase", () => {
           validUntil: new Date(Date.now() - 60_000),
         }),
       ]),
+      new InMemoryQueueRepo(),
+      new InMemoryServiceWindowRepo(),
     );
 
     await expect(
@@ -110,6 +120,8 @@ describe("ResolveBusinessQrCodeUseCase", () => {
           token: "active-token-1234567890",
         }),
       ]),
+      new InMemoryQueueRepo(),
+      new InMemoryServiceWindowRepo(),
     );
 
     await expect(

@@ -105,7 +105,6 @@ export class RegisterBusinessUseCase
         latitude: coordinates?.latitude,
         longitude: coordinates?.longitude,
         listingStatus: "draft",
-        activeServiceWindows: 1,
         operationalStatus: "normal",
         ownerUserId: parsed.data.ownerUserId,
         organizationId,

@@ -65,12 +65,6 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("business:edit"),
     controller.configureHours
   );
-  businessRouter.put(
-    "/:businessId/service-windows",
-    authenticate,
-    authorize("business:edit"),
-    controller.configureServiceWindows
-  );
   businessRouter.patch(
     "/:businessId/operational-status",
     authenticate,

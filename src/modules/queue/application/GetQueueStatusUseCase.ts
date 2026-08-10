@@ -80,8 +80,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
     const attendingCount  = activeTurns.filter((t) => t.status === "attending").length;
     const redirectedCount = activeTurns.filter((t) => t.status === "redirected").length;
 
-    const activeWindowsCount   = windows.filter((w) => w.isActive).length;
-    const activeServiceWindows = windows.length > 0 ? activeWindowsCount : (business?.activeServiceWindows ?? 1);
+    const activeServiceWindows = windows.filter((w) => w.isActive).length;
     const operationalStatus    = business?.operationalStatus ?? "normal";
     const serviceMinutes       = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
 
