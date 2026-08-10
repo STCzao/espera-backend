@@ -8,8 +8,10 @@ import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
 import { EnsureQueueCreationAllowedUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
+import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { Queue } from "../domain/Queue";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
+import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 
 const schema = z.object({
   businessId:  z.string().uuid("Invalid business id."),
@@ -33,6 +35,7 @@ export class CreateQueueUseCase implements UseCase<CreateQueueInput, Queue> {
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly ensureQueueCreationAllowedUseCase: EnsureQueueCreationAllowedUseCase = new EnsureQueueCreationAllowedUseCase(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: CreateQueueInput): Promise<Queue> {
@@ -73,7 +76,7 @@ export class CreateQueueUseCase implements UseCase<CreateQueueInput, Queue> {
     }
 
     const now = new Date();
-    return this.queueRepo.save({
+    const queue = await this.queueRepo.save({
       id: randomUUID(),
       businessId: business.id,
       name: parsed.data.name,
@@ -82,5 +85,19 @@ export class CreateQueueUseCase implements UseCase<CreateQueueInput, Queue> {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Every Queue needs at least one real ServiceWindow to be usable — see
+    // the same default creation in ApproveBusinessUseCase.
+    await this.windowRepo.save({
+      id:        randomUUID(),
+      queueId:   queue.id,
+      name:      "Ventanilla 1",
+      type:      "cashier",
+      isActive:  true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return queue;
   }
 }

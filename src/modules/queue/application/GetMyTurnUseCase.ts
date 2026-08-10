@@ -2,12 +2,12 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
-import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { IQueueRepo } from "../domain/IQueueRepo";
+import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
+import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
@@ -40,7 +40,7 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
-    private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: GetMyTurnInput): Promise<GetMyTurnOutput> {
@@ -69,13 +69,13 @@ export class GetMyTurnUseCase implements UseCase<GetMyTurnInput, GetMyTurnOutput
     }
 
     const today = todayUTC();
-    const [ahead, business, avgMinutes] = await Promise.all([
+    const [ahead, windows, avgMinutes] = await Promise.all([
       this.turnRepo.countWaitingAhead(turn.queueId, turn.number, turn.priority),
-      this.businessRepo.findById(queue.businessId),
+      this.windowRepo.findByQueueId(turn.queueId),
       this.turnRepo.getAverageServiceMinutes(turn.queueId, today),
     ]);
 
-    const activeServiceWindows = business?.activeServiceWindows ?? 1;
+    const activeServiceWindows = windows.filter((w) => w.isActive).length;
     const serviceMinutes = avgMinutes ?? DEFAULT_SERVICE_MINUTES;
 
     const estimate = estimateService.estimate({

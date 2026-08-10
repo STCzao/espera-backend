@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IQueueRepo, IServiceWindowRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
 import type { IBusinessQrCodeRepo } from "../domain/IBusinessQrCodeRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessQrCodeRepo } from "../infrastructure/PostgresBusinessQrCodeRepo";
@@ -46,6 +48,8 @@ export class ResolveBusinessQrCodeUseCase
   public constructor(
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly businessQrCodeRepo: IBusinessQrCodeRepo = new PostgresBusinessQrCodeRepo(),
+    private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(
@@ -78,6 +82,10 @@ export class ResolveBusinessQrCodeUseCase
       );
     }
 
+    const queue = await this.queueRepo.findActiveByBusinessId(business.id);
+    const windows = queue ? await this.windowRepo.findByQueueId(queue.id) : [];
+    const activeServiceWindows = windows.filter((w) => w.isActive).length;
+
     return {
       token: qrCode.token,
       qrUrl: buildBusinessQrUrl(qrCode.token),
@@ -93,7 +101,7 @@ export class ResolveBusinessQrCodeUseCase
         categoryId: business.categoryId,
         address: business.address,
         listingStatus: business.listingStatus,
-        activeServiceWindows: business.activeServiceWindows,
+        activeServiceWindows,
         operationalStatus: business.operationalStatus,
       },
     };

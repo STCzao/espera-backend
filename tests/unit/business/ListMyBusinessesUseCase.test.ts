@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ListMyBusinessesUseCase } from "../../../src/modules/business/application/ListMyBusinessesUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
-import { InMemoryQueueRepo, buildQueue } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue } from "../../helpers/queueFakes";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 const ORG_ID = "organization-1";
@@ -12,13 +12,15 @@ const buildUseCase = (options: {
   businesses?: ReturnType<typeof buildBusiness>[];
   subscription?: ReturnType<typeof buildSubscription>;
   queueRepo?: InMemoryQueueRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
 } = {}) => {
   const businessRepo = new InMemoryBusinessRepo(options.businesses ?? []);
   const subscriptionRepo = new InMemorySubscriptionRepo(
     options.subscription ? [options.subscription] : [buildSubscription({ organizationId: ORG_ID })],
   );
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo();
-  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo, queueRepo);
+  const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
+  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo, queueRepo, windowRepo);
 };
 
 describe("ListMyBusinessesUseCase", () => {
@@ -113,6 +115,7 @@ describe("ListMyBusinessesUseCase", () => {
       new InMemoryBusinessRepo([buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })]),
       new InMemorySubscriptionRepo([]),
       new InMemoryQueueRepo(),
+      new InMemoryServiceWindowRepo(),
     );
 
     const result = await useCase.execute({ ownerUserId: OWNER_ID });

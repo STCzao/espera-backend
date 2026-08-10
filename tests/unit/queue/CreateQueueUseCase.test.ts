@@ -4,7 +4,7 @@ import { EnsureQueueCreationAllowedUseCase } from "../../../src/modules/organiza
 import { CreateQueueUseCase } from "../../../src/modules/queue/application/CreateQueueUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
-import { InMemoryQueueRepo, buildQueue } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue } from "../../helpers/queueFakes";
 
 const BUSINESS_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OWNER_ID    = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -15,6 +15,7 @@ const buildUseCase = (options: {
   businessRepo?: InMemoryBusinessRepo;
   queueRepo?: InMemoryQueueRepo;
   subscriptionRepo?: InMemorySubscriptionRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
 } = {}) => {
   const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
     buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID, status: "approved" }),
@@ -25,16 +26,17 @@ const buildUseCase = (options: {
   const subscriptionRepo = options.subscriptionRepo ?? new InMemorySubscriptionRepo([
     buildSubscription({ organizationId: ORG_ID, plan: "pro" }),
   ]);
+  const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
   const ensureQueueCreationAllowedUseCase = new EnsureQueueCreationAllowedUseCase(subscriptionRepo);
   return {
-    businessRepo, queueRepo, subscriptionRepo,
-    useCase: new CreateQueueUseCase(businessRepo, queueRepo, ensureQueueCreationAllowedUseCase),
+    businessRepo, queueRepo, subscriptionRepo, windowRepo,
+    useCase: new CreateQueueUseCase(businessRepo, queueRepo, ensureQueueCreationAllowedUseCase, windowRepo),
   };
 };
 
 describe("CreateQueueUseCase", () => {
-  it("creates an additional queue for the business", async () => {
-    const { useCase, queueRepo } = buildUseCase();
+  it("creates an additional queue for the business, with a default service window", async () => {
+    const { useCase, queueRepo, windowRepo } = buildUseCase();
 
     const result = await useCase.execute({
       businessId: BUSINESS_ID,
@@ -47,6 +49,10 @@ describe("CreateQueueUseCase", () => {
     expect(result.prefix).toBe("B");
     expect(result.isActive).toBe(true);
     expect(queueRepo.all()).toHaveLength(2);
+
+    const windows = await windowRepo.findByQueueId(result.id);
+    expect(windows).toHaveLength(1);
+    expect(windows[0]).toMatchObject({ name: "Ventanilla 1", type: "cashier", isActive: true });
   });
 
   describe("errores", () => {

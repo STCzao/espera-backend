@@ -111,7 +111,6 @@ export class RegisterBusinessWithGoogleUseCase
         status: "pending",
         address,
         listingStatus: "draft",
-        activeServiceWindows: 1,
         operationalStatus: "normal",
         ownerUserId: user.id,
         organizationId,

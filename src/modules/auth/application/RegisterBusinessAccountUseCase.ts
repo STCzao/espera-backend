@@ -136,7 +136,6 @@ export class RegisterBusinessAccountUseCase implements UseCase<
         status: "pending",
         address,
         listingStatus: "draft",
-        activeServiceWindows: 1,
         operationalStatus: "normal",
         ownerUserId: user.id,
         organizationId,

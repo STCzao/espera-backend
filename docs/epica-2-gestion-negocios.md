@@ -31,7 +31,6 @@ PATCH /api/business/:businessId/profile
 GET /api/business/categories/:categoryId/config
 GET /api/business/:businessId/hours
 PUT /api/business/:businessId/hours
-PUT /api/business/:businessId/service-windows
 PATCH /api/business/:businessId/operational-status
 GET /api/business/:businessId/qr
 POST /api/business/:businessId/qr/regenerate
@@ -436,10 +435,23 @@ disponible en lugar de minutos.
 
 ### Cobertura
 
-- `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts`
 - `tests/unit/business/BusinessAvailabilityService.test.ts`
 - `tests/unit/queue/QueueWaitEstimateService.test.ts`
 - `tests/api/business/business.api.test.ts`
+
+### Superseded (bugfix `bugfix/resolve-service-window-model-gap`, 2026-08-10)
+
+`PUT /api/business/:businessId/service-windows`,
+`ConfigureBusinessServiceWindowsUseCase` y, en un segundo paso (Fase B, misma
+rama), el propio campo `Business.activeServiceWindows` **se eliminaron por
+completo** — dominio, columna de base (migración
+`20260810010000_drop_business_active_service_windows`) y los ~13 archivos
+que todavía lo leían o le asignaban un default. Ver `docs/epica-3-cola.md`,
+secciones *"Bugfix — cierre del modelo de ventanillas, Fase A"* y *"Fase
+B"*, para el detalle completo: el modelo real `ServiceWindow` (Épica 3) pasó
+a crearse automáticamente en toda `Queue` nueva, haciendo innecesario todo
+lo que describe esta sección de HU-2.3 (que queda documentada solo como
+referencia histórica de qué se implementó originalmente).
 
 Cobertura actual:
 

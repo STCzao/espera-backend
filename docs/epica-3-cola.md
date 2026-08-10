@@ -1376,7 +1376,153 @@ para no mantener dos números arbitrarios distintos).
 - `tests/unit/queue/CreateServiceWindowUseCase.test.ts` (sección *límite por
   plan*)
 - `tests/unit/business/ConfigureBusinessServiceWindowsUseCase.test.ts`
-  (sección *límite por plan*)
+  (sección *límite por plan* — este archivo se eliminó en el bugfix
+  siguiente, ver abajo; el gateo del contador legado quedó sin efecto
+  práctico apenas después de agregarlo)
 
 Validación manual: pendiente (requiere `Subscription` real por plan en la
 base local).
+
+---
+
+## Bugfix — cierre del modelo de ventanillas, Fase A (2026-08-10)
+
+Rama: `bugfix/resolve-service-window-model-gap`.
+
+### Contexto
+
+`docs/epica-6-panel-negocio.md` (HU-6.3) ya documentaba como *"gap real"*
+la convivencia de dos modelos de ventanilla: el legado
+(`Business.activeServiceWindows`, un contador manual sin identidad) y el
+real (`ServiceWindow`, entidad propia por `Queue`, con CRUD y lógica de
+ocupación). La lectura de espera (`GetQueueStatusUseCase`/
+`GetQueueListUseCase`) ya priorizaba el modelo real y caía al legado solo
+como fallback si la `Queue` no tenía ninguna `ServiceWindow` creada — pero
+seguía siendo necesario: `ApproveBusinessUseCase` crea la primera `Queue`
+al aprobar un negocio, pero nunca creaba ninguna `ServiceWindow` real para
+ella, así que todo negocio nuevo dependía 100% del contador legado hasta
+que el dueño usara el CRUD nuevo por su cuenta.
+
+### Solución (Fase A — sin migración de schema)
+
+1. **El modelo real pasa a ser autosuficiente.** Tanto
+   `ApproveBusinessUseCase` (primera `Queue`, al aprobar) como
+   `CreateQueueUseCase` (`Queue` adicionales) crean ahora, en el mismo
+   flujo, una `ServiceWindow` por defecto (`"Ventanilla 1"`, tipo
+   `cashier`, activa) para la `Queue` recién creada. No se llama a
+   `EnsureServiceWindowCreationAllowedUseCase` para esta ventanilla
+   inicial — no hace falta: es siempre la primera de la `Queue` (conteo 0)
+   y todos los planes permiten al menos 1.
+2. **Se elimina el camino de escritura legado.** `PUT
+   /api/business/:businessId/service-windows`,
+   `ConfigureBusinessServiceWindowsUseCase` y su test se borraron por
+   completo — ya no hace falta, y mantenerlo solo perpetuaba la
+   convivencia de los dos modelos. Ver
+   `docs/epica-2-gestion-negocios.md` (HU-2.3, sección *"Superseded"*).
+
+### Qué quedó afuera de esta pasada (Fase B, ejecutada a continuación, ver abajo)
+
+`Business.activeServiceWindows` quedó en el schema como código inerte tras
+la Fase A. La Fase B (misma rama, ver sección siguiente) lo saca por
+completo.
+
+### Reglas de negocio
+
+1. Toda `Queue`, sin importar si nace automáticamente (aprobación) o se
+   crea manualmente (`CreateQueueUseCase`), tiene garantizada al menos 1
+   `ServiceWindow` real desde su creación.
+2. El fallback al contador legado en la lectura de espera pasa a ser
+   inalcanzable para cualquier `Queue` creada desde este bugfix en
+   adelante — solo sigue siendo relevante para datos de negocios/colas
+   creados antes de este cambio.
+
+### Cobertura
+
+- `tests/unit/business/ApproveBusinessUseCase.test.ts` (caso *creates a
+  default queue with a default service window*)
+- `tests/unit/queue/CreateQueueUseCase.test.ts` (caso *creates an
+  additional queue for the business, with a default service window*)
+
+Validación manual: pendiente.
+
+---
+
+## Bugfix — cierre del modelo de ventanillas, Fase B (2026-08-10)
+
+Misma rama que la Fase A: `bugfix/resolve-service-window-model-gap`.
+Migración `20260810010000_drop_business_active_service_windows`.
+
+### Alcance
+
+Con la Fase A garantizando que toda `Queue` nace con al menos 1
+`ServiceWindow` real, `Business.activeServiceWindows` pasó a ser código
+inerte (nunca más editable desde que se sacó el endpoint legado). La Fase B
+lo elimina por completo: campo de dominio, columna de base, y los 13
+archivos que todavía lo leían o le asignaban un default.
+
+```sql
+ALTER TABLE "businesses" DROP COLUMN "activeServiceWindows";
+```
+
+Sin backfill: sin datos de producción (pre-lanzamiento), no había nada que
+migrar.
+
+### La pregunta de diseño que apareció: ¿de qué `Queue` sale el número?
+
+`activeServiceWindows` era un solo entero **a nivel `Business`**, pero el
+modelo real es **por `Queue`** — y un negocio Pro/Premium puede tener
+varias. Dos casos que antes leían el contador legado directo del `Business`
+(`ListMyBusinessesUseCase`, `ResolveBusinessQrCodeUseCase`) no tenían
+ninguna `Queue` resuelta en absoluto. Se decidió reusar el mismo criterio
+que ya usa `ListMyBusinessesUseCase` para `activeQueueId`
+(`queueRepo.findActiveByBusinessId`): el número de ventanillas activas a
+nivel negocio es el conteo real de la `Queue` activa/principal, no una suma
+de todas las colas.
+
+### Cambios por archivo
+
+- **`Business.ts`** (domain) / **`PostgresBusinessRepo.ts`**: se saca el
+  campo por completo (tipo, `select`/mapeo, `save`).
+- **`RegisterBusinessUseCase`, `RegisterBusinessAccountUseCase`,
+  `RegisterBusinessWithGoogleUseCase`**: ya no asignan
+  `activeServiceWindows: 1` al crear el `Business`.
+- **`GetQueueStatusUseCase`, `GetQueueListUseCase`**: ya operan dentro de
+  una `Queue` puntual — se simplifica a usar directo el conteo de
+  `ServiceWindow` activas, sin el `? :` de fallback.
+  `GetQueueListUseCase` pierde la dependencia de `IBusinessRepo` por
+  completo (solo la usaba para el fallback).
+- **`GetMyTurnUseCase`**: leía el contador legado directo
+  (`business?.activeServiceWindows ?? 1`), sin mirar ninguna `ServiceWindow`
+  real. Gana `IServiceWindowRepo`, pierde `IBusinessRepo` (no lo usaba para
+  nada más).
+- **`ListMyBusinessesUseCase`**: ya resolvía `activeQueueId` vía
+  `queueRepo.findActiveByBusinessId` — se reusa esa resolución para contar
+  las `ServiceWindow` activas de esa misma `Queue`.
+- **`ResolveBusinessQrCodeUseCase`** (resolver público del QR): no tenía
+  ninguna noción de `Queue`. Gana `IQueueRepo` + `IServiceWindowRepo`
+  nuevos, resuelve la `Queue` activa del negocio antes de responder.
+- **`BusinessAvailabilityService`**: sin ningún caller real hoy (queda para
+  cuando se conecte una épica de descubrimiento público, E4/E7). Se adaptó
+  igual — `activeServiceWindowCount` pasa a ser un parámetro explícito del
+  input en vez de leerse de `business.activeServiceWindows`.
+
+### Reglas de negocio
+
+1. El "número de ventanillas activas" a nivel negocio (sin especificar
+   `Queue`) siempre se resuelve contra la `Queue` activa/principal — igual
+   criterio que `activeQueueId`. Un negocio sin `Queue` activa devuelve `0`.
+2. El contrato de las respuestas HTTP no cambió — `activeServiceWindows`
+   sigue siendo un `number` en los mismos endpoints (`GET /api/business/me`,
+   resolución de QR, `GET /api/queue/:queueId/status`, etc.), solo cambió
+   de dónde sale el valor.
+
+### Cobertura
+
+- `tests/unit/business/BusinessAvailabilityService.test.ts` (nueva firma)
+- `tests/unit/queue/GetMyTurnUseCase.test.ts`,
+  `GetQueueListUseCase.test.ts`, `GetQueueStatusUseCase.test.ts`
+  (ventanillas reales, sin fallback)
+- `tests/unit/business/ListMyBusinessesUseCase.test.ts`,
+  `ResolveBusinessQrCodeUseCase.test.ts` (resolución vía Queue activa)
+
+Validación manual: pendiente.

@@ -6,7 +6,6 @@ import { CreateQueueUseCase, ListBusinessQueuesUseCase } from "@modules/queue/pu
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
-import { ConfigureBusinessServiceWindowsUseCase } from "../application/ConfigureBusinessServiceWindowsUseCase";
 import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
 import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategoriesUseCase";
 import { GetBusinessCategoryConfigUseCase } from "../application/GetBusinessCategoryConfigUseCase";
@@ -37,7 +36,6 @@ export class BusinessController {
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
     private readonly configureBusinessHoursUseCase = new ConfigureBusinessHoursUseCase(),
     private readonly getBusinessHoursUseCase = new GetBusinessHoursUseCase(),
-    private readonly configureBusinessServiceWindowsUseCase = new ConfigureBusinessServiceWindowsUseCase(),
     private readonly getBusinessQrCodeUseCase = new GetBusinessQrCodeUseCase(),
     private readonly regenerateBusinessQrCodeUseCase = new RegenerateBusinessQrCodeUseCase(),
     private readonly generateBusinessQrPngUseCase = new GenerateBusinessQrPngUseCase(),
@@ -168,24 +166,6 @@ export class BusinessController {
     response.status(200).json(result);
   };
 
-  public configureServiceWindows = async (
-    request: Request,
-    response: Response
-  ): Promise<void> => {
-    const result = await this.configureBusinessServiceWindowsUseCase.execute({
-      ...request.body,
-      businessId: String(request.params.businessId),
-      ownerUserId: request.user?.id ?? "",
-    });
-    logger.info(
-      {
-        businessId: result.businessId,
-        activeServiceWindows: result.activeServiceWindows,
-      },
-      "Business service windows configured"
-    );
-    response.status(200).json(result);
-  };
 
   public updateOperationalStatus = async (
     request: Request,

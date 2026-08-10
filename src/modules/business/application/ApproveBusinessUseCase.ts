@@ -9,8 +9,8 @@ import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { IOrganizationRepo, ISubscriptionRepo } from "@modules/organization/public-api";
 import { PostgresOrganizationRepo, PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase } from "@modules/organization/public-api";
-import type { IQueueRepo } from "@modules/queue/public-api";
-import { PostgresQueueRepo } from "@modules/queue/public-api";
+import type { IQueueRepo, IServiceWindowRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import { computeBusinessCoherenceAlerts } from "./businessCoherence";
 import type { Business } from "../domain/Business";
@@ -39,6 +39,7 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
+    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
   ) {}
 
   public async execute(input: ApproveBusinessInput): Promise<Business> {
@@ -110,7 +111,7 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
 
     const existingQueue = await this.queueRepo.findActiveByBusinessId(business.id);
     if (!existingQueue) {
-      await this.queueRepo.save({
+      const queue = await this.queueRepo.save({
         id:         randomUUID(),
         businessId: business.id,
         name:       "Caja principal",
@@ -118,6 +119,19 @@ export class ApproveBusinessUseCase implements UseCase<ApproveBusinessInput, Bus
         isActive:   true,
         createdAt:  now,
         updatedAt:  now,
+      });
+
+      // Every Queue needs at least one real ServiceWindow to be usable —
+      // this is what makes it safe for wait-time estimation to rely only on
+      // real ServiceWindow rows, with no legacy fallback counter needed.
+      await this.windowRepo.save({
+        id:        randomUUID(),
+        queueId:   queue.id,
+        name:      "Ventanilla 1",
+        type:      "cashier",
+        isActive:  true,
+        createdAt: now,
+        updatedAt: now,
       });
     }
 

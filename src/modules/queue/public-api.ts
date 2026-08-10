@@ -2,8 +2,11 @@ export type { IQueueRepo } from "./domain/IQueueRepo";
 export type { Queue } from "./domain/Queue";
 export type { ITurnRepo } from "./domain/ITurnRepo";
 export type { Turn } from "./domain/Turn";
+export type { IServiceWindowRepo } from "./domain/IServiceWindowRepo";
+export type { ServiceWindow } from "./domain/ServiceWindow";
 export { PostgresQueueRepo } from "./infrastructure/PostgresQueueRepo";
 export { PostgresTurnRepo } from "./infrastructure/PostgresTurnRepo";
+export { PostgresServiceWindowRepo } from "./infrastructure/PostgresServiceWindowRepo";
 export { SocketIOEmitter } from "./infrastructure/realtime/SocketIOEmitter";
 
 export { CreateQueueUseCase } from "./application/CreateQueueUseCase";

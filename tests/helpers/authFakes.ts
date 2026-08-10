@@ -56,7 +56,6 @@ export const buildBusiness = (
   latitude: -34.6037,
   longitude: -58.3816,
   listingStatus: "draft",
-  activeServiceWindows: 1,
   operationalStatus: "normal",
   ownerUserId: "user-1",
   organizationId: "organization-1",
