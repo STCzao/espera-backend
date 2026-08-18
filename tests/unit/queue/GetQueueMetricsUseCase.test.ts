@@ -139,7 +139,22 @@ describe("GetQueueMetricsUseCase — peakHour", () => {
 
     const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
 
-    expect(result.today.peakHour).toBe(11);
+    // Buenos Aires is UTC-3 (no DST): the busiest UTC hour (11, with 3 turns)
+    // is 8am local — peakHour must reflect the business's local time, not UTC.
+    expect(result.today.peakHour).toBe(8);
+  });
+
+  it("reports the peak hour in the business's local time, not UTC", async () => {
+    // A single completed turn at 01:00 UTC is 22:00 the previous day in
+    // Buenos Aires (UTC-3) — this is exactly the case a naive getUTCHours()
+    // would get wrong (it would say "1", not "22").
+    const turnRepo = new InMemoryTurnRepo([
+      completedTurn("t-1", DATE_UTC, 1, 5),
+    ]);
+
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result.today.peakHour).toBe(22);
   });
 });
 

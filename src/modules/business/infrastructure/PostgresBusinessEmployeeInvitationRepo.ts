@@ -73,6 +73,16 @@ export class PostgresBusinessEmployeeInvitationRepo
     return invitation ? toDomain(invitation) : null;
   }
 
+  public async findPendingByBusinessId(
+    businessId: string,
+  ): Promise<BusinessEmployeeInvitation[]> {
+    const invitations = await prisma.businessEmployeeInvitation.findMany({
+      where: { businessId, status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+    });
+    return invitations.map(toDomain);
+  }
+
   public async save(
     entity: BusinessEmployeeInvitation,
   ): Promise<BusinessEmployeeInvitation> {

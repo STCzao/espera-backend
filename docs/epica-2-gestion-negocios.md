@@ -37,6 +37,7 @@ POST /api/business/:businessId/qr/regenerate
 GET /api/business/:businessId/qr.png
 POST /api/business/:businessId/employees/invitations
 GET /api/business/:businessId/employees
+GET /api/business/:businessId/employees/invitations
 DELETE /api/business/:businessId/employees/:userId
 ```
 
@@ -880,6 +881,7 @@ Endpoints panel:
 ```text
 POST /api/business/:businessId/employees/invitations
 GET /api/business/:businessId/employees
+GET /api/business/:businessId/employees/invitations
 DELETE /api/business/:businessId/employees/:userId
 ```
 
@@ -948,6 +950,36 @@ Respuesta esperada:
 - Revocar acceso marca la relación como `REVOKED` e invalida las refresh
   sessions activas del empleado.
 
+### Bugfix — visibilidad de invitaciones pendientes (`bugfix/panel-clarity-fixes`, 2026-08-10)
+
+`ListBusinessEmployeesUseCase` solo lista empleados ya activos (`status`
+hardcodeado a `"active"`) — no existía forma consultable de ver una
+invitación enviada que todavía no fue aceptada. Si el dueño invitaba a
+alguien y esa persona nunca abría el mail, no había ninguna señal de que
+algo quedó colgado.
+
+Nuevo endpoint, mismo permiso (`employee:manage`, ownership):
+
+```text
+GET /api/business/:businessId/employees/invitations
+```
+
+```json
+{
+  "businessId": "uuid",
+  "invitations": [
+    { "invitationId": "uuid", "email": "empleado@local.com", "invitedAt": "2026-08-10T00:00:00.000Z", "expiresAt": "2026-08-17T00:00:00.000Z" }
+  ]
+}
+```
+
+`ListPendingBusinessEmployeeInvitationsUseCase` (nuevo) filtra por
+`status: "pending"` **y** `expiresAt > now` en el propio use case — no
+confía únicamente en el estado persistido, porque nada pasa una invitación
+vencida a `EXPIRED` automáticamente (mismo espíritu de reconciliación
+perezosa que `ResolveEffectiveSubscriptionStatusUseCase` con el trial de
+`Subscription`).
+
 ### Documentación inline
 
 Se dejó contexto inline en los puntos donde la intención no es obvia solo por
@@ -962,6 +994,8 @@ tipos o nombres:
   promoción de usuarios existentes y reactivación de membresía.
 - `ListBusinessEmployeesUseCase`: documenta por qué el panel lista solo
   membresías activas.
+- `ListPendingBusinessEmployeeInvitationsUseCase`: documenta el gap que cierra
+  y por qué filtra `expiresAt` en vez de confiar en el status persistido.
 - `RevokeBusinessEmployeeUseCase`: documenta el alcance de la revocación de
   refresh sessions frente a access tokens ya emitidos.
 - Repositorios Postgres de empleados e invitaciones: documentan mapeo de enums,

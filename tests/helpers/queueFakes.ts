@@ -306,12 +306,10 @@ export class InMemoryTurnRepo implements ITurnRepo {
       .filter(
         (t) =>
           t.queueId === queueId &&
-          t.status === "completed" &&
-          t.turnDate.getTime() === date.getTime() &&
-          t.calledAt != null &&
-          t.attendedAt != null,
+          (t.status === "completed" || t.status === "cancelled") &&
+          t.turnDate.getTime() === date.getTime(),
       )
-      .sort((a, b) => a.attendedAt!.getTime() - b.attendedAt!.getTime())
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((t) => ({
         turnId:        t.id,
         displayNumber: t.displayNumber,
@@ -319,10 +317,12 @@ export class InMemoryTurnRepo implements ITurnRepo {
         guestName:     t.guestName ?? null,
         source:        t.source as TurnSource,
         priority:      t.priority as TurnPriority,
+        status:        t.status as "completed" | "cancelled",
         createdAt:     t.createdAt,
-        calledAt:      t.calledAt!,
-        attendedAt:    t.attendedAt!,
-        waitMinutes:   Math.round((t.calledAt!.getTime() - t.createdAt.getTime()) / 60_000),
+        calledAt:      t.calledAt ?? null,
+        attendedAt:    t.attendedAt ?? null,
+        cancelledAt:   t.cancelledAt ?? null,
+        waitMinutes:   t.calledAt ? Math.round((t.calledAt.getTime() - t.createdAt.getTime()) / 60_000) : null,
       }));
   }
 

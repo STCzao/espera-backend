@@ -8,4 +8,5 @@ export interface IBusinessEmployeeInvitationRepo
     businessId: string,
     email: string,
   ): Promise<BusinessEmployeeInvitation | null>;
+  findPendingByBusinessId(businessId: string): Promise<BusinessEmployeeInvitation[]>;
 }
