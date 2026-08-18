@@ -13,10 +13,12 @@ export interface TurnHistoryItem {
   guestName: string | null;
   source: TurnSource;
   priority: TurnPriority;
+  status: Extract<TurnStatus, "completed" | "cancelled">;
   createdAt: Date;
-  calledAt: Date;
-  attendedAt: Date;
-  waitMinutes: number;
+  calledAt: Date | null;
+  attendedAt: Date | null;
+  cancelledAt: Date | null;
+  waitMinutes: number | null;
 }
 
 export interface CreateTurnData {

@@ -53,6 +53,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("employee:manage"),
     controller.listEmployees
   );
+  businessRouter.get(
+    "/:businessId/employees/invitations",
+    authenticate,
+    authorize("employee:manage"),
+    controller.listPendingEmployeeInvitations
+  );
   businessRouter.delete(
     "/:businessId/employees/:userId",
     authenticate,

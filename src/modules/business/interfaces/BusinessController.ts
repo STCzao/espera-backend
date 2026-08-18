@@ -17,6 +17,7 @@ import { InviteBusinessEmployeeUseCase } from "../application/InviteBusinessEmpl
 import { ListAllBusinessesUseCase } from "../application/ListAllBusinessesUseCase";
 import { ListBusinessEmployeesUseCase } from "../application/ListBusinessEmployeesUseCase";
 import { ListMyBusinessesUseCase } from "../application/ListMyBusinessesUseCase";
+import { ListPendingBusinessEmployeeInvitationsUseCase } from "../application/ListPendingBusinessEmployeeInvitationsUseCase";
 import { ListPendingBusinessesUseCase } from "../application/ListPendingBusinessesUseCase";
 import { ReactivateBusinessUseCase } from "../application/ReactivateBusinessUseCase";
 import { RegenerateBusinessQrCodeUseCase } from "../application/RegenerateBusinessQrCodeUseCase";
@@ -44,6 +45,7 @@ export class BusinessController {
     private readonly getBusinessCategoryConfigUseCase = new GetBusinessCategoryConfigUseCase(),
     private readonly inviteBusinessEmployeeUseCase = new InviteBusinessEmployeeUseCase(),
     private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
+    private readonly listPendingBusinessEmployeeInvitationsUseCase = new ListPendingBusinessEmployeeInvitationsUseCase(),
     private readonly listMyBusinessesUseCase = new ListMyBusinessesUseCase(),
     private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
     private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase(),
@@ -123,6 +125,17 @@ export class BusinessController {
     response: Response
   ): Promise<void> => {
     const result = await this.listBusinessEmployeesUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    response.status(200).json(result);
+  };
+
+  public listPendingEmployeeInvitations = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.listPendingBusinessEmployeeInvitationsUseCase.execute({
       businessId: String(request.params.businessId),
       ownerUserId: request.user?.id ?? "",
     });

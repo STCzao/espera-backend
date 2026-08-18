@@ -10,6 +10,24 @@ import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+// Single-country product for now (Tucumán, Argentina) — same default timezone
+// already used in BusinessAvailabilityService. No per-business timezone field
+// exists yet; this hardcodes the same assumption instead of introducing one.
+const BUSINESS_TIME_ZONE = "America/Argentina/Buenos_Aires";
+
+const getLocalHour = (date: Date, timeZone: string): number => {
+  const hourPart = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    hour: "2-digit",
+    hour12: false,
+  })
+    .formatToParts(date)
+    .find((part) => part.type === "hour")?.value;
+  // "24" shows up for midnight with hour12:false in some environments —
+  // normalize it to 0 so it maps to a real hour-of-day bucket.
+  return Number(hourPart) % 24;
+};
+
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
   date: z
@@ -72,7 +90,7 @@ const computeMetrics = (raw: TurnDayRaw): DayMetrics => {
   if (completedCount > 0) {
     const countByHour = new Map<number, number>();
     for (const t of raw.completedTurns) {
-      const hour = t.startedAttentionAt.getUTCHours();
+      const hour = getLocalHour(t.startedAttentionAt, BUSINESS_TIME_ZONE);
       countByHour.set(hour, (countByHour.get(hour) ?? 0) + 1);
     }
     peakHour = [...countByHour.entries()].reduce((max, cur) =>

@@ -195,10 +195,20 @@ entrada, hora de atención y tiempo de espera real, filtrable por fecha.
 ### Cobertura real
 
 `GET /api/queue/:queueId/turns/history?date=YYYY-MM-DD`
-(`GetTurnHistoryUseCase`, ver `docs/epica-3-cola.md`) devuelve exactamente
-estos campos por turno completado: `turnId`, `displayNumber`,
-`customerName`/`guestName`, `source`, `priority`, `createdAt`, `calledAt`,
-`attendedAt`, `waitMinutes`.
+(`GetTurnHistoryUseCase`, ver `docs/epica-3-cola.md`) devuelve estos campos
+por turno: `turnId`, `displayNumber`, `customerName`/`guestName`, `source`,
+`priority`, `status`, `createdAt`, `calledAt`, `attendedAt`, `cancelledAt`,
+`waitMinutes`.
+
+**Bugfix (`bugfix/panel-clarity-fixes`, 2026-08-10):** el historial incluía
+solo turnos `completed` — un turno cancelado no dejaba ningún rastro
+consultable, aunque `GetQueueMetricsUseCase` sí cuenta `cancelledCount` en
+el agregado. Ahora `status` puede ser `"completed"` o `"cancelled"`;
+`calledAt`/`attendedAt`/`waitMinutes` pasan a ser `T | null` porque un turno
+cancelado puede no haber llegado a ser llamado. `waitMinutes` para un
+cancelado se calcula igual que para uno completado (`calledAt - createdAt`)
+cuando sí hubo `calledAt`; si nunca fue llamado, queda `null`. El orden
+cambió de `attendedAt` (que un cancelado nunca tiene) a `createdAt`.
 
 ### Gap
 
@@ -236,6 +246,13 @@ día y % de cancelaciones, con comparación contra el día anterior.
 
 `today`/`yesterday` en la misma respuesta ya resuelve el criterio de
 "comparar con ayer" sin un segundo request.
+
+**Bugfix (`bugfix/panel-clarity-fixes`, 2026-08-10):** `peakHour` se
+calculaba con `Date.getUTCHours()` — para un negocio en Argentina (UTC-3),
+mostraba la hora pico corrida hasta 3 horas de la real. Ahora se calcula en
+`America/Argentina/Buenos_Aires` (mismo default hardcodeado que ya usa
+`BusinessAvailabilityService`; no existe un campo de zona horaria por
+negocio, producto de un solo país por ahora).
 
 ### Gap
 

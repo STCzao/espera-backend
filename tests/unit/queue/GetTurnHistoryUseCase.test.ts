@@ -50,25 +50,67 @@ describe("GetTurnHistoryUseCase — listado", () => {
       displayNumber: "A-001",
       customerName:  null,
       guestName:     "Juan",
+      status:        "completed",
       calledAt,
       attendedAt,
       waitMinutes:   5,
     });
   });
 
-  it("excludes waiting, called and cancelled turns", async () => {
+  it("excludes waiting and called turns, but includes cancelled ones for traceability", async () => {
+    const cancelledAt = new Date("2026-01-15T09:03:00.000Z");
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-w", queueId: QUEUE_ID, status: "waiting",   turnDate: DATE_UTC }),
       buildTurn({ id: "t-c", queueId: QUEUE_ID, status: "called",    turnDate: DATE_UTC }),
-      buildTurn({ id: "t-x", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
+      buildTurn({ id: "t-x", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC, cancelledAt }),
       buildTurn({ id: "t-ok", queueId: QUEUE_ID, status: "completed", turnDate: DATE_UTC, calledAt, attendedAt }),
     ]);
     const useCase = buildUseCase({ turnRepo });
 
     const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
 
+    expect(result.map((r) => r.turnId).sort()).toEqual(["t-ok", "t-x"]);
+  });
+
+  it("returns a cancelled turn with a null attendedAt/waitMinutes and its cancelledAt", async () => {
+    const createdAt = new Date("2026-01-15T09:00:00.000Z");
+    const cancelledAt = new Date("2026-01-15T09:02:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-x", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC,
+        createdAt, cancelledAt, guestName: "María",
+      }),
+    ]);
+    const useCase = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+
     expect(result).toHaveLength(1);
-    expect(result[0].turnId).toBe("t-ok");
+    expect(result[0]).toMatchObject({
+      turnId:      "t-x",
+      status:      "cancelled",
+      calledAt:    null,
+      attendedAt:  null,
+      cancelledAt,
+      waitMinutes: null,
+    });
+  });
+
+  it("computes waitMinutes for a cancelled turn that was called before giving up", async () => {
+    const createdAt = new Date("2026-01-15T09:00:00.000Z");
+    const called     = new Date("2026-01-15T09:08:00.000Z"); // 8 min later
+    const cancelledAt = new Date("2026-01-15T09:09:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-x", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC,
+        createdAt, calledAt: called, cancelledAt,
+      }),
+    ]);
+    const useCase = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result[0].waitMinutes).toBe(8);
   });
 
   it("excludes turns from a different date", async () => {
@@ -100,14 +142,12 @@ describe("GetTurnHistoryUseCase — listado", () => {
     expect(result[0].turnId).toBe("t-today");
   });
 
-  it("orders results by attendedAt ascending", async () => {
-    const t1CalledAt   = new Date("2026-01-15T08:55:00.000Z");
-    const t1AttendedAt = new Date("2026-01-15T09:00:00.000Z");
-    const t2CalledAt   = new Date("2026-01-15T09:05:00.000Z");
-    const t2AttendedAt = new Date("2026-01-15T09:10:00.000Z");
+  it("orders results by createdAt ascending, regardless of status", async () => {
+    const t1CreatedAt = new Date("2026-01-15T08:50:00.000Z");
+    const t2CreatedAt = new Date("2026-01-15T09:00:00.000Z");
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "completed", turnDate: DATE_UTC, calledAt: t2CalledAt, attendedAt: t2AttendedAt }),
-      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "completed", turnDate: DATE_UTC, calledAt: t1CalledAt, attendedAt: t1AttendedAt }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC, createdAt: t2CreatedAt, cancelledAt: t2CreatedAt }),
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "completed", turnDate: DATE_UTC, createdAt: t1CreatedAt, calledAt, attendedAt }),
     ]);
     const useCase = buildUseCase({ turnRepo });
 

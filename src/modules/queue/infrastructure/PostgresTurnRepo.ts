@@ -258,16 +258,18 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]> {
+    // Includes cancelled turns alongside completed ones — the day's history
+    // should be traceable in full, not just the successful path. A cancelled
+    // turn may never have been called (calledAt null), so waitMinutes is only
+    // computed when there's a calledAt to measure against.
     const rows = await prisma.turn.findMany({
       where: {
         queueId,
         turnDate: date,
-        status: "COMPLETED",
-        calledAt: { not: null },
-        attendedAt: { not: null },
+        status: { in: ["COMPLETED", "CANCELLED"] },
       },
       include: { customer: { select: { firstName: true, lastName: true } } },
-      orderBy: { attendedAt: "asc" },
+      orderBy: { createdAt: "asc" },
     });
     return rows.map((row) => ({
       turnId:        row.id,
@@ -276,10 +278,12 @@ export class PostgresTurnRepo implements ITurnRepo {
       guestName:     row.guestName ?? null,
       source:        row.source.toLowerCase() as TurnSource,
       priority:      row.priority.toLowerCase().replace("_", "-") as TurnPriority,
+      status:        row.status.toLowerCase() as "completed" | "cancelled",
       createdAt:     row.createdAt,
-      calledAt:      row.calledAt!,
-      attendedAt:    row.attendedAt!,
-      waitMinutes:   Math.round((row.calledAt!.getTime() - row.createdAt.getTime()) / 60_000),
+      calledAt:      row.calledAt,
+      attendedAt:    row.attendedAt,
+      cancelledAt:   row.cancelledAt,
+      waitMinutes:   row.calledAt ? Math.round((row.calledAt.getTime() - row.createdAt.getTime()) / 60_000) : null,
     }));
   }
 

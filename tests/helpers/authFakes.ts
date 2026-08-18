@@ -526,6 +526,14 @@ export class InMemoryBusinessEmployeeInvitationRepo
     );
   }
 
+  public async findPendingByBusinessId(
+    businessId: string,
+  ): Promise<BusinessEmployeeInvitation[]> {
+    return [...this.invitations.values()]
+      .filter((invitation) => invitation.businessId === businessId && invitation.status === "pending")
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
   public async save(
     entity: BusinessEmployeeInvitation,
   ): Promise<BusinessEmployeeInvitation> {
