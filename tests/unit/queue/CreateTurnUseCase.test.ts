@@ -56,8 +56,8 @@ describe("CreateTurnUseCase", () => {
     const turnRepo = new InMemoryTurnRepo();
     const { useCase } = buildUseCase({ turnRepo });
 
-    const first = await useCase.execute({ queueId: QUEUE_ID });
-    const second = await useCase.execute({ queueId: QUEUE_ID });
+    const first = await useCase.execute({ queueId: QUEUE_ID, guestName: "Turno 1" });
+    const second = await useCase.execute({ queueId: QUEUE_ID, guestName: "Turno 2" });
 
     expect(first.displayNumber).toBe("A-001");
     expect(second.displayNumber).toBe("A-002");
@@ -70,7 +70,7 @@ describe("CreateTurnUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ queueRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" });
 
     expect(result.displayNumber).toBe("B-001");
   });
@@ -79,7 +79,7 @@ describe("CreateTurnUseCase", () => {
     const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
@@ -90,7 +90,7 @@ describe("CreateTurnUseCase", () => {
     const { useCase } = buildUseCase({ queueRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACCEPTING_TURNS" });
   });
 
@@ -101,7 +101,7 @@ describe("CreateTurnUseCase", () => {
     const { useCase } = buildUseCase({ businessRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_NOT_ACCEPTING_CUSTOMERS" });
   });
 
@@ -112,7 +112,7 @@ describe("CreateTurnUseCase", () => {
     const { useCase } = buildUseCase({ businessRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OPERATIONAL_STATUS_BLOCKED" });
   });
 
@@ -123,7 +123,7 @@ describe("CreateTurnUseCase", () => {
     const { useCase } = buildUseCase({ businessRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OPERATIONAL_STATUS_BLOCKED" });
   });
 
@@ -142,13 +142,30 @@ describe("CreateTurnUseCase", () => {
     ).rejects.toMatchObject({ statusCode: 409, code: "CUSTOMER_HAS_ACTIVE_TURN" });
   });
 
-  it("allows a guest turn without customerId", async () => {
-    const { useCase } = buildUseCase();
+  it("allows a guest turn identified by guestName instead of customerId", async () => {
+    const { useCase, turnRepo } = buildUseCase();
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan Pérez" });
 
     expect(result.turnId).toBeDefined();
     expect(result.displayNumber).toBe("A-001");
+    expect(turnRepo.all()[0]).toMatchObject({ guestName: "Juan Pérez", source: "web", customerId: undefined });
+  });
+
+  it("tags an authenticated turn with source app", async () => {
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(turnRepo.all()[0]).toMatchObject({ source: "app", customerId: CUSTOMER_ID });
+  });
+
+  it("throws BAD_REQUEST when neither customerId nor guestName is given", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID }),
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("allows a customer who has a called turn (not waiting) to take a new turn", async () => {

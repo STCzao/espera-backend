@@ -9,10 +9,15 @@ import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
-const schema = z.object({
-  queueId: z.string().uuid("Invalid queue id."),
-  customerId: z.string().uuid().optional(),
-});
+const schema = z
+  .object({
+    queueId: z.string().uuid("Invalid queue id."),
+    customerId: z.string().uuid().optional(),
+    guestName: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine((data) => Boolean(data.customerId) || Boolean(data.guestName), {
+    message: "Either customerId or guestName is required.",
+  });
 
 export type CreateTurnInput = z.infer<typeof schema>;
 
@@ -71,8 +76,9 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
       queueId: parsed.data.queueId,
       businessId: queue.businessId,
       customerId: parsed.data.customerId,
+      guestName: parsed.data.guestName,
       priority: "registered",
-      source: "app",
+      source: parsed.data.customerId ? "app" : "web",
       turnDate: todayUTC(),
       prefix: queue.prefix,
     });

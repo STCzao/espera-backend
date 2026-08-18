@@ -6,10 +6,12 @@ import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
+import { CreateGuestTurnUseCase } from "../application/CreateGuestTurnUseCase";
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
 import { CreateServiceWindowUseCase } from "../application/CreateServiceWindowUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { DeleteServiceWindowUseCase } from "../application/DeleteServiceWindowUseCase";
+import { GetGuestTurnStatusUseCase } from "../application/GetGuestTurnStatusUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
 import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
@@ -40,6 +42,8 @@ export class QueueController {
     private readonly updateServiceWindowUseCase = new UpdateServiceWindowUseCase(),
     private readonly deleteServiceWindowUseCase = new DeleteServiceWindowUseCase(),
     private readonly redirectTurnUseCase = new RedirectTurnUseCase(),
+    private readonly createGuestTurnUseCase = new CreateGuestTurnUseCase(),
+    private readonly getGuestTurnStatusUseCase = new GetGuestTurnStatusUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -55,6 +59,22 @@ export class QueueController {
     const result = await this.getMyTurnUseCase.execute({
       queueId: String(request.params.queueId),
       customerId: String(request.user?.id),
+    });
+    response.status(200).json(result);
+  };
+
+  public createGuestTurn = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.createGuestTurnUseCase.execute({
+      businessId: String(request.body.businessId),
+      guestName:  String(request.body.guestName),
+    });
+    logger.info({ turnId: result.turnId, queueId: result.queueId }, "Guest turn created (HU-4.2)");
+    response.status(201).json(result);
+  };
+
+  public getGuestTurnStatus = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.getGuestTurnStatusUseCase.execute({
+      turnId: String(request.params.turnId),
     });
     response.status(200).json(result);
   };
