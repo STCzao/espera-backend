@@ -2,15 +2,18 @@ import { Router } from "express";
 
 import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
+import { rateLimiter } from "../../../middleware/rateLimiter";
 import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
+import { CreateGuestTurnUseCase } from "../application/CreateGuestTurnUseCase";
 import { CreateManualTurnUseCase } from "../application/CreateManualTurnUseCase";
 import { CreateServiceWindowUseCase } from "../application/CreateServiceWindowUseCase";
 import { CreateTurnUseCase } from "../application/CreateTurnUseCase";
 import { DeleteServiceWindowUseCase } from "../application/DeleteServiceWindowUseCase";
+import { GetGuestTurnStatusUseCase } from "../application/GetGuestTurnStatusUseCase";
 import { GetMyTurnUseCase } from "../application/GetMyTurnUseCase";
 import { GetQueueListUseCase } from "../application/GetQueueListUseCase";
 import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
@@ -43,9 +46,15 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new UpdateServiceWindowUseCase(),
     new DeleteServiceWindowUseCase(),
     new RedirectTurnUseCase(undefined, undefined, emitter),
+    new CreateGuestTurnUseCase(),
+    new GetGuestTurnStatusUseCase(),
   );
 
   const router = Router();
+
+  // Public — HU-4.2, no session (web ligera / QR sin app).
+  router.post("/guest-turns", rateLimiter, controller.createGuestTurn);
+  router.get("/guest-turns/:turnId", controller.getGuestTurnStatus);
 
   router.get("/:queueId/status", authenticate, authorize("queue:read"), controller.getQueueStatus);
   router.get("/:queueId/metrics", authenticate, authorize("queue:read"), controller.getQueueMetrics);

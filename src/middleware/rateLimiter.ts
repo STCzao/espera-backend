@@ -36,6 +36,8 @@ const getPolicy = (request: Request): RateLimitPolicy | null => {
       return { bucket: "forgot-password", limit: 3, windowSeconds: 15 * 60 };
     case "/refresh-token":
       return { bucket: "refresh-token", limit: 20, windowSeconds: 10 * 60 };
+    case "/guest-turns":
+      return { bucket: "guest-turns", limit: 5, windowSeconds: 10 * 60 };
     default:
       return null;
   }
