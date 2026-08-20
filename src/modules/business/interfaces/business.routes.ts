@@ -107,6 +107,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("queue:read"),
     controller.listQueues
   );
+  businessRouter.patch(
+    "/:businessId/queues/:queueId/toggle",
+    authenticate,
+    authorize("queue:configure"),
+    controller.toggleQueue
+  );
   businessRouter.get(
     "/pending",
     authenticate,

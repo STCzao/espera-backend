@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
 import type { SocketIOEmitter } from "@modules/queue/public-api";
-import { CreateQueueUseCase, ListBusinessQueuesUseCase } from "@modules/queue/public-api";
+import { CreateQueueUseCase, ListBusinessQueuesUseCase, ToggleQueueUseCase } from "@modules/queue/public-api";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
@@ -34,6 +34,7 @@ export class BusinessController {
     private readonly registerBusinessUseCase = new RegisterBusinessUseCase(),
     private readonly createQueueUseCase = new CreateQueueUseCase(),
     private readonly listBusinessQueuesUseCase = new ListBusinessQueuesUseCase(),
+    private readonly toggleQueueUseCase = new ToggleQueueUseCase(),
     private readonly updateBusinessProfileUseCase = new UpdateBusinessProfileUseCase(),
     private readonly configureBusinessHoursUseCase = new ConfigureBusinessHoursUseCase(),
     private readonly getBusinessHoursUseCase = new GetBusinessHoursUseCase(),
@@ -334,6 +335,15 @@ export class BusinessController {
       businessId: String(request.params.businessId),
       ownerUserId: request.user?.id ?? "",
     });
+    response.status(200).json(result);
+  };
+
+  public toggleQueue = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.toggleQueueUseCase.execute({
+      queueId: String(request.params.queueId),
+      ownerUserId: request.user?.id ?? "",
+    });
+    logger.info({ queueId: result.id, isActive: result.isActive }, "Queue toggled");
     response.status(200).json(result);
   };
 

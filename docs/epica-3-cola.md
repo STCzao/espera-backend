@@ -1244,6 +1244,64 @@ Validación manual: pendiente (requiere una Organization en plan Pro/Premium
 con un Business aprobado, para crear una segunda cola real contra Postgres
 local).
 
+## Refinamiento — activar/desactivar una cola existente (bugfix, 2026-08-20)
+
+Rama: `bugfix/queue-activation-toggle`. Reportado desde el frontend
+(`espera-front`, al revisar un bug de alineación en `QueuesControl.jsx`):
+se puede listar y crear colas, pero no gestionarlas después — ni panel ni
+API tenían forma de tocar `isActive` una vez creada la cola, a diferencia
+de `ServiceWindow`, que ya tiene CRUD completo (crear, activar/desactivar,
+editar, borrar).
+
+### Contrato backend
+
+```text
+PATCH /api/business/:businessId/queues/:queueId/toggle   queue:configure
+```
+
+Devuelve la `Queue` actualizada (`200`), mismo patrón que
+`PATCH /:queueId/windows/:windowId/toggle` de ventanillas.
+
+### Implementación backend
+
+- `ToggleQueueUseCase` (`queue/application/`) — valida ownership (mismo
+  patrón que `CreateQueueUseCase`/`ToggleServiceWindowUseCase`), invierte
+  `isActive`.
+- A diferencia de `ToggleServiceWindowUseCase`, **no hay chequeo de
+  ocupación**: `isActive` en `Queue` solo bloquea la creación de turnos
+  nuevos (`CreateTurnUseCase`) — no interrumpe a nadie ya esperando/siendo
+  atendido, así que desactivar una cola en cualquier momento es seguro para
+  quien ya está en la fila.
+- Sí hay una regla nueva: **no se puede desactivar la única cola activa de
+  un negocio** (`409 QUEUE_LAST_ACTIVE`). Motivo:
+  `IQueueRepo.findActiveByBusinessId` resuelve "la" cola que opera todo
+  punto de entrada en vivo (panel, QR, web, manual) tomando la más antigua
+  con `isActive: true` — si un negocio se queda sin ninguna cola activa,
+  todos esos puntos de entrada se rompen en silencio, sin ningún error
+  visible para el dueño. Con plan basic (el único vendido hasta ahora, una
+  sola cola por negocio) este es exactamente el caso que el botón nuevo en
+  el panel podría disparar por accidente.
+
+### Pregunta abierta, no resuelta en este bugfix
+
+`findActiveByBusinessId` elige la cola activa **más antigua** cuando hay
+más de una — no hay forma de elegir cuál opera, ni de operar una cola que
+no sea "la activa" desde ningún lado del panel. Con el toggle nuevo, un
+negocio con 2 colas activas *puede* efectivamente "cambiar" cuál se opera
+desactivando la que no quiere usar — pero es un efecto lateral del toggle,
+no un flujo pensado. Qué significa operar más de una cola en el panel
+(¿pestañas para elegir cola en "Cola"? ¿ventanillas atadas a una cola
+específica?) queda sin decidir — no bloquea a nadie hoy porque plan basic
+(lo único vendido) nunca tiene más de una cola.
+
+### Cobertura
+
+- `tests/unit/queue/ToggleQueueUseCase.test.ts`
+
+595 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.
