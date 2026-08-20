@@ -60,20 +60,28 @@ export const buildQueue = (overrides: Partial<Queue> = {}): Queue => ({
   ...overrides,
 });
 
-export const buildTurn = (overrides: Partial<Turn> = {}): Turn => ({
-  id: "turn-1",
-  queueId: "queue-1",
-  businessId: "business-1",
-  number: 1,
-  displayNumber: "A-001",
-  status: "waiting",
-  priority: "registered",
-  source: "app",
-  turnDate: new Date("2026-01-01T00:00:00.000Z"),
-  createdAt: new Date("2026-01-01T00:00:00.000Z"),
-  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-  ...overrides,
-});
+export const buildTurn = (overrides: Partial<Turn> = {}): Turn => {
+  // Defaults to whatever createdAt ends up being, same as every real turn
+  // except a phone reservation with a declared ETA — so tests that only
+  // override createdAt (most of them, predating queueJoinedAt) keep working
+  // without having to also repeat queueJoinedAt everywhere.
+  const createdAt = overrides.createdAt ?? new Date("2026-01-01T00:00:00.000Z");
+  return {
+    id: "turn-1",
+    queueId: "queue-1",
+    businessId: "business-1",
+    number: 1,
+    displayNumber: "A-001",
+    status: "waiting",
+    priority: "registered",
+    source: "app",
+    turnDate: new Date("2026-01-01T00:00:00.000Z"),
+    queueJoinedAt: createdAt,
+    createdAt,
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+};
 
 export class InMemoryQueueRepo implements IQueueRepo {
   private readonly queues = new Map<string, Queue>();
@@ -132,12 +140,14 @@ export class InMemoryTurnRepo implements ITurnRepo {
       businessId: data.businessId,
       customerId: data.customerId,
       guestName: data.guestName,
+      phone: data.phone,
       number,
       displayNumber,
       status: "waiting",
       priority: data.priority,
       source: data.source,
       turnDate: data.turnDate,
+      queueJoinedAt: data.queueJoinedAt,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -156,7 +166,9 @@ export class InMemoryTurnRepo implements ITurnRepo {
     waiting.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
       const pb = PRIORITY_RANK[b.priority] ?? 5;
-      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+      if (pa !== pb) return pa - pb;
+      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+      return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return waiting[0] ?? null;
   }
@@ -217,7 +229,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       .sort((a, b) => b.turnCount - a.turnCount);
   }
 
-  public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {
+  public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
     const PRIORITY_RANK: Record<string, number> = {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,
     };
@@ -226,7 +238,9 @@ export class InMemoryTurnRepo implements ITurnRepo {
       if (t.queueId !== queueId || t.status !== "waiting") return false;
       const theirRank = PRIORITY_RANK[t.priority] ?? 5;
       if (theirRank < myRank) return true;
-      if (theirRank === myRank && t.number < turnNumber) return true;
+      if (theirRank !== myRank) return false;
+      if (t.queueJoinedAt.getTime() < queueJoinedAt.getTime()) return true;
+      if (t.queueJoinedAt.getTime() === queueJoinedAt.getTime() && t.number < turnNumber) return true;
       return false;
     }).length;
   }
@@ -260,13 +274,18 @@ export class InMemoryTurnRepo implements ITurnRepo {
     active.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
       const pb = PRIORITY_RANK[b.priority] ?? 5;
-      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+      if (pa !== pb) return pa - pb;
+      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+      return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return active.map((t) => ({
       turnId: t.id,
       displayNumber: t.displayNumber,
       customerName: null,
       guestName: t.guestName ?? null,
+      queueJoinedAt: t.queueJoinedAt,
+      phone: t.phone ?? null,
+      source: t.source as TurnSource,
       priority: t.priority as TurnPriority,
       status: t.status as "waiting" | "called" | "attending" | "redirected",
       createdAt: t.createdAt,

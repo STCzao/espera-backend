@@ -86,6 +86,44 @@ describe("GetQueueListUseCase — lista de turnos", () => {
     });
   });
 
+  it("includes phone and source, so the panel can show a phone-reservation tag (HU-4.5)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-1", queueId: QUEUE_ID, turnDate: TODAY,
+        source: "phone", phone: "+54 381 555-1234", priority: "registered",
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.items[0]).toMatchObject({ source: "phone", phone: "+54 381 555-1234" });
+  });
+
+  it("does not let an early phone reservation with a long ETA outrank someone who registers live in between (HU-4.5 fairness)", async () => {
+    const base = TODAY.getTime();
+    const turnRepo = new InMemoryTurnRepo([
+      // Reservation taken at 9am for a 6-hour-later arrival (created early,
+      // but queueJoinedAt reflects the declared ETA).
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, priority: "registered",
+        createdAt: new Date(base), queueJoinedAt: new Date(base + 6 * 60 * 60 * 1000), turnDate: TODAY,
+      }),
+      // Someone who registers live an hour after the call — should rank
+      // ahead of the phone reservation, since they'll actually be there
+      // first.
+      buildTurn({
+        id: "t-live", queueId: QUEUE_ID, priority: "registered",
+        createdAt: new Date(base + 60 * 60 * 1000), turnDate: TODAY,
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.items.map((i) => i.turnId)).toEqual(["t-live", "t-phone"]);
+  });
+
   it("includes guestName for manual turns", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, guestName: "Juan Pérez", source: "manual", turnDate: TODAY }),

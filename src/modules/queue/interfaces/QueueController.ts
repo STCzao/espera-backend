@@ -88,10 +88,13 @@ export class QueueController {
 
   public createManualTurn = async (request: Request, response: Response): Promise<void> => {
     const result = await this.createManualTurnUseCase.execute({
-      queueId:   String(request.params.queueId),
-      guestName: String(request.body.guestName),
+      queueId:    String(request.params.queueId),
+      guestName:  String(request.body.guestName),
+      phone:      request.body.phone ? String(request.body.phone) : undefined,
+      source:     request.body.source,
+      etaMinutes: request.body.etaMinutes !== undefined ? Number(request.body.etaMinutes) : undefined,
     });
-    logger.info({ turnId: result.turnId, queueId: result.queueId }, "Manual turn created");
+    logger.info({ turnId: result.turnId, queueId: result.queueId, source: result.source }, "Manual turn created");
     response.status(201).json(result);
   };
 

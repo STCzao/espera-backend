@@ -1526,3 +1526,83 @@ de todas las colas.
   `ResolveBusinessQrCodeUseCase.test.ts` (resolución vía Queue activa)
 
 Validación manual: pendiente.
+
+---
+
+## Refinamiento — `queueJoinedAt`, separado de `createdAt` (2026-08-18)
+
+Rama: `feature/hu-4.5-turno-reservado-por-telefono`. Migración
+`20260818010000_add_queue_joined_at`. Motivado por HU-4.5 (ver
+`docs/epica-4-canales-entrada.md`), pero el cambio toca el núcleo del
+ordenamiento de cola de Épica 3, no solo ese canal puntual.
+
+### El problema
+
+Todo el ordenamiento de la cola (`findNextWaitingTurn`, `countWaitingAhead`,
+`findActiveByQueue`) usaba `Turn.createdAt` como criterio FIFO dentro de
+cada nivel de prioridad — razonable mientras `createdAt` siempre coincidía
+con "el momento en que la persona efectivamente se sumó a la cola". Eso
+dejó de ser cierto con HU-4.5: una reserva telefónica puede tomarse horas
+antes de que la persona vaya a estar físicamente ahí. Usar `createdAt` para
+ordenarla le daba una posición injustamente temprana frente a cualquiera
+que se registrara en vivo en el medio — le "robaba" el lugar a gente que
+iba a llegar antes en la realidad.
+
+### La solución
+
+`Turn` gana `queueJoinedAt: Date` — desde cuándo el turno cuenta para
+posición/estimado, distinto de `createdAt` (que sigue siendo un timestamp
+de auditoría puro, "cuándo se registró este turno"). Para todo turno
+existente (app, QR, web, manual walk-in) `queueJoinedAt === createdAt`, sin
+cambio de comportamiento. Solo diverge para una reserva telefónica con
+`etaMinutes` declarado: `queueJoinedAt = createdAt + etaMinutes`.
+
+Todo el ordenamiento que antes usaba `createdAt` pasa a usar
+`queueJoinedAt`, con `number` (el ticket secuencial) como desempate cuando
+dos turnos tienen el mismo `queueJoinedAt` exacto (frecuente cuando no se
+declara demora — varios turnos pueden compartir el instante de registro):
+
+- `findNextWaitingTurn` (a quién le toca al llamar "Siguiente").
+- `countWaitingAhead` (posición de un turno específico, usado por
+  `GetMyTurnUseCase`/`GetGuestTurnStatusUseCase` vía `resolveTurnWaitStatus`)
+  — su firma cambió de `(queueId, turnNumber, priority)` a
+  `(queueId, queueJoinedAt, turnNumber, priority)`.
+- `findActiveByQueue` (listado en vivo del panel, `GetQueueListUseCase`).
+
+`GetQueueListUseCase.waitingMinutes` también pasa a calcularse contra
+`queueJoinedAt` en vez de `createdAt` — para una reserva telefónica que
+todavía no llegó a su ETA, da **negativo** a propósito (significa "llega en
+X minutos", no "espera hace X minutos"); el panel debe interpretarlo así,
+no clampearlo a 0.
+
+### Por qué no alcanzaba con corregir solo `priority`
+
+Se había corregido primero que una reserva telefónica reciba
+`priority: "registered"` en vez de `"physical"` (no salta delante de gente
+presente o en camino). Eso resuelve el salto *entre* niveles de prioridad,
+pero no el orden *dentro* del nivel `"registered"` — ahí seguía mandando
+`createdAt`, y una reserva tomada temprano seguía ganándole a un registro
+en vivo posterior. `queueJoinedAt` es lo que cierra ese segundo hueco.
+
+### Alternativa descartada: confirmación en dos pasos
+
+Se evaluó un modelo de "reserva" separado de "cola" — el turno telefónico
+entra en un estado inerte y solo empieza a contar cuando el empleado
+confirma después que la persona está en camino (mismo mecanismo que ya usa
+la app para `confirm-transit`). Se descartó: exige una segunda acción del
+empleado en un momento distinto de la llamada original, fricción operativa
+real para el objetivo de "una sola llamada, listo". `etaMinutes` resuelve
+el mismo problema en un solo paso, en el momento de la llamada.
+
+### Cobertura
+
+- `tests/unit/queue/CreateManualTurnUseCase.test.ts` (sección *etaMinutes y
+  queueJoinedAt (fairness)*)
+- `tests/unit/queue/GetQueueListUseCase.test.ts` (caso *no le gana la
+  posición a alguien que se registra en vivo en el medio*)
+- Resto de la suite de `queue` (`GetMyTurnUseCase`, `GetQueueStatusUseCase`,
+  `CreateTurnUseCase`, etc.) sigue en verde sin cambios de comportamiento
+  para turnos sin `etaMinutes` — `queueJoinedAt` colapsa a `createdAt` en
+  todos esos casos.
+
+Validación manual: pendiente.

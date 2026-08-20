@@ -71,6 +71,102 @@ describe("CreateManualTurnUseCase — creación exitosa", () => {
   });
 });
 
+describe("CreateManualTurnUseCase — reserva por teléfono (HU-4.5)", () => {
+  it("creates a phone-sourced turn with priority registered, not physical", async () => {
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone", phone: "+54 381 555-1234" });
+
+    const turn = turnRepo.all()[0];
+    expect(turn.source).toBe("phone");
+    // The whole point of the fix: a phone reservation must NOT jump ahead of
+    // people already waiting or on their way — same priority as any other
+    // remote/unconfirmed turn (app/QR/web).
+    expect(turn.priority).toBe("registered");
+    expect(turn.phone).toBe("+54 381 555-1234");
+  });
+
+  it("returns phone and source in the output", async () => {
+    const { useCase } = buildUseCase();
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone", phone: "+54 381 555-1234" });
+
+    expect(result).toMatchObject({ phone: "+54 381 555-1234", source: "phone" });
+  });
+
+  it("returns phone: null when no phone is given for a walk-in", async () => {
+    const { useCase } = buildUseCase();
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan" });
+
+    expect(result).toMatchObject({ phone: null, source: "manual" });
+  });
+
+  it("still allows a phone-sourced turn without a phone number", async () => {
+    // phone is optional even for source "phone" — e.g. staff took the call
+    // but the caller didn't want to share a number to be reachable at.
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone" });
+
+    const turn = turnRepo.all()[0];
+    expect(turn.source).toBe("phone");
+    expect(turn.priority).toBe("registered");
+    expect(turn.phone).toBeUndefined();
+  });
+
+  it("throws 400 for an invalid source value", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "qr" as never }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("CreateManualTurnUseCase — etaMinutes y queueJoinedAt (fairness)", () => {
+  it("sets queueJoinedAt to now when no etaMinutes is given for a phone reservation", async () => {
+    const before = new Date();
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone" });
+
+    const turn = turnRepo.all()[0];
+    expect(turn.queueJoinedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+  });
+
+  it("pushes queueJoinedAt into the future by etaMinutes for a phone reservation", async () => {
+    const before = new Date();
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone", etaMinutes: 360 });
+
+    const turn = turnRepo.all()[0];
+    const deltaMinutes = (turn.queueJoinedAt.getTime() - before.getTime()) / 60_000;
+    expect(deltaMinutes).toBeGreaterThan(359);
+    expect(deltaMinutes).toBeLessThan(361);
+  });
+
+  it("ignores etaMinutes for a walk-in (source manual) — always joins now", async () => {
+    const before = new Date();
+    const { useCase, turnRepo } = buildUseCase();
+
+    await useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", etaMinutes: 360 });
+
+    const turn = turnRepo.all()[0];
+    const deltaMinutes = (turn.queueJoinedAt.getTime() - before.getTime()) / 60_000;
+    expect(deltaMinutes).toBeLessThan(1);
+  });
+
+  it("throws 400 for a negative etaMinutes", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Juan", source: "phone", etaMinutes: -5 }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
 describe("CreateManualTurnUseCase — errores", () => {
   it("throws 404 when the queue does not exist", async () => {
     const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });

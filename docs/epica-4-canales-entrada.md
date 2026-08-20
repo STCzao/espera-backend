@@ -7,7 +7,8 @@ flujo principal de la app (Épica 3): escanear el QR del negocio, sacar turno
 sin tener la app instalada, agregar un turno manual desde el panel, e
 integrar un dispensador físico numerado.
 
-Alcance total: `18 pts` (4 historias).
+Alcance total: `18 pts` (4 historias del backlog original) + HU-4.5, agregada
+fuera de backlog para el piloto (ver esa sección).
 
 Formato de referencia: `docs/story-documentation-standard.md`
 
@@ -21,14 +22,17 @@ Formato de referencia: `docs/story-documentation-standard.md`
 - **HU-4.4** (dispensador físico) queda sin implementar — depende de un
   protocolo de hardware que no está definido en ningún documento del
   proyecto. Ver sección al final.
+- **HU-4.5** (reserva por teléfono/WhatsApp, sin bot) — no está en el
+  backlog v2.4, se agregó puntualmente antes de salir a probar con negocios
+  reales. Ver sección al final.
 
 ## Contratos principales de la épica
 
 ```text
-GET  /api/qr/:token                     público            → HU-4.1 (ya existía, Épica 2)
-POST /api/queue/:queueId/turns/manual   turn:create_manual → HU-4.3 (ya existía, Épica 3)
-POST /api/queue/guest-turns             público, rate-limit → HU-4.2 (nuevo)
-GET  /api/queue/guest-turns/:turnId     público            → HU-4.2 (nuevo)
+GET   /api/qr/:token                     público             → HU-4.1 (ya existía, Épica 2)
+POST  /api/queue/:queueId/turns/manual   turn:create_manual  → HU-4.3 (ya existía, Épica 3) + HU-4.5 (nuevo)
+POST  /api/queue/guest-turns             público, rate-limit → HU-4.2 (nuevo)
+GET   /api/queue/guest-turns/:turnId     público             → HU-4.2 (nuevo)
 ```
 
 ---
@@ -220,8 +224,12 @@ quiere usar la web ligera, directamente desde el panel.
 
 `POST /api/queue/:queueId/turns/manual` (`CreateManualTurnUseCase`, ver
 `docs/epica-3-cola.md`) ya cubre esto — turno con `guestName`, prioridad
-`physical`, `source: "manual"`, compite en la misma cola unificada que los
-turnos virtuales.
+`physical`, `source: "manual"` (default), compite en la misma cola unificada
+que los turnos virtuales.
+
+**Extendido en HU-4.5** (ver esa sección): el mismo endpoint ahora también
+acepta `source: "phone"` para reservas telefónicas — con `priority:
+"registered"` en vez de `"physical"`, para no colarse en la cola.
 
 ### Gap
 
@@ -252,8 +260,148 @@ tener que rehacerla por completo apenas se defina el hardware real.
 
 Una decisión de producto/hardware (qué dispensador, cómo se comunica) antes
 de escribir código. Hasta entonces, queda documentada como la única historia
-pendiente de esta épica.
+del backlog original pendiente de esta épica.
 
 ### Cobertura
 
 N/A — no implementada.
+
+---
+
+## HU-4.5 - Reservar turno por teléfono/WhatsApp (piloto)
+
+Story points: sin asignar — no está en el backlog v2.4, se agregó como
+pedido puntual antes de salir a validar con negocios reales.
+
+Estado: `implementado`.
+
+### Contexto de producto
+
+Un relevamiento con usuarios finales mostró que solo usarían la app si les
+ahorra tiempo real — y hasta esta historia, el único flujo sin app (HU-4.2,
+web ligera) igual requiere estar parado en el local para escanear el QR. La
+única forma de ahorrarle tiempo de verdad a alguien es dejarlo reservar sin
+estar presente: llama por teléfono o escribe por WhatsApp (atendido por una
+persona del local, no un bot), un empleado lo anota en la cola, y la persona
+se acerca recién cuando está por llegar su turno.
+
+Deliberadamente chico: no es un sistema de turnos con horario fijo (nada de
+slots/calendario) — es la misma cola en vivo de siempre (FIFO dentro de cada
+prioridad), solo que alguien la cargó por la persona en vez de que ella
+escaneara el QR.
+
+### Decisiones de alcance
+
+**No se creó ningún concepto nuevo.** `Turn.source` (`TurnSource`) ya
+distinguía canales de entrada (`app`/`manual`/`qr`/`web`) — `"phone"` es la
+extensión natural, no un campo redundante. La única pieza que faltaba era
+conectar ese canal a la creación manual de turnos.
+
+**Gap 1 encontrado y corregido de paso:** `CreateManualTurnUseCase` hardcodeaba
+`priority: "physical"` para *todo* turno manual, sin distinguir "está parado
+en el mostrador" de "llamó por teléfono". Si se agregaba `source: "phone"`
+sin corregir esto, cada reserva telefónica se habría colado en la cola por
+delante de gente que ya estaba esperando o en camino. La corrección:
+un turno `source: "phone"` recibe `priority: "registered"` — la misma que ya
+usa cualquier turno remoto (app/QR/web) que todavía no confirmó nada.
+
+**Gap 2, más sutil — orden dentro de la prioridad `"registered"`:**
+corregir la prioridad no alcanza. El orden FIFO dentro de un mismo nivel de
+prioridad se resolvía por `createdAt` — el momento en que el empleado tipeó
+el turno, no el momento en que la persona va a llegar. Una reserva tomada a
+las 9am para una llegada a las 15hs quedaba, aun con `priority: "registered"`
+corregida, por delante de cualquiera que sacara turno en vivo a las 10, 11,
+12, 13 o 14hs — le robaba el lugar a gente que iba a llegar antes en la
+realidad. Ver `docs/epica-3-cola.md` para el detalle completo de la
+corrección (`queueJoinedAt` separado de `createdAt`).
+
+**Explícitamente fuera de alcance:** nada de horario/slot fijo (un sistema
+real de turnos con calendario es un producto distinto, no un canal de
+entrada a esta misma cola); nada de integración con WhatsApp Business API
+(la reserva la toma una persona, no un bot). El "tiempo de gracia" si la
+persona no aparece cuando le toca sigue resolviéndose a ojo con "Cancelar
+turno" — no hay datos reales todavía para diseñar bien esa regla, y
+`etaMinutes` (ver abajo) ya resuelve el problema de fondo (el orden) sin
+necesitar una segunda acción de "confirmar que viene en camino".
+
+### Contrato backend
+
+```text
+POST /api/queue/:queueId/turns/manual   turn:create_manual
+```
+
+Request body (todos los campos nuevos opcionales, compatible con el uso
+existente de HU-4.3):
+
+```json
+{
+  "guestName": "Juan Pérez",
+  "phone": "+54 381 555-1234",
+  "source": "phone",
+  "etaMinutes": 20
+}
+```
+
+`source` acepta `"manual"` (default, walk-in físico) o `"phone"` (reserva
+remota). `phone` es opcional incluso con `source: "phone"` — el empleado
+pudo haber tomado el llamado sin pedir el número. `etaMinutes` (0-1440,
+opcional, default 0) es "¿en cuánto tiempo decís que llegás?", preguntado
+en la misma llamada — se ignora por completo si `source` no es `"phone"`
+(un walk-in ya está ahí).
+
+Response `201`:
+
+```json
+{
+  "turnId": "uuid",
+  "queueId": "uuid",
+  "displayNumber": "A-007",
+  "guestName": "Juan Pérez",
+  "phone": "+54 381 555-1234",
+  "source": "phone",
+  "position": 7
+}
+```
+
+`GET /api/queue/:queueId/turns` (`GetQueueListUseCase`, listado en vivo del
+panel) ahora también devuelve `phone` y `source` por turno — sin esto,
+guardar el teléfono no le serviría de nada al empleado, que es literalmente
+el motivo por el que se pidió el campo ("tenerlo a mano para volver a
+llamar").
+
+### Modelo y persistencia
+
+Dos migraciones:
+
+- `20260818000000_add_phone_reservation_channel`: agrega `"PHONE"` a
+  `TurnSource` (mismo patrón que ganó `TurnStatus.REDIRECTED`, ver
+  `docs/epica-3-cola.md`) y columna `phone` (nullable) en `turns`.
+- `20260818010000_add_queue_joined_at`: agrega `Turn.queueJoinedAt`
+  (`DateTime`, no nulo, backfillada con `createdAt` para filas existentes).
+  Ver `docs/epica-3-cola.md` para el detalle completo de qué significa este
+  campo y qué use cases/queries se migraron para usarlo en vez de
+  `createdAt` a la hora de ordenar la cola.
+
+### Reglas de negocio
+
+1. `source: "manual"` (default) → `priority: "physical"` — sin cambios,
+   walk-in físico sigue saltando delante de turnos remotos sin confirmar.
+2. `source: "phone"` → `priority: "registered"` — no altera el orden de la
+   cola frente a los demás turnos remotos.
+3. `queueJoinedAt = createdAt + etaMinutes` (solo para `source: "phone"`;
+   para todo lo demás, `queueJoinedAt === createdAt`). Es el campo que
+   determina la posición real dentro de la cola — no `createdAt`.
+4. `phone` no dispara ninguna automatización (nada de SMS/WhatsApp API) —
+   es solo dato visible para el empleado.
+
+### Cobertura
+
+- `tests/unit/queue/CreateManualTurnUseCase.test.ts` (secciones *reserva por
+  teléfono* — incluye el caso central: `source: "phone"` → `priority:
+  "registered"`, no `"physical"` — y *etaMinutes y queueJoinedAt (fairness)*)
+- `tests/unit/queue/GetQueueListUseCase.test.ts` (caso *phone y source en
+  el listado en vivo*, y el caso de fairness end-to-end: una reserva
+  telefónica con ETA largo no le gana la posición a alguien que se registra
+  en vivo en el medio)
+
+Validación manual: pendiente (piloto con negocios reales).

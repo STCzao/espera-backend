@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
-import type { TurnPriority } from "../domain/Turn";
+import type { TurnPriority, TurnSource } from "../domain/Turn";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
@@ -22,6 +22,8 @@ export interface QueueListItem {
   displayNumber: string;
   customerName: string | null;
   guestName: string | null;
+  phone: string | null;
+  source: TurnSource;
   priority: TurnPriority;
   status: "waiting" | "called" | "attending" | "redirected";
   waitingMinutes: number;
@@ -95,9 +97,15 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
           displayNumber:        s.displayNumber,
           customerName:         s.customerName,
           guestName:            s.guestName,
+          phone:                s.phone,
+          source:               s.source,
           priority:             s.priority,
           status:               s.status,
-          waitingMinutes:       Math.floor((now.getTime() - s.createdAt.getTime()) / 60_000),
+          // Negative for a phone reservation with a declared ETA that
+          // hasn't arrived yet (HU-4.5) — it hasn't "been waiting", it's
+          // due to join in that many minutes. The panel should read a
+          // negative value as "llega en X min", not as elapsed wait time.
+          waitingMinutes:       Math.floor((now.getTime() - s.queueJoinedAt.getTime()) / 60_000),
           estimatedWaitMinutes,
           serviceWindowId:      s.serviceWindowId,
           serviceWindowName:    s.serviceWindowId ? (windowNameById.get(s.serviceWindowId) ?? null) : null,
