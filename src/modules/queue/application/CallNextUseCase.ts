@@ -3,10 +3,8 @@ import { z } from "zod";
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IQueueRepo } from "../domain/IQueueRepo";
-import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
-import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
@@ -26,7 +24,6 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
-    private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
   ) {}
 
@@ -38,33 +35,18 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
     if (!queue.isActive) throw AppError.conflict("This queue is not active.", "QUEUE_NOT_ACTIVE");
 
-    // A turn still "called" here was never confirmed as attending. That's
-    // only fair to treat as a no-show if it actually had somewhere to go —
-    // calling someone else forward while every active window is still busy
-    // with the previous person (the "heads up, start walking" overlap) must
-    // not punish them for a window that was never free in the first place.
+    // A turn still "called" must be resolved explicitly — attended via
+    // AttendTurnUseCase, or marked absent via MarkTurnNoShowUseCase — before
+    // the queue can advance. This used to auto-supersede to "no_show" as a
+    // silent side effect of calling next; the business wants that to be a
+    // deliberate decision, not something that happens because someone
+    // tapped "next" for any other reason.
     const calledTurn = await this.turnRepo.findCalledTurnByQueue(parsed.data.queueId);
     if (calledTurn) {
-      const activeWindows = (await this.windowRepo.findByQueueId(parsed.data.queueId))
-        .filter((w) => w.isActive);
-      if (activeWindows.length > 0) {
-        const occupants = await Promise.all(
-          activeWindows.map((w) => this.turnRepo.findAttendingByServiceWindow(w.id)),
-        );
-        const hadFreeWindow = occupants.some((occupant) => occupant === null);
-        if (!hadFreeWindow) {
-          throw AppError.conflict(
-            "The currently called turn hasn't had a free service window yet — can't call another one forward.",
-            "QUEUE_NO_WINDOW_AVAILABLE",
-          );
-        }
-      }
-
-      await this.turnRepo.save({
-        ...calledTurn,
-        status: "no_show",
-        noShowAt: new Date(),
-      });
+      throw AppError.conflict(
+        "Resolve the currently called turn first — attend it or mark it as no-show.",
+        "TURN_STILL_CALLED",
+      );
     }
 
     const next = await this.turnRepo.findNextWaitingTurn(parsed.data.queueId);

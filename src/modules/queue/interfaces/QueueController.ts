@@ -18,6 +18,7 @@ import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
 import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
 import { ListServiceWindowsUseCase } from "../application/ListServiceWindowsUseCase";
+import { MarkTurnNoShowUseCase } from "../application/MarkTurnNoShowUseCase";
 import { RedirectTurnUseCase } from "../application/RedirectTurnUseCase";
 import { ToggleServiceWindowUseCase } from "../application/ToggleServiceWindowUseCase";
 import { UpdateServiceWindowUseCase } from "../application/UpdateServiceWindowUseCase";
@@ -42,6 +43,7 @@ export class QueueController {
     private readonly updateServiceWindowUseCase = new UpdateServiceWindowUseCase(),
     private readonly deleteServiceWindowUseCase = new DeleteServiceWindowUseCase(),
     private readonly redirectTurnUseCase = new RedirectTurnUseCase(),
+    private readonly markTurnNoShowUseCase = new MarkTurnNoShowUseCase(),
     private readonly createGuestTurnUseCase = new CreateGuestTurnUseCase(),
     private readonly getGuestTurnStatusUseCase = new GetGuestTurnStatusUseCase(),
   ) {}
@@ -186,6 +188,14 @@ export class QueueController {
       targetServiceWindowId: String(request.body.targetServiceWindowId),
     });
     logger.info({ turnId: result.turnId, serviceWindowId: result.serviceWindowId }, "Turn redirected to another service window");
+    response.status(200).json(result);
+  };
+
+  public markTurnNoShow = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.markTurnNoShowUseCase.execute({
+      turnId: String(request.params.turnId),
+    });
+    logger.info({ turnId: result.turnId }, "Turn marked as no-show");
     response.status(200).json(result);
   };
 

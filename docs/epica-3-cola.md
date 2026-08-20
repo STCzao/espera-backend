@@ -1355,6 +1355,81 @@ patrón que `AttendTurnUseCase`).
 
 Validación manual: pendiente.
 
+**Superado por el refinamiento siguiente** ("no_show como acción
+explícita", 2026-08-20): el dueño del negocio prefirió que el no-show sea
+una decisión manual del empleado, no un efecto automático de "Siguiente".
+El chequeo de `QUEUE_NO_WINDOW_AVAILABLE` descripto acá ya no vive en
+`CallNextUseCase` — `CallNextUseCase` ahora bloquea directo con
+`TURN_STILL_CALLED` en cuanto hay un turno `called` sin resolver, sin
+llegar a evaluar ventanillas. La pregunta de fairness (¿tuvo ventanilla
+libre alguna vez?) queda documentada ahí, con la decisión de no
+trasladarla al nuevo endpoint manual.
+
+## Refinamiento — no_show como acción explícita, no efecto secundario (2026-08-20)
+
+Rama: `bugfix/no-show-accion-explicita`. Reportado desde el frontend, con
+la frase textual del dueño: *"marcar ausente para que no aparezca en la
+trazabilidad como 'sin ventanilla'"*. El estado `no_show` (agregado en
+`500e91a`) resolvía la trazabilidad — un turno llamado que nunca se
+atendió ya no queda mal etiquetado como `completed` — pero lo marcaba
+**automáticamente e implícitamente**: si `CallNextUseCase` encontraba un
+turno todavía `called`, lo pisaba a `no_show` en el mismo paso, sin que el
+empleado hubiera confirmado nada. Eso incluía el fix de fairness recién
+descripto (`397c90f`) — el número quedaba correcto, pero la *intención*
+detrás de la marca no estaba clara: pudo haber sido un no-show real, o
+simplemente el empleado avanzando la cola por cualquier otro motivo.
+
+### Contrato backend
+
+```text
+POST /api/queue/:queueId/turns/:turnId/no-show   turn:mark_no_show
+```
+
+Solo válido si el turno está en `called` (`409 TURN_NOT_CALLED` en
+cualquier otro estado, mismo patrón que `AttendTurnUseCase`). Devuelve
+`{ turnId, status: "no_show", noShowAt }` (`200`).
+
+### Implementación backend
+
+- `MarkTurnNoShowUseCase` (`queue/application/`) — nuevo caso de uso,
+  literalmente la misma lógica que antes vivía agachada dentro de
+  `CallNextUseCase` (`status: "no_show"`, `noShowAt: now()`), ahora como
+  acción propia.
+- **Sin chequeo de fairness/disponibilidad de ventanilla, a propósito**: ese
+  chequeo existe para evitar que el *sistema* castigue a alguien por un
+  disparador mecánico ciego. Una vez que es el empleado quien decide
+  explícitamente "esta persona no está", tiene mejor información que la
+  heurística — exigirle esa validación sería fricción contra una decisión
+  humana deliberada. Quedó marcado como criterio a decidir en el pedido
+  original; esta es la resolución.
+- `CallNextUseCase` deja de auto-resolver: si `findCalledTurnByQueue`
+  encuentra un turno `called`, rechaza toda la acción con `409
+  TURN_STILL_CALLED` ("Resolvé el turno llamado antes de pedir el
+  siguiente — atendelo o marcalo ausente"), sin tocar nada. Pierde su
+  dependencia de `IServiceWindowRepo` (ya no la necesita — ver nota arriba).
+- Nuevo permiso `turn:mark_no_show`, otorgado a `employee` y
+  `business_admin` (mismos roles que `turn:attend`).
+
+### Reglas de negocio
+
+1. Un turno `called` es un estado que ahora **bloquea** el avance de la
+   cola hasta resolverse — vía `AttendTurnUseCase` (called → attending) o
+   `MarkTurnNoShowUseCase` (called → no_show). Ya no hay tercera vía
+   implícita.
+2. El resto de la lógica de `no_show` (métricas `noShowCount`/
+   `noShowRate`, historial, el fix de `GetGuestTurnStatusUseCase`) no
+   cambia — esto solo mueve *cómo* se dispara la transición.
+
+### Cobertura
+
+- `tests/unit/queue/MarkTurnNoShowUseCase.test.ts` (nuevo)
+- `tests/unit/queue/CallNextUseCase.test.ts` (bloque *resolver el turno
+  llamado antes de avanzar* — reemplaza el bloque de fairness anterior)
+
+608 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.
