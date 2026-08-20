@@ -10,6 +10,7 @@ const toTurn = (raw: {
   businessId: string;
   customerId: string | null;
   guestName: string | null;
+  phone: string | null;
   serviceWindowId: string | null;
   number: number;
   displayNumber: string;
@@ -17,6 +18,7 @@ const toTurn = (raw: {
   priority: string;
   source: string;
   turnDate: Date;
+  queueJoinedAt: Date;
   calledAt: Date | null;
   startedAttentionAt: Date | null;
   attendedAt: Date | null;
@@ -29,6 +31,7 @@ const toTurn = (raw: {
   businessId: raw.businessId,
   customerId: raw.customerId ?? undefined,
   guestName: raw.guestName ?? undefined,
+  phone: raw.phone ?? undefined,
   serviceWindowId: raw.serviceWindowId ?? undefined,
   number: raw.number,
   displayNumber: raw.displayNumber,
@@ -36,6 +39,7 @@ const toTurn = (raw: {
   priority: raw.priority.toLowerCase().replace("_", "-") as TurnPriority,
   source: raw.source.toLowerCase() as TurnSource,
   turnDate: raw.turnDate,
+  queueJoinedAt: raw.queueJoinedAt,
   calledAt: raw.calledAt ?? undefined,
   startedAttentionAt: raw.startedAttentionAt ?? undefined,
   attendedAt: raw.attendedAt ?? undefined,
@@ -48,7 +52,7 @@ const toPriorityEnum = (p: TurnPriority) =>
   p.toUpperCase().replace("-", "_") as "ARRIVED" | "PHYSICAL" | "IN_TRANSIT" | "REGISTERED";
 
 const toSourceEnum = (s: TurnSource) =>
-  s.toUpperCase() as "APP" | "MANUAL" | "QR" | "WEB";
+  s.toUpperCase() as "APP" | "MANUAL" | "QR" | "WEB" | "PHONE";
 
 export class PostgresTurnRepo implements ITurnRepo {
   public async findById(id: string): Promise<Turn | null> {
@@ -75,12 +79,14 @@ export class PostgresTurnRepo implements ITurnRepo {
           businessId: data.businessId,
           customerId: data.customerId ?? null,
           guestName: data.guestName ?? null,
+          phone: data.phone ?? null,
           number,
           displayNumber,
           status: "WAITING",
           priority: toPriorityEnum(data.priority),
           source: toSourceEnum(data.source),
           turnDate: data.turnDate,
+          queueJoinedAt: data.queueJoinedAt,
         },
       });
 
@@ -94,12 +100,14 @@ export class PostgresTurnRepo implements ITurnRepo {
     };
     const rows = await prisma.turn.findMany({
       where: { queueId, status: "WAITING" },
-      orderBy: { createdAt: "asc" },
+      orderBy: { queueJoinedAt: "asc" },
     });
     const sorted = rows.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
       const pb = PRIORITY_RANK[b.priority] ?? 5;
-      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+      if (pa !== pb) return pa - pb;
+      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+      return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return sorted[0] ? toTurn(sorted[0]) : null;
   }
@@ -158,7 +166,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       .sort((a, b) => b.turnCount - a.turnCount);
   }
 
-  public async countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number> {
+  public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
     const PRIORITY_ORDER = ["ARRIVED", "PHYSICAL", "IN_TRANSIT", "REGISTERED"] as const;
     const priorityEnum = toPriorityEnum(priority);
     const myRank = PRIORITY_ORDER.indexOf(priorityEnum);
@@ -171,7 +179,13 @@ export class PostgresTurnRepo implements ITurnRepo {
       : Promise.resolve(0);
 
     const countSame = prisma.turn.count({
-      where: { queueId, status: "WAITING", priority: priorityEnum, number: { lt: turnNumber } },
+      where: {
+        queueId, status: "WAITING", priority: priorityEnum,
+        OR: [
+          { queueJoinedAt: { lt: queueJoinedAt } },
+          { queueJoinedAt, number: { lt: turnNumber } },
+        ],
+      },
     });
 
     const [ahead, sameAhead] = await Promise.all([countHigher, countSame]);
@@ -205,12 +219,14 @@ export class PostgresTurnRepo implements ITurnRepo {
     const rows = await prisma.turn.findMany({
       where: { queueId, status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] } },
       include: { customer: { select: { firstName: true, lastName: true } } },
-      orderBy: { createdAt: "asc" },
+      orderBy: { queueJoinedAt: "asc" },
     });
     rows.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
       const pb = PRIORITY_RANK[b.priority] ?? 5;
-      return pa !== pb ? pa - pb : a.createdAt.getTime() - b.createdAt.getTime();
+      if (pa !== pb) return pa - pb;
+      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+      return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return rows.map((row) => ({
       turnId: row.id,
@@ -219,9 +235,12 @@ export class PostgresTurnRepo implements ITurnRepo {
         ? `${row.customer.firstName} ${row.customer.lastName}`.trim()
         : null,
       guestName: row.guestName ?? null,
+      phone: row.phone ?? null,
+      source: row.source.toLowerCase() as TurnSource,
       priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
       status: row.status.toLowerCase() as "waiting" | "called" | "attending" | "redirected",
       createdAt: row.createdAt,
+      queueJoinedAt: row.queueJoinedAt,
       serviceWindowId: row.serviceWindowId ?? null,
       startedAttentionAt: row.startedAttentionAt ?? null,
     }));

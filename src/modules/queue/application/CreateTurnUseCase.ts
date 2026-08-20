@@ -81,6 +81,7 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
       source: parsed.data.customerId ? "app" : "web",
       turnDate: todayUTC(),
       prefix: queue.prefix,
+      queueJoinedAt: new Date(),
     });
 
     return {

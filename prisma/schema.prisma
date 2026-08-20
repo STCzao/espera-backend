@@ -110,6 +110,7 @@ enum TurnSource {
   MANUAL
   QR
   WEB
+  PHONE
 }
 
 enum SubscriptionPlan {
@@ -430,12 +431,14 @@ model Turn {
   businessId    String
   customerId    String?
   guestName     String?
+  phone         String?
   number        Int
   displayNumber String
   status        TurnStatus   @default(WAITING)
   priority      TurnPriority @default(REGISTERED)
   source        TurnSource   @default(APP)
   turnDate      DateTime
+  queueJoinedAt DateTime     @default(now())
   serviceWindowId      String?
   calledAt             DateTime?
   startedAttentionAt   DateTime?

@@ -44,7 +44,7 @@ export const resolveTurnWaitStatus = async (
 
   const today = todayUTC();
   const [ahead, windows, avgMinutes] = await Promise.all([
-    deps.turnRepo.countWaitingAhead(turn.queueId, turn.number, turn.priority),
+    deps.turnRepo.countWaitingAhead(turn.queueId, turn.queueJoinedAt, turn.number, turn.priority),
     deps.windowRepo.findByQueueId(turn.queueId),
     deps.turnRepo.getAverageServiceMinutes(turn.queueId, today),
   ]);

@@ -26,10 +26,12 @@ export interface CreateTurnData {
   businessId: string;
   customerId?: string;
   guestName?: string;
+  phone?: string;
   priority: TurnPriority;
   source: TurnSource;
   turnDate: Date;
   prefix: string;
+  queueJoinedAt: Date;
 }
 
 export interface ActiveTurnSummary {
@@ -37,9 +39,12 @@ export interface ActiveTurnSummary {
   displayNumber: string;
   customerName: string | null;
   guestName: string | null;
+  phone: string | null;
+  source: TurnSource;
   priority: TurnPriority;
   status: Extract<TurnStatus, "waiting" | "called" | "attending" | "redirected">;
   createdAt: Date;
+  queueJoinedAt: Date;
   serviceWindowId: string | null;
   startedAttentionAt: Date | null;
 }
@@ -68,7 +73,10 @@ export interface ITurnRepo extends Repository<Turn> {
   findCalledTurnByQueue(queueId: string): Promise<Turn | null>;
   findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null>;
   findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null>;
-  countWaitingAhead(queueId: string, turnNumber: number, priority: TurnPriority): Promise<number>;
+  // turnNumber is the tiebreaker for turns whose queueJoinedAt is exactly
+  // equal (common when a delay isn't declared — several turns can share the
+  // same registration instant).
+  countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number>;
   getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null>;
   findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]>;
   findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]>;
