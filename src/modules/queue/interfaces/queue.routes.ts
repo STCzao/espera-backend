@@ -20,6 +20,7 @@ import { GetQueueMetricsUseCase } from "../application/GetQueueMetricsUseCase";
 import { GetQueueStatusUseCase } from "../application/GetQueueStatusUseCase";
 import { GetTurnHistoryUseCase } from "../application/GetTurnHistoryUseCase";
 import { ListServiceWindowsUseCase } from "../application/ListServiceWindowsUseCase";
+import { MarkTurnNoShowUseCase } from "../application/MarkTurnNoShowUseCase";
 import { RedirectTurnUseCase } from "../application/RedirectTurnUseCase";
 import { ToggleServiceWindowUseCase } from "../application/ToggleServiceWindowUseCase";
 import { UpdateServiceWindowUseCase } from "../application/UpdateServiceWindowUseCase";
@@ -30,7 +31,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   const controller = new QueueController(
     new CreateTurnUseCase(),
     new GetMyTurnUseCase(),
-    new CallNextUseCase(undefined, undefined, undefined, emitter),
+    new CallNextUseCase(undefined, undefined, emitter),
     new CancelTurnUseCase(undefined, emitter),
     new ConfirmTurnStatusUseCase(undefined, emitter),
     new GetQueueListUseCase(),
@@ -46,6 +47,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new UpdateServiceWindowUseCase(),
     new DeleteServiceWindowUseCase(),
     new RedirectTurnUseCase(undefined, undefined, emitter),
+    new MarkTurnNoShowUseCase(undefined, emitter),
     new CreateGuestTurnUseCase(),
     new GetGuestTurnStatusUseCase(),
   );
@@ -70,6 +72,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   router.post("/:queueId/turns/:turnId/cancel", authenticate, authorize("turn:cancel_any"), controller.cancelTurnByEmployee);
   router.post("/:queueId/turns/:turnId/attend", authenticate, authorize("turn:attend"), controller.attendTurn);
   router.post("/:queueId/turns/:turnId/redirect", authenticate, authorize("turn:attend"), controller.redirectTurn);
+  router.post("/:queueId/turns/:turnId/no-show", authenticate, authorize("turn:mark_no_show"), controller.markTurnNoShow);
 
   router.get("/:queueId/windows",                    authenticate, authorize("queue:read"),      controller.listServiceWindows);
   router.post("/:queueId/windows",                   authenticate, authorize("queue:configure"), controller.createServiceWindow);
