@@ -14,3 +14,6 @@ export type { CreateQueueInput } from "./application/CreateQueueUseCase";
 
 export { ListBusinessQueuesUseCase } from "./application/ListBusinessQueuesUseCase";
 export type { ListBusinessQueuesInput } from "./application/ListBusinessQueuesUseCase";
+
+export { ToggleQueueUseCase } from "./application/ToggleQueueUseCase";
+export type { ToggleQueueInput } from "./application/ToggleQueueUseCase";

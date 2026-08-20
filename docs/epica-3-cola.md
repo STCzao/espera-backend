@@ -1244,6 +1244,117 @@ Validación manual: pendiente (requiere una Organization en plan Pro/Premium
 con un Business aprobado, para crear una segunda cola real contra Postgres
 local).
 
+## Refinamiento — activar/desactivar una cola existente (bugfix, 2026-08-20)
+
+Rama: `bugfix/queue-activation-toggle`. Reportado desde el frontend
+(`espera-front`, al revisar un bug de alineación en `QueuesControl.jsx`):
+se puede listar y crear colas, pero no gestionarlas después — ni panel ni
+API tenían forma de tocar `isActive` una vez creada la cola, a diferencia
+de `ServiceWindow`, que ya tiene CRUD completo (crear, activar/desactivar,
+editar, borrar).
+
+### Contrato backend
+
+```text
+PATCH /api/business/:businessId/queues/:queueId/toggle   queue:configure
+```
+
+Devuelve la `Queue` actualizada (`200`), mismo patrón que
+`PATCH /:queueId/windows/:windowId/toggle` de ventanillas.
+
+### Implementación backend
+
+- `ToggleQueueUseCase` (`queue/application/`) — valida ownership (mismo
+  patrón que `CreateQueueUseCase`/`ToggleServiceWindowUseCase`), invierte
+  `isActive`.
+- A diferencia de `ToggleServiceWindowUseCase`, **no hay chequeo de
+  ocupación**: `isActive` en `Queue` solo bloquea la creación de turnos
+  nuevos (`CreateTurnUseCase`) — no interrumpe a nadie ya esperando/siendo
+  atendido, así que desactivar una cola en cualquier momento es seguro para
+  quien ya está en la fila.
+- Sí hay una regla nueva: **no se puede desactivar la única cola activa de
+  un negocio** (`409 QUEUE_LAST_ACTIVE`). Motivo:
+  `IQueueRepo.findActiveByBusinessId` resuelve "la" cola que opera todo
+  punto de entrada en vivo (panel, QR, web, manual) tomando la más antigua
+  con `isActive: true` — si un negocio se queda sin ninguna cola activa,
+  todos esos puntos de entrada se rompen en silencio, sin ningún error
+  visible para el dueño. Con plan basic (el único vendido hasta ahora, una
+  sola cola por negocio) este es exactamente el caso que el botón nuevo en
+  el panel podría disparar por accidente.
+
+### Pregunta abierta, no resuelta en este bugfix
+
+`findActiveByBusinessId` elige la cola activa **más antigua** cuando hay
+más de una — no hay forma de elegir cuál opera, ni de operar una cola que
+no sea "la activa" desde ningún lado del panel. Con el toggle nuevo, un
+negocio con 2 colas activas *puede* efectivamente "cambiar" cuál se opera
+desactivando la que no quiere usar — pero es un efecto lateral del toggle,
+no un flujo pensado. Qué significa operar más de una cola en el panel
+(¿pestañas para elegir cola en "Cola"? ¿ventanillas atadas a una cola
+específica?) queda sin decidir — no bloquea a nadie hoy porque plan basic
+(lo único vendido) nunca tiene más de una cola.
+
+### Cobertura
+
+- `tests/unit/queue/ToggleQueueUseCase.test.ts`
+
+595 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
+## Refinamiento — fairness del no_show cuando la ventanilla nunca estuvo libre (2026-08-20)
+
+Misma rama. Pregunta del usuario al revisar el caso "alguien está siendo
+atendido y se llama a otro": *¿debería primero terminar de atender antes de
+poder llamar al siguiente?* Análisis: no — `called` y `attending` son
+estados separados justamente para permitir ese solape (el "aviso, andá
+saliendo de tu casa" que es la razón de ser del producto), y ya existe el
+chequeo de ocupación de ventanilla que evita que dos turnos terminen
+`attending` en el mismo lugar. Pero de ahí surgió un hueco real y más
+general en `CallNextUseCase`: **marca `no_show` al turno `called` vigente
+por el solo hecho de tocar "Siguiente" de nuevo, sin verificar si esa
+persona alguna vez tuvo una ventanilla libre para ser atendida.**
+
+Escenario concreto: cola con una sola ventanilla. A está `attending`. Se
+llama a B (queda `called`, sin ventanilla libre — A la sigue ocupando). Si
+se toca "Siguiente" otra vez antes de que A termine, B pasaba a `no_show`
+— aunque nunca tuvo dónde ir. El hueco no es sobre el primer llamado (ese
+es intencional y se mantiene sin cambios), es sobre **superar** a alguien
+que sigue `called` sin haber tenido nunca una ventanilla disponible.
+
+### Fix
+
+Antes de marcar `no_show` al turno `called` vigente, `CallNextUseCase`
+ahora chequea si la cola tiene ventanillas activas y, si las tiene, si
+alguna está libre (sin ningún turno `attending`/`redirected` ocupándola)
+en este momento:
+
+- Si hay una ventanilla libre → el turno `called` sí tuvo su chance y no se
+  presentó, se marca `no_show` como antes.
+- Si ninguna está libre → **se rechaza la acción completa** (`409
+  QUEUE_NO_WINDOW_AVAILABLE`), no solo se salta el no-show. No tiene
+  sentido llamar a un tercero cuando el segundo ni siquiera tuvo dónde ir
+  todavía.
+- Si la cola no tiene ventanillas activas configuradas (mostrador único,
+  igual que en los refinamientos anteriores) → se mantiene el
+  comportamiento anterior sin cambios, el concepto de "ventanilla libre" no
+  aplica ahí.
+
+`CallNextUseCase` gana una dependencia de `IServiceWindowRepo` (mismo
+patrón que `AttendTurnUseCase`).
+
+### Cobertura
+
+- `tests/unit/queue/CallNextUseCase.test.ts` (bloque *fairness del no_show
+  (ventanilla nunca libre)* — 4 casos: primer llamado con ventanilla
+  ocupada sigue funcionando, se rechaza superar a alguien sin ventanilla
+  libre, se marca no_show cuando sí hubo ventanilla libre, ventanillas
+  inactivas se ignoran)
+
+599 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.
