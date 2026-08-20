@@ -455,5 +455,9 @@ model Turn {
   @@index([queueId, status])
   @@index([customerId, status])
   @@index([businessId, turnDate])
+  // Also enforced by a partial unique index Prisma's schema DSL can't
+  // express (no WHERE clause support): one ATTENDING/REDIRECTED turn per
+  // serviceWindowId. See migration
+  // 20260820000000_unique_active_turn_per_service_window.
   @@map("turns")
 }

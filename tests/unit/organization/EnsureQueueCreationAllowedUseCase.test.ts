@@ -40,4 +40,28 @@ describe("EnsureQueueCreationAllowedUseCase", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  describe("estado de la subscription", () => {
+    it("rejects creating a queue when the subscription is cancelled, even under the plan's count limit", async () => {
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({ organizationId: "org-1", plan: "premium", status: "cancelled" }),
+      ]);
+      const useCase = new EnsureQueueCreationAllowedUseCase(subscriptionRepo);
+
+      await expect(
+        useCase.execute({ organizationId: "org-1", currentQueueCountForBusiness: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "SUBSCRIPTION_INACTIVE" });
+    });
+
+    it("rejects creating a queue when the subscription is expired", async () => {
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({ organizationId: "org-1", status: "expired" }),
+      ]);
+      const useCase = new EnsureQueueCreationAllowedUseCase(subscriptionRepo);
+
+      await expect(
+        useCase.execute({ organizationId: "org-1", currentQueueCountForBusiness: 0 }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "SUBSCRIPTION_INACTIVE" });
+    });
+  });
 });

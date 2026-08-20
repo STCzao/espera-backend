@@ -99,7 +99,10 @@ export class PostgresTurnRepo implements ITurnRepo {
       ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
     };
     const rows = await prisma.turn.findMany({
-      where: { queueId, status: "WAITING" },
+      // A phone reservation with a future queueJoinedAt hasn't "arrived" yet
+      // — calling it before its ETA would summon someone who was told they
+      // didn't need to be there.
+      where: { queueId, status: "WAITING", queueJoinedAt: { lte: new Date() } },
       orderBy: { queueJoinedAt: "asc" },
     });
     const sorted = rows.sort((a, b) => {
@@ -110,6 +113,14 @@ export class PostgresTurnRepo implements ITurnRepo {
       return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return sorted[0] ? toTurn(sorted[0]) : null;
+  }
+
+  public async hasPendingReservation(queueId: string): Promise<boolean> {
+    const row = await prisma.turn.findFirst({
+      where: { queueId, status: "WAITING", queueJoinedAt: { gt: new Date() } },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   public async findCalledTurnByQueue(queueId: string): Promise<Turn | null> {
@@ -141,8 +152,12 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null> {
+    // "REDIRECTED" is included alongside "ATTENDING": a turn sent to this
+    // window is already claiming it even before staff taps to start
+    // attending, so the window must be treated as occupied for both the
+    // conflict check in AttendTurnUseCase and the delete/toggle guards.
     const row = await prisma.turn.findFirst({
-      where: { serviceWindowId, status: "ATTENDING" },
+      where: { serviceWindowId, status: { in: ["ATTENDING", "REDIRECTED"] } },
     });
     return row ? toTurn(row) : null;
   }

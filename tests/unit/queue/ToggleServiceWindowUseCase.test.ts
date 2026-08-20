@@ -118,6 +118,21 @@ describe("ToggleServiceWindowUseCase — ocupación", () => {
     });
   });
 
+  it("throws 409 when trying to deactivate a window with a turn redirected to it but not yet attending", async () => {
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, isActive: true }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "turn-1", status: "redirected", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ windowRepo, turnRepo });
+
+    await expect(useCase.execute({ windowId: WINDOW_ID, ownerUserId: OWNER_ID })).rejects.toMatchObject({
+      statusCode: 409,
+      code: "SERVICE_WINDOW_IN_USE",
+    });
+  });
+
   it("allows deactivating a window with no attending turn", async () => {
     const windowRepo = new InMemoryServiceWindowRepo([
       buildServiceWindow({ id: WINDOW_ID, isActive: true }),

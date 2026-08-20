@@ -70,6 +70,10 @@ export interface BusinessTurnCount {
 export interface ITurnRepo extends Repository<Turn> {
   createWithNextNumber(data: CreateTurnData): Promise<Turn>;
   findNextWaitingTurn(queueId: string): Promise<Turn | null>;
+  // Whether a WAITING turn exists whose queueJoinedAt is still in the future
+  // (a phone reservation that hasn't reached its declared ETA yet) — lets
+  // CallNextUseCase tell "nothing ready yet" apart from "queue is empty".
+  hasPendingReservation(queueId: string): Promise<boolean>;
   findCalledTurnByQueue(queueId: string): Promise<Turn | null>;
   findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null>;
   findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null>;

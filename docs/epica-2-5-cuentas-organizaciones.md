@@ -295,6 +295,14 @@ manualmente desde el Backoffice.
   código `PLAN_QUEUE_LIMIT_REACHED`. **Actualización (bugfix, ver
   `docs/epica-3-cola.md`, sección "Crear colas adicionales"): ya está
   conectado**, en `CreateQueueUseCase`.
+  **Actualización (bugfix, 2026-08-20)**: también rechaza con `403
+  SUBSCRIPTION_INACTIVE` si la suscripción está `cancelled`/`expired`, igual
+  que `EnsureBusinessCreationAllowedUseCase` — antes solo comparaba contra el
+  límite numérico del plan, así que una organización con suscripción vencida
+  podía seguir creando colas nuevas en sus negocios ya aprobados.
+  `EnsureServiceWindowCreationAllowedUseCase` recibió el mismo fix, mismo
+  motivo. Ver `docs/epica-3-cola.md`, sección "Bugfix — restricciones de cola
+  y planes".
 - `UpdateOrganizationSubscriptionUseCase`: cambia el plan de una
   `Subscription`; si el nuevo plan tiene menos capacidad que los `Business`
   reales de la cuenta, rechaza con `AppError.conflict` / código

@@ -61,6 +61,44 @@ const getLocalTimeParts = (now: Date, timeZone: string): LocalTimeParts => {
  * queue module.
  */
 export class BusinessAvailabilityService {
+  /**
+   * Whether `now` falls inside the business's configured weekly hours and
+   * isn't a declared non-working day. A business that hasn't configured any
+   * hours yet is treated as always open — most businesses in this MVP never
+   * call ConfigureBusinessHoursUseCase, and defaulting to "closed" would
+   * block turn creation for all of them.
+   */
+  public isWithinOperatingHours({
+    hoursConfig,
+    now,
+    timeZone = "America/Argentina/Buenos_Aires",
+  }: {
+    hoursConfig: BusinessHoursConfig;
+    now: Date;
+    timeZone?: string;
+  }): boolean {
+    if (hoursConfig.weeklyHours.length === 0) {
+      return true;
+    }
+
+    const localTime = getLocalTimeParts(now, timeZone);
+    const isNonWorkingDay = hoursConfig.nonWorkingDays.some(
+      (day) => day.date === localTime.date,
+    );
+    if (isNonWorkingDay) {
+      return false;
+    }
+
+    return hoursConfig.weeklyHours.some((hour) => {
+      if (hour.dayOfWeek !== localTime.dayOfWeek) {
+        return false;
+      }
+      const opensAt = toMinutes(hour.opensAt);
+      const closesAt = toMinutes(hour.closesAt);
+      return localTime.minutes >= opensAt && localTime.minutes < closesAt;
+    });
+  }
+
   public isAvailableNow({
     business,
     activeServiceWindowCount,

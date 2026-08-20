@@ -160,3 +160,61 @@ describe("BusinessAvailabilityService", () => {
     expect(isAvailable).toBe(false);
   });
 });
+
+describe("BusinessAvailabilityService.isWithinOperatingHours", () => {
+  it("returns true when there's nothing configured yet (not restricted by default)", () => {
+    const service = new BusinessAvailabilityService();
+
+    const result = service.isWithinOperatingHours({
+      hoursConfig: { businessId: "business-1", weeklyHours: [], nonWorkingDays: [] },
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns true inside a configured window", () => {
+    const service = new BusinessAvailabilityService();
+
+    const result = service.isWithinOperatingHours({
+      hoursConfig,
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false outside every configured window on that day", () => {
+    const service = new BusinessAvailabilityService();
+
+    const result = service.isWithinOperatingHours({
+      hoursConfig,
+      now: mondayEighteenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false on a declared non-working day even if the time-of-day would otherwise match", () => {
+    const service = new BusinessAvailabilityService();
+
+    const result = service.isWithinOperatingHours({
+      hoursConfig: {
+        ...hoursConfig,
+        nonWorkingDays: [
+          {
+            id: "day-1", businessId: "business-1", date: "2026-06-15",
+            createdAt: new Date("2026-01-01T00:00:00.000Z"), updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        ],
+      },
+      now: mondayTenUtc,
+      timeZone: "UTC",
+    });
+
+    expect(result).toBe(false);
+  });
+});

@@ -46,7 +46,16 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     }
 
     const next = await this.turnRepo.findNextWaitingTurn(parsed.data.queueId);
-    if (!next) throw AppError.conflict("The queue is empty.", "QUEUE_EMPTY");
+    if (!next) {
+      const pending = await this.turnRepo.hasPendingReservation(parsed.data.queueId);
+      if (pending) {
+        throw AppError.conflict(
+          "There's a phone reservation that hasn't reached its estimated arrival time yet.",
+          "QUEUE_NO_TURN_READY",
+        );
+      }
+      throw AppError.conflict("The queue is empty.", "QUEUE_EMPTY");
+    }
 
     const called = await this.turnRepo.save({
       ...next,

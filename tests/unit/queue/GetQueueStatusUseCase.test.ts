@@ -79,6 +79,21 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     expect(result.calledCount).toBe(0);
   });
 
+  it("does not count a phone reservation whose ETA hasn't arrived yet as waiting", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-waiting", queueId: QUEUE_ID, status: "waiting", turnDate: TODAY }),
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, status: "waiting", turnDate: TODAY, source: "phone",
+        queueJoinedAt: new Date(Date.now() + 60 * 60_000),
+      }),
+    ]);
+    const useCase = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.waitingCount).toBe(1);
+  });
+
   it("reflects the business operationalStatus", async () => {
     const businessRepo = new InMemoryBusinessRepo([
       buildBusiness({ id: BUSINESS_ID, operationalStatus: "paused" }),
