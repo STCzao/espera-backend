@@ -96,6 +96,7 @@ enum TurnStatus {
   REDIRECTED
   CANCELLED
   COMPLETED
+  NO_SHOW
 }
 
 enum TurnPriority {
@@ -444,6 +445,7 @@ model Turn {
   startedAttentionAt   DateTime?
   attendedAt           DateTime?
   cancelledAt          DateTime?
+  noShowAt             DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

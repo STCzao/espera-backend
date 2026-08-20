@@ -69,6 +69,21 @@ describe("GetGuestTurnStatusUseCase", () => {
     expect(result).toMatchObject({ status: "cancelled", position: 0, estimatedWaitMinutes: null });
   });
 
+  it("returns a terminal status for a no_show turn instead of reporting it as still waiting", async () => {
+    // Without the no_show branch this falls through to the "waiting"
+    // calculation and would report position 2 (one turn ahead) instead of
+    // the terminal 0 — telling a skipped guest they're still in line.
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, guestName: "Juan Pérez", status: "no_show", turnDate: TODAY, number: 2 }),
+      buildTurn({ id: "other-turn", queueId: QUEUE_ID, status: "waiting", turnDate: TODAY, number: 1 }),
+    ]);
+    const useCase = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ turnId: TURN_ID });
+
+    expect(result).toMatchObject({ status: "no_show", position: 0, estimatedWaitMinutes: null });
+  });
+
   describe("errores", () => {
     it("throws 404 when the turn does not exist", async () => {
       const useCase = buildUseCase({ turnRepo: new InMemoryTurnRepo() });

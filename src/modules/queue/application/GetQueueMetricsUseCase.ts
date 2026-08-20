@@ -41,8 +41,10 @@ export type GetQueueMetricsInput = z.infer<typeof schema>;
 export interface DayMetrics {
   completedCount: number;
   cancelledCount: number;
+  noShowCount: number;
   totalCount: number;
   cancellationRate: number;
+  noShowRate: number;
   avgServiceMinutes: number | null;
   peakHour: number | null;
 }
@@ -70,11 +72,13 @@ const subtractDay = (date: Date): Date =>
 
 const computeMetrics = (raw: TurnDayRaw): DayMetrics => {
   const completedCount = raw.completedTurns.length;
-  const { cancelledCount } = raw;
-  const totalCount = completedCount + cancelledCount;
+  const { cancelledCount, noShowCount } = raw;
+  const totalCount = completedCount + cancelledCount + noShowCount;
 
   const cancellationRate =
     totalCount > 0 ? Math.round((cancelledCount / totalCount) * 1000) / 10 : 0;
+  const noShowRate =
+    totalCount > 0 ? Math.round((noShowCount / totalCount) * 1000) / 10 : 0;
 
   const avgServiceMinutes =
     completedCount > 0
@@ -98,7 +102,7 @@ const computeMetrics = (raw: TurnDayRaw): DayMetrics => {
     )[0];
   }
 
-  return { completedCount, cancelledCount, totalCount, cancellationRate, avgServiceMinutes, peakHour };
+  return { completedCount, cancelledCount, noShowCount, totalCount, cancellationRate, noShowRate, avgServiceMinutes, peakHour };
 };
 
 export class GetQueueMetricsUseCase implements UseCase<GetQueueMetricsInput, GetQueueMetricsOutput> {

@@ -325,6 +325,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
         .filter((t) => t.status === "completed" && t.startedAttentionAt != null && t.attendedAt != null)
         .map((t) => ({ startedAttentionAt: t.startedAttentionAt!, attendedAt: t.attendedAt! })),
       cancelledCount: turns.filter((t) => t.status === "cancelled").length,
+      noShowCount: turns.filter((t) => t.status === "no_show").length,
     };
   }
 
@@ -333,7 +334,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       .filter(
         (t) =>
           t.queueId === queueId &&
-          (t.status === "completed" || t.status === "cancelled") &&
+          (t.status === "completed" || t.status === "cancelled" || t.status === "no_show") &&
           t.turnDate.getTime() === date.getTime(),
       )
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
@@ -344,11 +345,12 @@ export class InMemoryTurnRepo implements ITurnRepo {
         guestName:     t.guestName ?? null,
         source:        t.source as TurnSource,
         priority:      t.priority as TurnPriority,
-        status:        t.status as "completed" | "cancelled",
+        status:        t.status as "completed" | "cancelled" | "no_show",
         createdAt:     t.createdAt,
         calledAt:      t.calledAt ?? null,
         attendedAt:    t.attendedAt ?? null,
         cancelledAt:   t.cancelledAt ?? null,
+        noShowAt:      t.noShowAt ?? null,
         waitMinutes:   t.calledAt ? Math.round((t.calledAt.getTime() - t.createdAt.getTime()) / 60_000) : null,
       }));
   }

@@ -23,6 +23,7 @@ const toTurn = (raw: {
   startedAttentionAt: Date | null;
   attendedAt: Date | null;
   cancelledAt: Date | null;
+  noShowAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): Turn => ({
@@ -44,6 +45,7 @@ const toTurn = (raw: {
   startedAttentionAt: raw.startedAttentionAt ?? undefined,
   attendedAt: raw.attendedAt ?? undefined,
   cancelledAt: raw.cancelledAt ?? undefined,
+  noShowAt: raw.noShowAt ?? undefined,
   createdAt: raw.createdAt,
   updatedAt: raw.updatedAt,
 });
@@ -278,29 +280,32 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw> {
-    const [completedRows, cancelledCount] = await Promise.all([
+    const [completedRows, cancelledCount, noShowCount] = await Promise.all([
       prisma.turn.findMany({
         where: { queueId, turnDate: date, status: "COMPLETED", startedAttentionAt: { not: null }, attendedAt: { not: null } },
         select: { startedAttentionAt: true, attendedAt: true },
       }),
       prisma.turn.count({ where: { queueId, turnDate: date, status: "CANCELLED" } }),
+      prisma.turn.count({ where: { queueId, turnDate: date, status: "NO_SHOW" } }),
     ]);
     return {
       completedTurns: completedRows.map((r) => ({ startedAttentionAt: r.startedAttentionAt!, attendedAt: r.attendedAt! })),
       cancelledCount,
+      noShowCount,
     };
   }
 
   public async findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]> {
-    // Includes cancelled turns alongside completed ones — the day's history
-    // should be traceable in full, not just the successful path. A cancelled
-    // turn may never have been called (calledAt null), so waitMinutes is only
-    // computed when there's a calledAt to measure against.
+    // Includes cancelled/no-show turns alongside completed ones — the day's
+    // history should be traceable in full, not just the successful path. A
+    // cancelled or no-show turn may never have been called (calledAt null,
+    // e.g. cancelled while still waiting), so waitMinutes is only computed
+    // when there's a calledAt to measure against.
     const rows = await prisma.turn.findMany({
       where: {
         queueId,
         turnDate: date,
-        status: { in: ["COMPLETED", "CANCELLED"] },
+        status: { in: ["COMPLETED", "CANCELLED", "NO_SHOW"] },
       },
       include: { customer: { select: { firstName: true, lastName: true } } },
       orderBy: { createdAt: "asc" },
@@ -312,11 +317,12 @@ export class PostgresTurnRepo implements ITurnRepo {
       guestName:     row.guestName ?? null,
       source:        row.source.toLowerCase() as TurnSource,
       priority:      row.priority.toLowerCase().replace("_", "-") as TurnPriority,
-      status:        row.status.toLowerCase() as "completed" | "cancelled",
+      status:        row.status.toLowerCase() as "completed" | "cancelled" | "no_show",
       createdAt:     row.createdAt,
       calledAt:      row.calledAt,
       attendedAt:    row.attendedAt,
       cancelledAt:   row.cancelledAt,
+      noShowAt:      row.noShowAt,
       waitMinutes:   row.calledAt ? Math.round((row.calledAt.getTime() - row.createdAt.getTime()) / 60_000) : null,
     }));
   }
@@ -325,12 +331,13 @@ export class PostgresTurnRepo implements ITurnRepo {
     const row = await prisma.turn.update({
       where: { id: entity.id },
       data: {
-        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED",
+        status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW",
         serviceWindowId: entity.serviceWindowId ?? null,
         calledAt: entity.calledAt ?? null,
         startedAttentionAt: entity.startedAttentionAt ?? null,
         attendedAt: entity.attendedAt ?? null,
         cancelledAt: entity.cancelledAt ?? null,
+        noShowAt: entity.noShowAt ?? null,
       },
     });
     return toTurn(row);

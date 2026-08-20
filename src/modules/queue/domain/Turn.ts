@@ -1,4 +1,4 @@
-export type TurnStatus = "waiting" | "called" | "attending" | "redirected" | "cancelled" | "completed";
+export type TurnStatus = "waiting" | "called" | "attending" | "redirected" | "cancelled" | "completed" | "no_show";
 export type TurnPriority = "arrived" | "physical" | "in_transit" | "registered";
 export type TurnSource = "app" | "manual" | "qr" | "web" | "phone";
 
@@ -26,6 +26,12 @@ export interface Turn {
   startedAttentionAt?: Date;
   attendedAt?: Date;
   cancelledAt?: Date;
+  // Set when CallNextUseCase supersedes a turn that was "called" but never
+  // confirmed as attending — the person didn't show up when it was their
+  // turn. Distinct from attendedAt (real attention) and cancelledAt
+  // (customer/staff proactively backed out) so history and metrics don't
+  // misreport a skip as a successful completion.
+  noShowAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
