@@ -1,18 +1,21 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import { AttendTurnUseCase } from "../../../src/modules/queue/application/AttendTurnUseCase";
-import { InMemoryTurnRepo, buildTurn } from "../../helpers/queueFakes";
+import { InMemoryServiceWindowRepo, InMemoryTurnRepo, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
 const TURN_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUEUE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const buildUseCase = (options: {
   turnRepo?: InMemoryTurnRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
 } = {}) => {
-  const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
-  const emitter  = options.emitter === undefined ? null : options.emitter;
-  return { useCase: new AttendTurnUseCase(turnRepo, emitter as never), turnRepo };
+  const turnRepo   = options.turnRepo ?? new InMemoryTurnRepo();
+  const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
+  const emitter    = options.emitter === undefined ? null : options.emitter;
+  return { useCase: new AttendTurnUseCase(turnRepo, windowRepo, emitter as never), turnRepo, windowRepo };
 };
 
 describe("AttendTurnUseCase — called → attending", () => {
@@ -173,6 +176,102 @@ describe("AttendTurnUseCase — ocupación de ventanilla", () => {
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_ID }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID }),
+    ).resolves.toMatchObject({ status: "attending" });
+  });
+
+  it("throws 409 when the target window has another turn already redirected to it (not yet attending)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+      buildTurn({ id: "other-turn", queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_ID }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
+  });
+});
+
+describe("AttendTurnUseCase — carrera entre dos attend concurrentes (red de seguridad de la DB)", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("translates a P2002 unique-constraint violation on save into SERVICE_WINDOW_OCCUPIED", async () => {
+    // Simulates the in-app occupancy check having raced and lost — both
+    // requests saw the window as free, and the DB's partial unique index
+    // rejects the second write.
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const originalSave = turnRepo.save.bind(turnRepo);
+    turnRepo.save = async () => {
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "6.19.3",
+      });
+    };
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
+
+    turnRepo.save = originalSave;
+  });
+
+  it("rethrows an unrelated error from save unchanged", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    turnRepo.save = async () => {
+      throw new Error("boom");
+    };
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+    ).rejects.toThrow("boom");
+  });
+});
+
+describe("AttendTurnUseCase — ventanilla obligatoria si la cola tiene ventanillas configuradas", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("throws 400 when the queue has an active window but none was selected", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: true }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID }),
+    ).rejects.toMatchObject({ statusCode: 400, code: "SERVICE_WINDOW_REQUIRED" });
+  });
+
+  it("allows attending without a window when the queue has none configured", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo: new InMemoryServiceWindowRepo() });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID }),
+    ).resolves.toMatchObject({ status: "attending" });
+  });
+
+  it("allows attending without a window when the queue's only windows are inactive", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: false }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
     await expect(
       useCase.execute({ turnId: TURN_ID }),

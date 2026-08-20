@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CreateGuestTurnUseCase } from "../../../src/modules/queue/application/CreateGuestTurnUseCase";
 import { CreateTurnUseCase } from "../../../src/modules/queue/application/CreateTurnUseCase";
-import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
+import { InMemoryBusinessHoursRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue } from "../../helpers/queueFakes";
 
 const BUSINESS_ID = "11111111-1111-4111-8111-111111111111";
@@ -20,7 +20,7 @@ const buildUseCase = (options: {
     buildBusiness({ id: BUSINESS_ID, status: "approved", operationalStatus: "normal" }),
   ]);
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
-  const createTurnUseCase = new CreateTurnUseCase(queueRepo, turnRepo, businessRepo);
+  const createTurnUseCase = new CreateTurnUseCase(queueRepo, turnRepo, businessRepo, new InMemoryBusinessHoursRepo());
   return { useCase: new CreateGuestTurnUseCase(queueRepo, createTurnUseCase), turnRepo };
 };
 

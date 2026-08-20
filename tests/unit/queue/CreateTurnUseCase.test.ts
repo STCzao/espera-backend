@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CreateTurnUseCase } from "../../../src/modules/queue/application/CreateTurnUseCase";
-import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
+import { InMemoryBusinessHoursRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
   InMemoryTurnRepo,
@@ -29,12 +29,13 @@ const buildUseCase = (options: {
     ]);
 
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
+  const businessHoursRepo = new InMemoryBusinessHoursRepo();
 
   return {
     queueRepo,
     turnRepo,
     businessRepo,
-    useCase: new CreateTurnUseCase(queueRepo, turnRepo, businessRepo),
+    useCase: new CreateTurnUseCase(queueRepo, turnRepo, businessRepo, businessHoursRepo),
   };
 };
 
@@ -196,5 +197,49 @@ describe("CreateTurnUseCase", () => {
     await expect(
       useCase.execute({ queueId: "not-a-uuid" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("CreateTurnUseCase — horario del negocio", () => {
+  it("allows a turn when the business hasn't configured any hours (not restricted by default)", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
+    ).resolves.toMatchObject({ displayNumber: "A-001" });
+  });
+
+  it("throws CONFLICT when today is a declared non-working day, even with hours covering all day", async () => {
+    // Weekly hours cover every day, 00:00–23:59, so only the non-working-day
+    // rule can be the one blocking — deterministic regardless of when this
+    // test actually runs, unlike asserting against a specific clock time.
+    const todayInBusinessTZ = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+
+    const businessHoursRepo = new InMemoryBusinessHoursRepo([
+      {
+        businessId: BUSINESS_ID,
+        weeklyHours: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+          id: `h${dayOfWeek}`, businessId: BUSINESS_ID, dayOfWeek,
+          opensAt: "00:00", closesAt: "23:59",
+          createdAt: new Date(), updatedAt: new Date(),
+        })),
+        nonWorkingDays: [
+          { id: "nwd1", businessId: BUSINESS_ID, date: todayInBusinessTZ, createdAt: new Date(), updatedAt: new Date() },
+        ],
+      },
+    ]);
+    const queueRepo = new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, businessId: BUSINESS_ID, isActive: true })]);
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: BUSINESS_ID, status: "approved", operationalStatus: "normal" }),
+    ]);
+    const turnRepo = new InMemoryTurnRepo();
+    const useCase = new CreateTurnUseCase(queueRepo, turnRepo, businessRepo, businessHoursRepo);
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OUTSIDE_OPERATING_HOURS" });
   });
 });

@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { BusinessAvailabilityService } from "@modules/business/domain/BusinessAvailabilityService";
+import type { IBusinessHoursRepo } from "@modules/business/domain/IBusinessHoursRepo";
 import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
+import { PostgresBusinessHoursRepo } from "@modules/business/infrastructure/PostgresBusinessHoursRepo";
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
@@ -38,6 +41,8 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly businessHoursRepo: IBusinessHoursRepo = new PostgresBusinessHoursRepo(),
+    private readonly availabilityService: BusinessAvailabilityService = new BusinessAvailabilityService(),
   ) {}
 
   public async execute(input: CreateTurnInput): Promise<CreateTurnOutput> {
@@ -57,6 +62,14 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
       throw AppError.conflict(
         `This business is ${business.operationalStatus} and not accepting new turns.`,
         "BUSINESS_OPERATIONAL_STATUS_BLOCKED",
+      );
+    }
+
+    const hoursConfig = await this.businessHoursRepo.findByBusinessId(business.id);
+    if (!this.availabilityService.isWithinOperatingHours({ hoursConfig, now: new Date() })) {
+      throw AppError.conflict(
+        "This business is outside its operating hours.",
+        "BUSINESS_OUTSIDE_OPERATING_HOURS",
       );
     }
 

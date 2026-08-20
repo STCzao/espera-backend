@@ -160,8 +160,9 @@ export class InMemoryTurnRepo implements ITurnRepo {
     const PRIORITY_RANK: Record<string, number> = {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,
     };
+    const now = new Date();
     const waiting = [...this.turns.values()].filter(
-      (t) => t.queueId === queueId && t.status === "waiting",
+      (t) => t.queueId === queueId && t.status === "waiting" && t.queueJoinedAt.getTime() <= now.getTime(),
     );
     waiting.sort((a, b) => {
       const pa = PRIORITY_RANK[a.priority] ?? 5;
@@ -171,6 +172,13 @@ export class InMemoryTurnRepo implements ITurnRepo {
       return byJoin !== 0 ? byJoin : a.number - b.number;
     });
     return waiting[0] ?? null;
+  }
+
+  public async hasPendingReservation(queueId: string): Promise<boolean> {
+    const now = new Date();
+    return [...this.turns.values()].some(
+      (t) => t.queueId === queueId && t.status === "waiting" && t.queueJoinedAt.getTime() > now.getTime(),
+    );
   }
 
   public async findCalledTurnByQueue(queueId: string): Promise<Turn | null> {
@@ -201,7 +209,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
   public async findAttendingByServiceWindow(serviceWindowId: string): Promise<Turn | null> {
     return (
       [...this.turns.values()].find(
-        (t) => t.serviceWindowId === serviceWindowId && t.status === "attending",
+        (t) => t.serviceWindowId === serviceWindowId && (t.status === "attending" || t.status === "redirected"),
       ) ?? null
     );
   }

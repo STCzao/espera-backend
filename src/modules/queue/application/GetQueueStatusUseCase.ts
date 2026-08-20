@@ -75,7 +75,11 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
       this.turnRepo.findRecentCalls(parsed.data.queueId, RECENT_CALLS_LIMIT),
     ]);
 
-    const waitingCount    = activeTurns.filter((t) => t.status === "waiting").length;
+    const now = new Date();
+    // A phone reservation not due yet (queueJoinedAt in the future)
+    // shouldn't count as someone actually waiting — it would inflate the
+    // wait estimate shown to the public and to other customers.
+    const waitingCount    = activeTurns.filter((t) => t.status === "waiting" && t.queueJoinedAt <= now).length;
     const calledCount     = activeTurns.filter((t) => t.status === "called").length;
     const attendingCount  = activeTurns.filter((t) => t.status === "attending").length;
     const redirectedCount = activeTurns.filter((t) => t.status === "redirected").length;

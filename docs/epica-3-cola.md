@@ -630,9 +630,13 @@ Respuesta `200`:
 }
 ```
 
-- `items` está ordenado por prioridad (arrived primero) y por `createdAt` para
-  desempate (FIFO).
-- `waitingMinutes`: minutos enteros desde `createdAt` hasta ahora.
+- `items` está ordenado por prioridad (arrived primero) y por `queueJoinedAt`
+  para desempate (FIFO) — ver refinamiento *queueJoinedAt, separado de
+  createdAt* más abajo; para todo turno salvo una reserva telefónica con
+  `etaMinutes`, `queueJoinedAt === createdAt`.
+- `waitingMinutes`: minutos enteros desde `queueJoinedAt` hasta ahora. Puede
+  ser **negativo** para una reserva telefónica que todavía no llegó a su ETA
+  (significa "llega en X minutos", no "espera hace X minutos").
 - `customerName`: nombre completo del usuario registrado, o `null` para turnos
   manuales.
 - `guestName`: nombre ingresado por el empleado para turnos manuales, o `null`.
@@ -1604,5 +1608,142 @@ el mismo problema en un solo paso, en el momento de la llamada.
   `CreateTurnUseCase`, etc.) sigue en verde sin cambios de comportamiento
   para turnos sin `etaMinutes` — `queueJoinedAt` colapsa a `createdAt` en
   todos esos casos.
+
+Validación manual: pendiente.
+
+## Bugfix — restricciones de cola y planes (2026-08-20)
+
+Rama: `bugfix/restricciones-cola-y-planes`. Tras cerrar HU-4.5, auditoría
+dirigida a la misma familia de bug que motivó `queueJoinedAt`: una
+validación/filtro que debería aplicarse condicionalmente (según
+configuración del negocio o estado temporal de un turno) pero se omitía,
+dejando pasar un caso no contemplado por el diseño original. Se encontraron
+y corrigieron 6 casos, más los 2 ya conocidos de HU-4.5.
+
+### 1. Reserva telefónica llamada antes de su ETA si la cola queda vacía
+
+`findNextWaitingTurn` traía cualquier turno `WAITING` sin filtrar si
+`queueJoinedAt` ya pasó o sigue en el futuro. Si la única persona en la cola
+era una reserva con ETA en 2 horas, "Siguiente" la llamaba igual —
+contradice el propósito de `queueJoinedAt`, que evita que la reserva le gane
+la posición a otros pero no evitaba que la *llamaran* antes de tiempo.
+
+Fix: `findNextWaitingTurn` ahora filtra `queueJoinedAt <= now`.
+`CallNextUseCase` distingue dos casos cuando no hay nada listo: si existe una
+reserva pendiente (`ITurnRepo.hasPendingReservation`), tira `409
+QUEUE_NO_TURN_READY` en vez de `QUEUE_EMPTY` — evita que el empleado
+interprete "cola vacía" cuando en realidad hay una reserva en camino.
+
+### 2. `waitingCount` inflado por reservas no vigentes
+
+`GetQueueStatusUseCase.waitingCount` (y por lo tanto
+`estimatedTotalWaitMinutes`, visible al público) contaba cualquier turno
+`WAITING`, incluida una reserva telefónica cuyo `queueJoinedAt` sigue en el
+futuro. Fix: se excluyen del conteo (`t.queueJoinedAt <= now`).
+
+### 3. Ventanilla opcional permite doble ocupación
+
+`AttendTurnUseCase` dejaba `serviceWindowId` opcional en todo el ciclo
+`called → attending → completed`; si nunca se manda, el chequeo de
+ocupación (`findAttendingByServiceWindow`) se salta completo — dos turnos
+podían terminar `attending` a la vez sin que el sistema lo detecte.
+
+Fix: si la cola tiene al menos una ventanilla activa configurada, `attend`
+exige `serviceWindowId` (`400 SERVICE_WINDOW_REQUIRED`). Si la cola no tiene
+ninguna (mostrador único), sigue sin exigirlo — comportamiento sin cambios.
+
+### 4. Ocupación de ventanilla no detectaba turnos "redirected"
+
+`findAttendingByServiceWindow` solo miraba `status: "ATTENDING"`, no
+`"REDIRECTED"`. Un turno redirigido a una ventanilla (`RedirectTurnUseCase`)
+ya la reclama antes de que el empleado toque "atender" — pero
+`DeleteServiceWindowUseCase`/`ToggleServiceWindowUseCase` no lo veían, y se
+podía borrar/desactivar una ventanilla con un turno redirigido pendiente,
+dejándolo huérfano.
+
+Fix: la query ahora incluye ambos estados (`ATTENDING`, `REDIRECTED`) — un
+único punto de verdad reusado por `AttendTurnUseCase`, `DeleteServiceWindowUseCase`
+y `ToggleServiceWindowUseCase`.
+
+### 5. Creación de turnos ignoraba el horario configurado del negocio
+
+`BusinessAvailabilityService.isAvailableNow()` existía (evalúa
+`weeklyHours`/`nonWorkingDays`) pero ningún caso de uso de creación de turno
+lo invocaba — solo se chequeaba `operationalStatus` (que el dueño tiene que
+setear a mano). Un cliente podía sacar turno un domingo cerrado o feriado
+declarado, y ese turno viejo quedaba `WAITING` con `queueJoinedAt` más
+antiguo que gente que llega cuando el negocio reabre.
+
+Fix: se agregó `BusinessAvailabilityService.isWithinOperatingHours()` — una
+versión acotada de `isAvailableNow` que evalúa solo horario/feriados, sin los
+gates de `listingStatus`/cantidad de ventanillas (esos son criterios de
+*descubrimiento público*, no de "puede operar ahora"; mezclarlos habría
+bloqueado negocios que legítimamente no configuraron ventanillas, ver bug
+#3). Un negocio que nunca configuró horario (la mayoría hoy) se trata como
+siempre abierto — bloquear por default habría tumbado la creación de turnos
+para toda la base actual. Conectado en `CreateTurnUseCase` (cubre
+app/QR/web/guest, ya que `CreateGuestTurnUseCase` delega en él) con `409
+BUSINESS_OUTSIDE_OPERATING_HOURS`. **No** se conectó en
+`CreateManualTurnUseCase`: ese flujo lo ejecuta un empleado presente en el
+momento (walk-in o llamada atendida), que puede legítimamente seguir
+operando fuera del horario declarado.
+
+### 6. Fuga en el control de plan/suscripción
+
+`EnsureQueueCreationAllowedUseCase` y `EnsureServiceWindowCreationAllowedUseCase`
+solo comparaban contra el límite numérico del plan, sin chequear el
+`status` de la `Subscription` — a diferencia de `EnsureBusinessCreationAllowedUseCase`,
+que sí bloquea `cancelled`/`expired` vía `ResolveEffectiveSubscriptionStatusUseCase`.
+Una organización con suscripción vencida no podía crear un `Business` nuevo,
+pero sí podía seguir creando colas y ventanillas nuevas en los negocios que
+ya tenía aprobados. Fix: mismo chequeo (`403 SUBSCRIPTION_INACTIVE`) en los
+tres. Ver `docs/epica-2-5-cuentas-organizaciones.md`.
+
+### 7. Carrera entre dos "attend" concurrentes a la misma ventanilla
+
+El chequeo de ocupación agregado en el punto 3/4 es *check-then-act*:
+`findAttendingByServiceWindow` lee, y recién después `save` escribe — sin
+transacción ni lock entre medio. Dos requests casi simultáneos (doble click,
+dos pestañas, lag de red) pueden leer los dos "libre" antes de que
+cualquiera escriba, y terminar los dos `attending` en la misma ventanilla —
+exactamente lo que el chequeo existe para evitar. Confirmado que no había
+ninguna restricción a nivel de base de datos que lo impidiera: solo índices
+normales sobre `Turn`, ningún `@@unique`.
+
+Fix: migración `20260820000000_unique_active_turn_per_service_window` —
+índice único parcial en Postgres,
+`CREATE UNIQUE INDEX ... ON "turns" ("serviceWindowId") WHERE "status" IN ('ATTENDING', 'REDIRECTED')`.
+No representable en `schema.prisma` (la DSL de Prisma no soporta `WHERE` en
+índices), documentado con un comentario junto al modelo `Turn`. El chequeo
+en memoria queda como camino rápido para el caso común (error más claro,
+sin ida y vuelta a la DB); `AttendTurnUseCase` ahora además atrapa la
+violación de unicidad (`Prisma.PrismaClientKnownRequestError`, código
+`P2002`) en el `save` y la traduce al mismo `409 SERVICE_WINDOW_OCCUPIED` —
+red de seguridad real para cuando la carrera sí ocurre.
+
+### Cobertura
+
+- `tests/unit/queue/CallNextUseCase.test.ts` (bloque *reserva telefónica que
+  todavía no llegó a su ETA*)
+- `tests/unit/queue/GetQueueStatusUseCase.test.ts` (caso *no cuenta una
+  reserva telefónica cuyo ETA no llegó*)
+- `tests/unit/queue/AttendTurnUseCase.test.ts` (bloque *ventanilla
+  obligatoria* + caso *redirected* en *ocupación de ventanilla* + bloque
+  *carrera entre dos attend concurrentes*)
+- `tests/unit/queue/DeleteServiceWindowUseCase.test.ts` /
+  `ToggleServiceWindowUseCase.test.ts` (caso *redirected* actualizado —
+  antes afirmaba el comportamiento con bug)
+- `tests/unit/queue/CreateTurnUseCase.test.ts` (bloque *horario del
+  negocio*)
+- `tests/unit/business/BusinessAvailabilityService.test.ts` (bloque
+  `isWithinOperatingHours`)
+- `tests/unit/organization/EnsureQueueCreationAllowedUseCase.test.ts` /
+  `EnsureServiceWindowCreationAllowedUseCase.test.ts` (bloque *estado de la
+  subscription*)
+
+580 tests en verde (suite completa). El punto 7 (P2002 → 409) se prueba
+simulando el error en el fake del repo — el índice único en sí solo se
+ejerce contra Postgres real (migración aplicada y verificada localmente,
+sin test de integración automatizado todavía).
 
 Validación manual: pendiente.

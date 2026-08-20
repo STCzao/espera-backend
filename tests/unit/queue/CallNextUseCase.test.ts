@@ -150,3 +150,46 @@ describe("CallNextUseCase", () => {
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
+
+describe("CallNextUseCase — reserva telefónica que todavía no llegó a su ETA", () => {
+  it("throws QUEUE_NO_TURN_READY instead of QUEUE_EMPTY when the only waiting turn is a future phone reservation", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() + 60 * 60_000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NO_TURN_READY" });
+  });
+
+  it("does not call a phone reservation before its declared ETA, even when it's the only turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() + 60 * 60_000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(useCase.execute({ queueId: QUEUE_ID })).rejects.toThrow();
+    expect(turnRepo.all().find((t) => t.id === "t-phone")?.status).toBe("waiting");
+  });
+
+  it("calls a phone reservation once its declared ETA has arrived", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() - 1000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.turnId).toBe("t-phone");
+  });
+});

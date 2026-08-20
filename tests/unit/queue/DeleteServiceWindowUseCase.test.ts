@@ -49,16 +49,19 @@ describe("DeleteServiceWindowUseCase", () => {
     expect(windowRepo.all()).toHaveLength(1);
   });
 
-  it("allows deleting a window with a redirected (not yet attending) turn queued for it", async () => {
+  it("throws 409 when a turn was redirected to this window but hasn't started attending yet", async () => {
+    // A redirected turn already claims the window even before staff taps to
+    // start attending it — deleting it here would strand that turn.
     const windowRepo = new InMemoryServiceWindowRepo([buildServiceWindow({ id: WINDOW_ID })]);
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "turn-1", status: "redirected", serviceWindowId: WINDOW_ID }),
     ]);
     const { useCase } = buildUseCase({ windowRepo, turnRepo });
 
-    const result = await useCase.execute({ windowId: WINDOW_ID, ownerUserId: OWNER_ID });
-
-    expect(result.deleted).toBe(true);
+    await expect(
+      useCase.execute({ windowId: WINDOW_ID, ownerUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_IN_USE" });
+    expect(windowRepo.all()).toHaveLength(1);
   });
 
   describe("errores", () => {
