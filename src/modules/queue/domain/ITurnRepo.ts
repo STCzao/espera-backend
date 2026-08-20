@@ -4,6 +4,7 @@ import type { Turn, TurnPriority, TurnSource, TurnStatus } from "./Turn";
 export interface TurnDayRaw {
   completedTurns: Array<{ startedAttentionAt: Date; attendedAt: Date }>;
   cancelledCount: number;
+  noShowCount: number;
 }
 
 export interface TurnHistoryItem {
@@ -13,11 +14,12 @@ export interface TurnHistoryItem {
   guestName: string | null;
   source: TurnSource;
   priority: TurnPriority;
-  status: Extract<TurnStatus, "completed" | "cancelled">;
+  status: Extract<TurnStatus, "completed" | "cancelled" | "no_show">;
   createdAt: Date;
   calledAt: Date | null;
   attendedAt: Date | null;
   cancelledAt: Date | null;
+  noShowAt: Date | null;
   waitMinutes: number | null;
 }
 

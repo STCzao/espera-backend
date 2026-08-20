@@ -35,13 +35,16 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
     if (!queue.isActive) throw AppError.conflict("This queue is not active.", "QUEUE_NOT_ACTIVE");
 
-    // Complete the currently-called turn if there is one
+    // A turn still "called" here was never confirmed as attending — the
+    // person didn't show up when it was their turn. Mark it "no_show", not
+    // "completed": it was never actually attended, and history/metrics need
+    // to tell the two apart.
     const calledTurn = await this.turnRepo.findCalledTurnByQueue(parsed.data.queueId);
     if (calledTurn) {
       await this.turnRepo.save({
         ...calledTurn,
-        status: "completed",
-        attendedAt: new Date(),
+        status: "no_show",
+        noShowAt: new Date(),
       });
     }
 

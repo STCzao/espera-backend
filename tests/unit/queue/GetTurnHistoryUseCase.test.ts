@@ -57,19 +57,43 @@ describe("GetTurnHistoryUseCase — listado", () => {
     });
   });
 
-  it("excludes waiting and called turns, but includes cancelled ones for traceability", async () => {
+  it("excludes waiting and called turns, but includes cancelled and no_show ones for traceability", async () => {
     const cancelledAt = new Date("2026-01-15T09:03:00.000Z");
+    const noShowAt     = new Date("2026-01-15T09:04:00.000Z");
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-w", queueId: QUEUE_ID, status: "waiting",   turnDate: DATE_UTC }),
       buildTurn({ id: "t-c", queueId: QUEUE_ID, status: "called",    turnDate: DATE_UTC }),
       buildTurn({ id: "t-x", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC, cancelledAt }),
+      buildTurn({ id: "t-ns", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC, calledAt, noShowAt }),
       buildTurn({ id: "t-ok", queueId: QUEUE_ID, status: "completed", turnDate: DATE_UTC, calledAt, attendedAt }),
     ]);
     const useCase = buildUseCase({ turnRepo });
 
     const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
 
-    expect(result.map((r) => r.turnId).sort()).toEqual(["t-ok", "t-x"]);
+    expect(result.map((r) => r.turnId).sort()).toEqual(["t-ns", "t-ok", "t-x"]);
+  });
+
+  it("returns a no_show turn distinct from a completed one, with its noShowAt and no attendedAt", async () => {
+    const noShowAt = new Date("2026-01-15T09:07:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-ns", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC,
+        calledAt, noShowAt, guestName: "Pedro",
+      }),
+    ]);
+    const useCase = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      turnId:     "t-ns",
+      status:     "no_show",
+      calledAt,
+      attendedAt: null,
+      noShowAt,
+    });
   });
 
   it("returns a cancelled turn with a null attendedAt/waitMinutes and its cancelledAt", async () => {

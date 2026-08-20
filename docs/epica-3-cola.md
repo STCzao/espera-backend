@@ -1747,3 +1747,97 @@ ejerce contra Postgres real (migración aplicada y verificada localmente,
 sin test de integración automatizado todavía).
 
 Validación manual: pendiente.
+
+## Bugfix — estado `no_show`, trazabilidad de turnos salteados (2026-08-20)
+
+Misma rama (`bugfix/restricciones-cola-y-planes`). Pregunta del usuario:
+*"cuando alguien sacó turno, fue llamado y no está porque llamamos al
+siguiente — cómo se saltea ese turno, no pasa por ventanilla, queda un
+vacío"*. Confirmado: no era un vacío de percepción, era un hueco real en el
+modelo de dominio.
+
+### El problema
+
+`CallNextUseCase` forzaba el turno `"called"` vigente directamente a
+`"completed"` al llamar al siguiente:
+
+```ts
+if (calledTurn) {
+  await this.turnRepo.save({ ...calledTurn, status: "completed", attendedAt: new Date() });
+}
+```
+
+Ese turno nunca pasó por `"attending"`, nunca tuvo `serviceWindowId` ni
+`startedAttentionAt` — pero queda marcado como si hubiera sido atendido con
+éxito. `TurnStatus` no tenía ningún valor para "fue llamado y no se
+presentó", distinto de `completed` (atendido de verdad) y de `cancelled`
+(el cliente/empleado lo dio de baja proactivamente).
+
+Consecuencia concreta: `getRawMetricsByDate` filtra `completedTurns` por
+`startedAttentionAt not null`, así que estos turnos-fantasma quedaban
+afuera del promedio de atención (correcto) **pero también afuera de
+`completedCount` y `cancelledCount`** — desaparecían de las métricas del
+día. Mientras tanto `findHistoryByQueue` sí los traía (filtra por
+`status IN (COMPLETED, CANCELLED)`) y los mostraba como un turno completado
+normal en el historial del panel. Dos vistas del mismo negocio, dos
+números distintos, ninguna reflejando la realidad operativa.
+
+### Fix
+
+Nuevo valor de `TurnStatus`: `NO_SHOW` (migración
+`20260820010000_add_turn_no_show_status`, agrega el valor al enum más la
+columna `noShowAt`). `CallNextUseCase` ahora marca el turno superado como
+`"no_show"` con `noShowAt`, no `"completed"` con `attendedAt` — se mantiene
+automático (sin acción explícita del empleado), tal como se decidió
+mantenerlo: una acción manual de "marcar no-show" antes de llamar al
+siguiente sumaría fricción operativa sin necesidad, el sistema ya sabe que
+pasó en el momento en que se pisa el turno llamado.
+
+- `TurnDayRaw`/`DayMetrics` ganan `noShowCount`/`noShowRate` (mismo cálculo
+  que `cancellationRate`, sobre el total de turnos cerrados del día).
+  `totalCount` ahora es `completed + cancelled + no_show`.
+- `findHistoryByQueue` incluye `NO_SHOW` junto a `COMPLETED`/`CANCELLED`, con
+  `status: "no_show"` explícito y `noShowAt` en el item — el panel puede
+  distinguirlo de un turno realmente atendido.
+- `getAverageServiceMinutes` y `getRawMetricsByDate` no cambian su filtro de
+  `completedTurns` — un `no_show` nunca tiene `startedAttentionAt`, así que
+  ya quedaba excluido del promedio de atención correctamente; lo que se
+  arregló es que ahora también se **cuenta** en algún lado, en vez de
+  desaparecer.
+
+**Pendiente, fuera de este backend**: el panel (frontend) hoy no distingue
+visualmente `no_show` de `completed` en el historial — es un campo nuevo
+que la UI todavía no consume. Vale la pena sumarlo como indicador (ej.
+"cuántos no se presentaron hoy") dado que es justamente el dato de valor
+que este fix habilita.
+
+### Efecto colateral encontrado: `GetGuestTurnStatusUseCase` no reconocía el nuevo estado
+
+Agregar `no_show` sin revisar todos los consumidores de `TurnStatus` dejó un
+hueco en el endpoint público de HU-4.2 (web ligera, sin cuenta): el chequeo
+de estado terminal solo cubría `cancelled`/`completed`. Un turno `no_show`
+caía al cálculo de "sigue esperando" (`resolveTurnWaitStatus`), que no
+reconoce ese estado tampoco y lo trata como si siguiera activo — el cliente
+sin cuenta seguía viendo *"estás esperando, posición N"* sobre un turno que
+ya fue salteado. `GetMyTurnUseCase` (flujo con cuenta) no tenía este
+problema: busca por `findActiveByCustomerInQueue`, que ya filtra por
+estados activos y excluye `no_show` correctamente (devuelve 404, no un
+estado inventado).
+
+Fix: `GetGuestTurnStatusUseCase` trata `no_show` igual que `cancelled`/
+`completed` — estado terminal, corta antes de llegar al cálculo de espera.
+
+### Cobertura
+
+- `tests/unit/queue/CallNextUseCase.test.ts` (test renombrado: *marks the
+  currently-called turn as no_show*)
+- `tests/unit/queue/GetQueueMetricsUseCase.test.ts` (bloques *noShowCount* y
+  *noShowRate*)
+- `tests/unit/queue/GetTurnHistoryUseCase.test.ts` (caso *no_show* en el
+  listado + shape del item)
+- `tests/unit/queue/GetGuestTurnStatusUseCase.test.ts` (caso *no_show*
+  tratado como terminal, no como "sigue esperando")
+
+585 tests en verde (suite completa).
+
+Validación manual: pendiente.

@@ -39,7 +39,7 @@ describe("CallNextUseCase", () => {
     expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
   });
 
-  it("completes the currently-called turn before calling the next", async () => {
+  it("marks the currently-called turn as no_show (never confirmed attending) before calling the next", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "called" }),
       buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "waiting" }),
@@ -48,7 +48,9 @@ describe("CallNextUseCase", () => {
 
     await useCase.execute({ queueId: QUEUE_ID });
 
-    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("completed");
+    const skipped = turnRepo.all().find((t) => t.id === "t-1");
+    expect(skipped?.status).toBe("no_show");
+    expect(skipped?.noShowAt).toBeInstanceOf(Date);
     expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("called");
   });
 

@@ -18,7 +18,7 @@ export interface GetGuestTurnStatusOutput {
   turnId: string;
   queueId: string;
   displayNumber: string;
-  status: "waiting" | "called" | "attending" | "redirected" | "cancelled" | "completed";
+  status: "waiting" | "called" | "attending" | "redirected" | "cancelled" | "completed" | "no_show";
   position: number;
   estimatedWaitMinutes: number | null;
   serviceWindowId: string | null;
@@ -49,7 +49,10 @@ export class GetGuestTurnStatusUseCase
     // Unlike GetMyTurnUseCase (scoped to active turns via
     // findActiveByCustomerInQueue), a guest can poll a turnId that already
     // finished — resolveTurnWaitStatus only knows about the active states.
-    if (turn.status === "cancelled" || turn.status === "completed") {
+    // no_show is terminal too: without this branch it falls through to the
+    // "still waiting" calculation below and reports a position/wait time
+    // for a turn that was already skipped.
+    if (turn.status === "cancelled" || turn.status === "completed" || turn.status === "no_show") {
       return {
         turnId: turn.id,
         queueId: turn.queueId,

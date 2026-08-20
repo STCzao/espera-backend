@@ -36,8 +36,10 @@ describe("GetQueueMetricsUseCase — métricas vacías", () => {
     expect(result.today).toMatchObject({
       completedCount:    0,
       cancelledCount:    0,
+      noShowCount:       0,
       totalCount:        0,
       cancellationRate:  0,
+      noShowRate:        0,
       avgServiceMinutes: null,
       peakHour:          null,
     });
@@ -73,6 +75,53 @@ describe("GetQueueMetricsUseCase — completedCount y cancelledCount", () => {
 
     expect(result.today.completedCount).toBe(1);
     expect(result.today.cancelledCount).toBe(0);
+  });
+});
+
+describe("GetQueueMetricsUseCase — noShowCount", () => {
+  it("counts no_show turns separately from completed and cancelled", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      completedTurn("t-1", DATE_UTC, 9, 5),
+      buildTurn({ id: "t-c1", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
+      buildTurn({ id: "t-ns1", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
+      buildTurn({ id: "t-ns2", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
+    ]);
+
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result.today.completedCount).toBe(1);
+    expect(result.today.cancelledCount).toBe(1);
+    expect(result.today.noShowCount).toBe(2);
+    expect(result.today.totalCount).toBe(4);
+  });
+
+  it("does not count a no_show turn as a completed attention (excluded from avgServiceMinutes)", async () => {
+    // A no_show turn never has startedAttentionAt/attendedAt — it must not
+    // silently count toward the service-time average.
+    const turnRepo = new InMemoryTurnRepo([
+      completedTurn("t-1", DATE_UTC, 9, 10),
+      buildTurn({ id: "t-ns", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
+    ]);
+
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result.today.avgServiceMinutes).toBe(10);
+  });
+});
+
+describe("GetQueueMetricsUseCase — noShowRate", () => {
+  it("computes no-show rate as a percentage of all closed turns", async () => {
+    // 1 completed + 1 cancelled + 2 no_show = 4 total → 50%
+    const turnRepo = new InMemoryTurnRepo([
+      completedTurn("t-1", DATE_UTC, 9, 5),
+      buildTurn({ id: "t-c1", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
+      buildTurn({ id: "t-ns1", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
+      buildTurn({ id: "t-ns2", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
+    ]);
+
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+
+    expect(result.today.noShowRate).toBe(50);
   });
 });
 
