@@ -1430,6 +1430,59 @@ cualquier otro estado, mismo patrón que `AttendTurnUseCase`). Devuelve
 
 Validación manual: pendiente.
 
+## Refinamiento — visibilidad de todas las colas de un negocio (2026-08-20)
+
+Rama: `feature/operar-multiples-colas`. Punto de partida: un negocio en
+plan Pro/Premium puede tener varias `Queue` (ver *"Crear colas
+adicionales"*, arriba), pero el panel solo operaba **una** — la que
+`findActiveByBusinessId` resuelve (la más antigua con `isActive: true`).
+Antes de asumir que hacía falta rediseñar el modelo o el panel en vivo, se
+revisaron todos los casos de uso operativos de `queue` (`CallNextUseCase`,
+`AttendTurnUseCase`, `CreateManualTurnUseCase`, `GetQueueStatusUseCase`,
+`GetQueueListUseCase`, `ToggleQueueUseCase`, etc.): **todos ya reciben
+`queueId` explícito**, ninguno depende de "la cola activa" resuelta
+automáticamente. El backend ya podía operar cualquier cola del negocio,
+una por una — lo único que colapsaba todo a una sola era
+`ListMyBusinessesUseCase`, el endpoint que arma el listado "mis negocios"
+del dashboard, que solo exponía `activeQueueId: string | null`.
+
+### Fix
+
+`ListMyBusinessesUseCase` gana un campo `queues` por negocio — el array
+completo (`id`, `name`, `prefix`, `isActive`, `activeServiceWindows` por
+cola), no solo la resuelta como activa. `activeQueueId` y
+`activeServiceWindows` a nivel negocio **no cambian de significado** —
+siguen siendo exactamente el mismo cálculo de antes (la cola más antigua
+activa, y sus ventanillas), preservados para no romper a quien ya los
+consume. `queues` es puramente aditivo.
+
+De paso quedó documentado un detalle menor: `activeServiceWindows` a nivel
+negocio representa las ventanillas de esa única cola resuelta, no el total
+del negocio — un negocio con 3 colas activas seguiría mostrando solo las
+ventanillas de la más antigua ahí. No se tocó (cambiar su significado
+rompería lo que ya lo consume); el array `queues` ya trae el desglose real
+por cola para quien lo necesite.
+
+### Alcance — qué queda para el frontend, no incluido acá
+
+Con `queues` disponible, el panel puede armar un selector de cola (pestañas,
+dropdown, lo que se decida) y pasar el `queueId` elegido a cada llamada en
+vez de asumir `activeQueueId` — el backend ya lo soporta. Cómo se ve eso en
+`BusinessQueuePage`/`QueuesControl.jsx`, y si la operación es "una cola a la
+vez" o varias en simultáneo con ventanillas por cola, queda del lado
+frontend/producto — no requiere más cambios de este lado salvo que surja un
+caso concreto no cubierto.
+
+### Cobertura
+
+- `tests/unit/business/ListMyBusinessesUseCase.test.ts` (3 casos nuevos:
+  expone todas las colas, `activeServiceWindows` por cola dentro de
+  `queues`, array vacío sin colas)
+
+611 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ListMyBusinessesUseCase } from "../../../src/modules/business/application/ListMyBusinessesUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
-import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue, buildServiceWindow } from "../../helpers/queueFakes";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 const ORG_ID = "organization-1";
@@ -146,6 +146,58 @@ describe("ListMyBusinessesUseCase", () => {
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
 
     expect(result.businesses[0].activeQueueId).toBeNull();
+  });
+
+  it("exposes every queue for the business, not just the active one", async () => {
+    const BIZ_ID = "biz-uuid-2222-2222-2222-222222222222";
+    const queueRepo = new InMemoryQueueRepo([
+      buildQueue({ id: "q-1", businessId: BIZ_ID, name: "Caja principal", prefix: "A", isActive: true }),
+      buildQueue({ id: "q-2", businessId: BIZ_ID, name: "Turnos VIP", prefix: "B", isActive: false }),
+    ]);
+    const useCase = buildUseCase({
+      businesses: [buildBusiness({ id: BIZ_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+      queueRepo,
+    });
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+    expect(result.businesses[0].queues).toHaveLength(2);
+    expect(result.businesses[0].queues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "q-1", name: "Caja principal", prefix: "A", isActive: true }),
+        expect.objectContaining({ id: "q-2", name: "Turnos VIP", prefix: "B", isActive: false }),
+      ]),
+    );
+  });
+
+  it("returns activeServiceWindows per queue inside the queues array", async () => {
+    const BIZ_ID = "biz-uuid-3333-3333-3333-333333333333";
+    const queueRepo = new InMemoryQueueRepo([
+      buildQueue({ id: "q-1", businessId: BIZ_ID, prefix: "A", isActive: true }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: "w-1", queueId: "q-1", isActive: true }),
+      buildServiceWindow({ id: "w-2", queueId: "q-1", isActive: false }),
+    ]);
+    const useCase = buildUseCase({
+      businesses: [buildBusiness({ id: BIZ_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+      queueRepo,
+      windowRepo,
+    });
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+    expect(result.businesses[0].queues[0]).toMatchObject({ id: "q-1", activeServiceWindows: 1 });
+  });
+
+  it("returns an empty queues array when the business has no queues", async () => {
+    const useCase = buildUseCase({
+      businesses: [buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+    });
+
+    const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+    expect(result.businesses[0].queues).toEqual([]);
   });
 
   it("returns empty array when owner has no businesses", async () => {
