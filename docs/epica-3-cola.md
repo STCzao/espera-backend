@@ -1302,6 +1302,59 @@ específica?) queda sin decidir — no bloquea a nadie hoy porque plan basic
 
 Validación manual: pendiente.
 
+## Refinamiento — fairness del no_show cuando la ventanilla nunca estuvo libre (2026-08-20)
+
+Misma rama. Pregunta del usuario al revisar el caso "alguien está siendo
+atendido y se llama a otro": *¿debería primero terminar de atender antes de
+poder llamar al siguiente?* Análisis: no — `called` y `attending` son
+estados separados justamente para permitir ese solape (el "aviso, andá
+saliendo de tu casa" que es la razón de ser del producto), y ya existe el
+chequeo de ocupación de ventanilla que evita que dos turnos terminen
+`attending` en el mismo lugar. Pero de ahí surgió un hueco real y más
+general en `CallNextUseCase`: **marca `no_show` al turno `called` vigente
+por el solo hecho de tocar "Siguiente" de nuevo, sin verificar si esa
+persona alguna vez tuvo una ventanilla libre para ser atendida.**
+
+Escenario concreto: cola con una sola ventanilla. A está `attending`. Se
+llama a B (queda `called`, sin ventanilla libre — A la sigue ocupando). Si
+se toca "Siguiente" otra vez antes de que A termine, B pasaba a `no_show`
+— aunque nunca tuvo dónde ir. El hueco no es sobre el primer llamado (ese
+es intencional y se mantiene sin cambios), es sobre **superar** a alguien
+que sigue `called` sin haber tenido nunca una ventanilla disponible.
+
+### Fix
+
+Antes de marcar `no_show` al turno `called` vigente, `CallNextUseCase`
+ahora chequea si la cola tiene ventanillas activas y, si las tiene, si
+alguna está libre (sin ningún turno `attending`/`redirected` ocupándola)
+en este momento:
+
+- Si hay una ventanilla libre → el turno `called` sí tuvo su chance y no se
+  presentó, se marca `no_show` como antes.
+- Si ninguna está libre → **se rechaza la acción completa** (`409
+  QUEUE_NO_WINDOW_AVAILABLE`), no solo se salta el no-show. No tiene
+  sentido llamar a un tercero cuando el segundo ni siquiera tuvo dónde ir
+  todavía.
+- Si la cola no tiene ventanillas activas configuradas (mostrador único,
+  igual que en los refinamientos anteriores) → se mantiene el
+  comportamiento anterior sin cambios, el concepto de "ventanilla libre" no
+  aplica ahí.
+
+`CallNextUseCase` gana una dependencia de `IServiceWindowRepo` (mismo
+patrón que `AttendTurnUseCase`).
+
+### Cobertura
+
+- `tests/unit/queue/CallNextUseCase.test.ts` (bloque *fairness del no_show
+  (ventanilla nunca libre)* — 4 casos: primer llamado con ventanilla
+  ocupada sigue funcionando, se rechaza superar a alguien sin ventanilla
+  libre, se marca no_show cuando sí hubo ventanilla libre, ventanillas
+  inactivas se ignoran)
+
+599 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.

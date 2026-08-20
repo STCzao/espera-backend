@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { CallNextUseCase } from "../../../src/modules/queue/application/CallNextUseCase";
 import {
   InMemoryQueueRepo,
+  InMemoryServiceWindowRepo,
   InMemoryTurnRepo,
   buildQueue,
+  buildServiceWindow,
   buildTurn,
 } from "../../helpers/queueFakes";
 
@@ -13,16 +15,19 @@ const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?: InMemoryTurnRepo;
+  windowRepo?: InMemoryServiceWindowRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
 } = {}) => {
   const queueRepo =
     options.queueRepo ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, isActive: true })]);
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
+  const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
   const emitter = options.emitter === undefined ? null : options.emitter;
   return {
     queueRepo,
     turnRepo,
-    useCase: new CallNextUseCase(queueRepo, turnRepo, emitter as never),
+    windowRepo,
+    useCase: new CallNextUseCase(queueRepo, turnRepo, windowRepo, emitter as never),
   };
 };
 
@@ -150,6 +155,79 @@ describe("CallNextUseCase", () => {
     await expect(
       useCase.execute({ queueId: "not-a-uuid" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("CallNextUseCase — fairness del no_show (ventanilla nunca libre)", () => {
+  const WINDOW_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  it("calling next for the first time works even when every active window is still occupied (heads-up overlap)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-attending", queueId: QUEUE_ID, number: 1, status: "attending", serviceWindowId: WINDOW_ID }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: true }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(result.turnId).toBe("t-next");
+    expect(turnRepo.all().find((t) => t.id === "t-next")?.status).toBe("called");
+  });
+
+  it("throws QUEUE_NO_WINDOW_AVAILABLE instead of marking no_show when the called turn never had a free window", async () => {
+    // t-called never had anywhere to go: the only window has been occupied
+    // by t-attending this whole time. Calling next again must not punish it.
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-attending", queueId: QUEUE_ID, number: 1, status: "attending", serviceWindowId: WINDOW_ID }),
+      buildTurn({ id: "t-called", queueId: QUEUE_ID, number: 2, status: "called" }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 3, status: "waiting" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: true }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NO_WINDOW_AVAILABLE" });
+
+    expect(turnRepo.all().find((t) => t.id === "t-called")?.status).toBe("called");
+    expect(turnRepo.all().find((t) => t.id === "t-next")?.status).toBe("waiting");
+  });
+
+  it("still marks no_show when a window was actually free and the called turn just wasn't attended", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-called", queueId: QUEUE_ID, number: 1, status: "called" }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: true }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(turnRepo.all().find((t) => t.id === "t-called")?.status).toBe("no_show");
+  });
+
+  it("ignores inactive windows when checking for availability", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-called", queueId: QUEUE_ID, number: 1, status: "called" }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const windowRepo = new InMemoryServiceWindowRepo([
+      buildServiceWindow({ id: WINDOW_ID, queueId: QUEUE_ID, isActive: false }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, windowRepo });
+
+    // No active windows configured (the only one is inactive) — same as the
+    // "no windows configured" single-counter case, old behavior applies.
+    await useCase.execute({ queueId: QUEUE_ID });
+
+    expect(turnRepo.all().find((t) => t.id === "t-called")?.status).toBe("no_show");
   });
 });
 
