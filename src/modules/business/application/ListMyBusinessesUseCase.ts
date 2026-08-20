@@ -33,6 +33,16 @@ export interface ListMyBusinessesOutput {
     subscriptionStatus: string;
     trialEndsAt: string | null;
     activeQueueId: string | null;
+    // Every queue the business has, not just the one activeQueueId resolves
+    // to — a Pro/Premium business can have more than one, and until now
+    // there was no way for the panel to even know the others existed.
+    queues: Array<{
+      id: string;
+      name: string;
+      prefix: string;
+      isActive: boolean;
+      activeServiceWindows: number;
+    }>;
   }>;
 }
 
@@ -56,12 +66,30 @@ export class ListMyBusinessesUseCase
 
     const results = await Promise.all(
       businesses.map(async (business) => {
-        const [subscription, queue] = await Promise.all([
+        const [subscription, activeQueue, allQueues] = await Promise.all([
           this.subscriptionRepo.findByOrganizationId(business.organizationId),
           this.queueRepo.findActiveByBusinessId(business.id),
+          this.queueRepo.findByBusinessId(business.id),
         ]);
-        const windows = queue ? await this.windowRepo.findByQueueId(queue.id) : [];
-        const activeServiceWindows = windows.filter((w) => w.isActive).length;
+
+        const queues = await Promise.all(
+          allQueues.map(async (queue) => {
+            const windows = await this.windowRepo.findByQueueId(queue.id);
+            return {
+              id: queue.id,
+              name: queue.name,
+              prefix: queue.prefix,
+              isActive: queue.isActive,
+              activeServiceWindows: windows.filter((w) => w.isActive).length,
+            };
+          }),
+        );
+
+        // Unchanged from before: the count for the single queue
+        // activeQueueId resolves to, not the business total across queues.
+        const activeServiceWindows = activeQueue
+          ? queues.find((q) => q.id === activeQueue.id)?.activeServiceWindows ?? 0
+          : 0;
 
         return {
           id: business.id,
@@ -79,7 +107,8 @@ export class ListMyBusinessesUseCase
           plan: subscription?.plan ?? "basic",
           subscriptionStatus: subscription?.status ?? "pending",
           trialEndsAt: subscription?.trialEndsAt?.toISOString() ?? null,
-          activeQueueId: queue?.id ?? null,
+          activeQueueId: activeQueue?.id ?? null,
+          queues,
         };
       }),
     );
