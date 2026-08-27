@@ -192,6 +192,48 @@ describe("RegisterBusinessUseCase", () => {
     expect(businessRepo.all()).toHaveLength(1);
   });
 
+  it("does not count a rejected business against the plan limit", async () => {
+    // A rejected Business never consumed a real operating slot — without
+    // this, a Basic account whose first registration got rejected could
+    // never register again.
+    const organizationId = "organization-1";
+    const membershipRepo = new InMemoryMembershipRepo([
+      buildMembership({ userId: OWNER_ID, organizationId, role: "admin" }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId, plan: "basic" }),
+    ]);
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: "rejected-one", slug: "rejected-one", organizationId, ownerUserId: OWNER_ID, status: "rejected" }),
+    ]);
+    const { useCase } = buildUseCase({ businessRepo, membershipRepo, subscriptionRepo });
+
+    await useCase.execute(validInput);
+
+    expect(businessRepo.all()).toHaveLength(2);
+  });
+
+  it("still counts a suspended business against the plan limit", async () => {
+    // Suspended is a temporary platform action on a real, previously
+    // approved Business — unlike "rejected", it still occupies its slot.
+    const organizationId = "organization-1";
+    const membershipRepo = new InMemoryMembershipRepo([
+      buildMembership({ userId: OWNER_ID, organizationId, role: "admin" }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId, plan: "basic" }),
+    ]);
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: "suspended-one", slug: "suspended-one", organizationId, ownerUserId: OWNER_ID, status: "suspended" }),
+    ]);
+    const { useCase } = buildUseCase({ businessRepo, membershipRepo, subscriptionRepo });
+
+    await expect(useCase.execute(validInput)).rejects.toMatchObject({
+      statusCode: 403,
+      code: "PLAN_BUSINESS_LIMIT_REACHED",
+    });
+  });
+
   it("rejects an invalid category id", async () => {
     const { useCase } = buildUseCase();
 

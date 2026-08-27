@@ -83,19 +83,37 @@ describe("CreateServiceWindowUseCase", () => {
       ).rejects.toMatchObject({ statusCode: 403, code: "PLAN_SERVICE_WINDOW_LIMIT_REACHED" });
     });
 
-    it("allows up to 3 windows under a PRO plan, rejects the 4th", async () => {
+    it("does not count a deactivated window against the plan's limit", async () => {
+      // A window turned off via ToggleServiceWindowUseCase shouldn't
+      // permanently occupy its slot — a replacement should still fit even
+      // under Basic (limit 1).
+      const subscriptionRepo = new InMemorySubscriptionRepo([
+        buildSubscription({ organizationId: ORGANIZATION_ID, plan: "basic" }),
+      ]);
+      const windowRepo = new InMemoryServiceWindowRepo([
+        { id: "window-old", queueId: QUEUE_ID, name: "Vieja", type: "cashier", isActive: false, createdAt: new Date(), updatedAt: new Date() },
+      ]);
+      const { useCase } = buildUseCase({ subscriptionRepo, windowRepo });
+
+      const result = await useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla nueva" });
+
+      expect(result.isActive).toBe(true);
+      expect(windowRepo.all()).toHaveLength(2);
+    });
+
+    it("allows up to 10 windows under a PRO plan, rejects the 11th", async () => {
       const subscriptionRepo = new InMemorySubscriptionRepo([
         buildSubscription({ organizationId: ORGANIZATION_ID, plan: "pro" }),
       ]);
       const { useCase, windowRepo } = buildUseCase({ subscriptionRepo });
 
-      await useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla 1" });
-      await useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla 2" });
-      await useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla 3" });
-      expect(windowRepo.all()).toHaveLength(3);
+      for (let i = 1; i <= 10; i += 1) {
+        await useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: `Ventanilla ${i}` });
+      }
+      expect(windowRepo.all()).toHaveLength(10);
 
       await expect(
-        useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla 4" }),
+        useCase.execute({ queueId: QUEUE_ID, ownerUserId: OWNER_ID, name: "Ventanilla 11" }),
       ).rejects.toMatchObject({ statusCode: 403, code: "PLAN_SERVICE_WINDOW_LIMIT_REACHED" });
     });
   });

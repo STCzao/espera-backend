@@ -41,8 +41,17 @@ Grilla de planes (`PLAN_LIMITS`, única fuente de verdad en
 | Plan    | Negocios | Filas por negocio | Ventanillas por fila |
 | ------- | -------- | ------------------ | --------------------- |
 | Basic   | 1        | 1                   | 1                      |
-| Pro     | 1        | Varias              | Hasta 3                |
-| Premium | Varios   | Varias cada uno     | Hasta 20               |
+| Pro     | 1        | 1                   | Hasta 10               |
+| Premium | Hasta 3  | 1                   | Hasta 20               |
+
+**Actualización (2026-08-20, ver `docs/epica-3-cola.md`, sección
+*"Reformulación del pitch de planes"*)**: la tabla de arriba refleja
+valores viejos (Pro con filas ilimitadas y hasta 3 ventanillas, Premium con
+negocios ilimitados) — se reemplazaron por lo de esta fila tras un análisis
+de venta que encontró que "varias filas por negocio" no es un diferencial
+real hoy (nadie del lado cliente puede elegir a cuál entrar), y que
+"negocios ilimitados" prometía una escala nunca validada. El pilar de
+Premium pasa a ser sucursales + techo de ventanillas, no cantidad de filas.
 
 La columna "Ventanillas por fila" se agregó en un bugfix posterior (ver
 `docs/epica-3-cola.md`, sección *"Bugfix — límite de ventanillas por
@@ -305,8 +314,10 @@ manualmente desde el Backoffice.
   y planes".
 - `UpdateOrganizationSubscriptionUseCase`: cambia el plan de una
   `Subscription`; si el nuevo plan tiene menos capacidad que los `Business`
-  reales de la cuenta, rechaza con `AppError.conflict` / código
-  `SUBSCRIPTION_DOWNGRADE_BLOCKED` en vez de borrar datos.
+  reales de la cuenta, rechaza con `AppError.conflict` en vez de borrar
+  datos. **Actualización (2026-08-20)**: el código se separó en
+  `SUBSCRIPTION_DOWNGRADE_BLOCKED_BUSINESSES`/`_QUEUES`/`_WINDOWS` — ver
+  sección más abajo.
 
 ### Cobertura
 
@@ -559,9 +570,14 @@ La `Subscription` se crea ahora con `status: "pending"`, `trialEndsAt: null`,
 `cancellationReason: null`, `cancelledAt: null`. Antes el campo no existía;
 `pending` es el estado correcto hasta que el equipo aprueba el negocio.
 
-### PLAN_LIMITS — reglas consensuadas (código pendiente)
+### PLAN_LIMITS — reglas consensuadas (histórico, superado)
 
-Se establecieron los límites definitivos para cada plan:
+*(Nota histórica — estos números nunca se implementaron así. Ver el valor
+final real en `docs/epica-3-cola.md`, sección "Reformulación del pitch de
+planes", 2026-08-20: Pro con 1 cola/hasta 10 ventanillas, Premium con hasta
+3 negocios/1 cola/hasta 20 ventanillas.)*
+
+Se habían discutido estos límites en su momento:
 
 | Plan    | Negocios | Colas por negocio |
 |---------|----------|-------------------|
@@ -569,9 +585,9 @@ Se establecieron los límites definitivos para cada plan:
 | Pro     | 1        | ilimitado         |
 | Premium | 10       | 20                |
 
-El código en `src/modules/organization/domain/PlanLimits.ts` todavía usa
-`Infinity` para `premium.maxBusinesses` y `premium.maxQueuesPerBusiness`.
-**Pendiente**: cambiar a `10` y `20` respectivamente antes de conectar billing.
+Quedaron sin implementar (el código siguió con `Infinity` en ambos campos
+de Premium y `pro.maxQueuesPerBusiness`) hasta el análisis de venta que
+llevó a los valores definitivos de arriba.
 
 ### Reglas de negocio establecidas
 
@@ -760,3 +776,88 @@ de envío no revierte la aprobación/rechazo.
   bootstrap de cola y guard de Organization no aprobada)
 - `tests/unit/business/RejectBusinessUseCase.test.ts`
 - `tests/unit/business/ListPendingBusinessesUseCase.test.ts`
+
+### Bugfix — downgrade sin frenos y suscripciones canceladas sin retorno (2026-08-20)
+
+Rama: `bugfix/restructurar-limites-planes` (mismo trabajo que la
+reformulación del pitch de planes, ver `docs/epica-3-cola.md`). Surgió
+explicando en detalle los flujos de plan: `UpdateOrganizationSubscriptionUseCase`
+solo comparaba `currentBusinessCount` contra el plan nuevo —
+nunca chequeaba colas ni ventanillas — y `ActivateOrganizationSubscriptionUseCase`
+explícitamente rechazaba reactivar desde `cancelled`/`expired`
+(`ACTIVATABLE_STATUSES = ["pending", "trial"]`), así que una cuenta que se
+cancelaba no tenía **ningún** camino de vuelta a `active` en todo el
+código — ni cambiando el plan, ni con "activar".
+
+### Fix 1 — downgrade también chequea colas y ventanillas
+
+`UpdateOrganizationSubscriptionInput` gana
+`maxActiveQueuesPerBusiness`/`maxActiveWindowsPerQueue` — el máximo, no un
+desglose por negocio/cola, porque `PLAN_LIMITS` aplica el mismo techo a
+todos los negocios/colas de la organización, así que solo importa el peor
+caso. Mismo patrón que `currentBusinessCount` ya establecido: el use case
+de `organization` no calcula esto por sí mismo (crearía el ciclo
+`organization` → `business`/`queue` que el bugfix anterior evitó a
+propósito) — `OrganizationController.changeSubscriptionPlan` lo resuelve,
+consultando `businessRepo`/`queueRepo`/`windowRepo` directamente (la capa
+`interfaces/` sí puede cruzar módulos). Si algo excede el plan nuevo,
+`409 SUBSCRIPTION_DOWNGRADE_BLOCKED_BUSINESSES`/`_QUEUES`/`_WINDOWS` según
+cuál — el dueño achica manualmente con
+`ToggleQueueUseCase`/`ToggleServiceWindowUseCase` (ya existían) antes de
+poder bajar de plan. No hay auto-selección de qué apagar: misma lógica que
+"no_show explícito, no automático".
+
+**Actualización (2026-08-20)**: los tres chequeos compartían al principio
+el mismo código `SUBSCRIPTION_DOWNGRADE_BLOCKED` — el llamador solo podía
+distinguir la causa parseando el texto del mensaje. Se separaron en tres
+códigos (`_BUSINESSES`/`_QUEUES`/`_WINDOWS`) para que un consumidor que
+mapea errores por código pueda mostrarle al dueño el motivo específico.
+
+### Fix 2 — reactivar desde cancelled/expired
+
+`ActivateOrganizationSubscriptionUseCase.ACTIVATABLE_STATUSES` pasa a
+incluir `cancelled`/`expired` — cubre tanto la primera activación como una
+renovación después de vencer. `cancelledByUserId`/`cancellationReason`/
+`cancelledAt` no se limpian al reactivar — quedan como historial.
+
+### Fix 3 — restricción automática al cancelar
+
+Nuevo `EnforceQueueLimitsForOrganizationUseCase` (`queue/application/` —
+no `organization/`, por la misma razón de dependencia unidireccional:
+necesita escribir `Queue`/`ServiceWindow`, y `queue` ya depende de
+`organization`, no al revés). Dado un `organizationId` y un `PlanLimit`,
+desactiva (no borra) las colas/ventanillas activas de más, conservando las
+más antiguas — mismo critero que `findActiveByBusinessId`. Si una cola se
+desactiva por exceder el límite, sus ventanillas no se tocan (ya son
+irrelevantes con la cola apagada).
+
+`OrganizationController.cancelSubscription` la invoca después de un
+cancel exitoso, con `PLAN_LIMITS.basic` — una cuenta cancelada ya no tiene
+plan pago, así que se restringe al techo de Basic (1 cola, 1 ventanilla)
+en vez de dejar corriendo gratis lo que tenía en Pro/Premium. Reactivar
+(Fix 2) **no** reactiva automáticamente lo que esto apagó — el dueño elige
+qué reactivar con el toggle, a propósito.
+
+**Alcance no cubierto, documentado como límite conocido**: esto solo se
+dispara en la cancelación explícita (`POST .../subscription/cancel`). El
+vencimiento pasivo de un trial (`ResolveEffectiveSubscriptionStatusUseCase`,
+que recién reconcilia `trial` → `expired` cuando *alguien* lee la
+suscripción, no hay cron en este MVP) sigue sin disparar esta restricción
+— el `status` pasa a `expired` correctamente y bloquea *crear* recursos
+nuevos, pero las colas/ventanillas que ya existían siguen operando sin
+límite hasta que alguien cancele explícitamente o se resuelva este caso en
+otro momento.
+
+### Cobertura
+
+- `tests/unit/organization/UpdateOrganizationSubscriptionUseCase.test.ts`
+  (2 casos nuevos: bloquea por colas, bloquea por ventanillas)
+- `tests/unit/organization/ActivateOrganizationSubscriptionUseCase.test.ts`
+  (2 casos nuevos: renueva desde cancelled conservando el historial,
+  renueva desde expired)
+- `tests/unit/queue/EnforceQueueLimitsForOrganizationUseCase.test.ts`
+  (nuevo — 6 casos)
+
+627 tests en verde (suite completa).
+
+Validación manual: pendiente.

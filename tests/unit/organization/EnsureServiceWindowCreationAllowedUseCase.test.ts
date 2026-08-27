@@ -18,21 +18,21 @@ describe("EnsureServiceWindowCreationAllowedUseCase", () => {
     });
   });
 
-  it("rejects a fourth service window under a PRO plan", async () => {
+  it("rejects the 11th service window under a PRO plan", async () => {
     const subscriptionRepo = new InMemorySubscriptionRepo([
       buildSubscription({ organizationId: "org-1", plan: "pro" }),
     ]);
     const useCase = new EnsureServiceWindowCreationAllowedUseCase(subscriptionRepo);
 
     await expect(
-      useCase.execute({ organizationId: "org-1", currentServiceWindowCountForQueue: 3 }),
+      useCase.execute({ organizationId: "org-1", currentServiceWindowCountForQueue: 10 }),
     ).rejects.toMatchObject({
       statusCode: 403,
       code: "PLAN_SERVICE_WINDOW_LIMIT_REACHED",
     });
   });
 
-  it("allows up to 3 service windows under PRO and up to 20 under PREMIUM", async () => {
+  it("allows up to 10 service windows under PRO and up to 20 under PREMIUM", async () => {
     const proRepo = new InMemorySubscriptionRepo([
       buildSubscription({ organizationId: "org-1", plan: "pro" }),
     ]);
@@ -43,7 +43,7 @@ describe("EnsureServiceWindowCreationAllowedUseCase", () => {
     await expect(
       new EnsureServiceWindowCreationAllowedUseCase(proRepo).execute({
         organizationId: "org-1",
-        currentServiceWindowCountForQueue: 2,
+        currentServiceWindowCountForQueue: 9,
       }),
     ).resolves.toBeUndefined();
 

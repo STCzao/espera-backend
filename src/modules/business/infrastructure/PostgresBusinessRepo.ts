@@ -156,7 +156,12 @@ export class PostgresBusinessRepo implements IBusinessRepo {
   }
 
   public async countByOrganizationId(organizationId: string): Promise<number> {
-    return prisma.business.count({ where: { organizationId } });
+    // Used exclusively to enforce PLAN_LIMITS.maxBusinesses (RegisterBusinessUseCase,
+    // OrganizationController.changeSubscriptionPlan) — a "rejected" Business never
+    // consumed a real operating slot and shouldn't count against the plan forever.
+    // "pending"/"suspended" do count: both represent a real Business that either
+    // is or was operating (suspended can be reactivated by the platform team).
+    return prisma.business.count({ where: { organizationId, status: { not: "REJECTED" } } });
   }
 
   public async countByStatus(status: Business["status"]): Promise<number> {

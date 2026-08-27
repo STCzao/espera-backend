@@ -35,6 +35,36 @@ describe("ActivateOrganizationSubscriptionUseCase", () => {
     expect(result.status).toBe("active");
   });
 
+  it("renews a cancelled subscription back to active, keeping the cancellation history", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({
+        organizationId: ORG_ID, status: "cancelled",
+        cancelledByUserId: ADMIN_ID, cancellationReason: "no renovó", cancelledAt: new Date("2026-01-01T00:00:00.000Z"),
+      }),
+    ]);
+
+    const result = await new ActivateOrganizationSubscriptionUseCase(subscriptionRepo).execute({
+      organizationId: ORG_ID,
+      activatedByUserId: ADMIN_ID,
+    });
+
+    expect(result.status).toBe("active");
+    expect(result.cancellationReason).toBe("no renovó");
+  });
+
+  it("renews an expired subscription back to active", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, status: "expired" }),
+    ]);
+
+    const result = await new ActivateOrganizationSubscriptionUseCase(subscriptionRepo).execute({
+      organizationId: ORG_ID,
+      activatedByUserId: ADMIN_ID,
+    });
+
+    expect(result.status).toBe("active");
+  });
+
   describe("errores", () => {
     it("throws 404 when there is no subscription for that organization", async () => {
       const useCase = new ActivateOrganizationSubscriptionUseCase(new InMemorySubscriptionRepo());
@@ -57,17 +87,5 @@ describe("ActivateOrganizationSubscriptionUseCase", () => {
       ).rejects.toMatchObject({ statusCode: 409, code: "SUBSCRIPTION_CANNOT_BE_ACTIVATED" });
     });
 
-    it("throws 409 when the subscription was cancelled", async () => {
-      const subscriptionRepo = new InMemorySubscriptionRepo([
-        buildSubscription({ organizationId: ORG_ID, status: "cancelled" }),
-      ]);
-
-      await expect(
-        new ActivateOrganizationSubscriptionUseCase(subscriptionRepo).execute({
-          organizationId: ORG_ID,
-          activatedByUserId: ADMIN_ID,
-        }),
-      ).rejects.toMatchObject({ statusCode: 409, code: "SUBSCRIPTION_CANNOT_BE_ACTIVATED" });
-    });
   });
 });

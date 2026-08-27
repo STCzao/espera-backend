@@ -61,9 +61,15 @@ export class CreateQueueUseCase implements UseCase<CreateQueueInput, Queue> {
 
     const existingQueues = await this.queueRepo.findByBusinessId(business.id);
 
+    // Plan limit counts only active queues — a deactivated one (via
+    // ToggleQueueUseCase) shouldn't occupy its slot forever. Prefix
+    // uniqueness below still checks every queue regardless of isActive:
+    // reusing a prefix while the old queue still exists (just paused)
+    // would be confusing if it's ever reactivated.
+    const activeQueueCount = existingQueues.filter((queue) => queue.isActive).length;
     await this.ensureQueueCreationAllowedUseCase.execute({
       organizationId: business.organizationId,
-      currentQueueCountForBusiness: existingQueues.length,
+      currentQueueCountForBusiness: activeQueueCount,
     });
 
     const prefix = parsed.data.prefix.toUpperCase();
