@@ -1483,6 +1483,135 @@ caso concreto no cubierto.
 
 Validación manual: pendiente.
 
+## Refinamiento — Reformulación del pitch de planes (2026-08-20)
+
+Rama: `bugfix/restructurar-limites-planes`. Surgió probando el escenario
+"una cola para Atención, otra para Caja" (el pitch de multi-cola en
+Premium) con la pregunta del dueño: *"¿para qué querría otra cola si con
+una puedo gestionar todas las ventanillas? Ya no tendría sentido pagar un
+plan premium."* Tenía razón — análisis completo abajo.
+
+### El problema
+
+`ServiceWindow` ya resuelve "distintos tipos de atención" adentro de una
+sola cola — cada ventanilla tiene `type` (cashier, customer_service,
+information, admin, technical), y con Pro ya había hasta 3 ventanillas
+activas corriendo en paralelo en una misma cola. Eso cubre el caso real de
+uso objetivo (peluquería/estética con varios peluqueros — ver
+`project_sales_positioning` en la memoria del proyecto): una sola fila de
+espera, varios empleados atendiendo en simultáneo.
+
+Lo único que una segunda `Queue` agrega de verdad — numeración propia,
+contador de "gente esperando" propio, tiempo estimado propio — **solo
+importa si el cliente puede elegir a cuál entrar**. Y no puede:
+`CreateGuestTurnUseCase` y el QR resuelven siempre
+`findActiveByBusinessId`, la única cola "activa" del negocio. La segunda
+cola de un plan Pro/Premium solo la usa un empleado cargando turnos a mano
+(`CreateManualTurnUseCase`, que sí recibe `queueId` explícito) — el
+cliente final nunca la ve ni la elige.
+
+Conclusión: multi-cola-por-negocio, tal como está hoy, es una herramienta
+interna del empleado, no algo que el cliente experimente o pida — vender
+eso como el diferencial de un plan superior es prometer algo que no se
+sostiene ante la primera pregunta de un cliente real. Es el mismo patrón
+de deuda que esta rama viene cerrando toda la sesión (funcionalidad que
+"existe" en el modelo pero no entrega de punta a punta), aplicado esta vez
+a la capa de venta en vez de a un bug de código.
+
+### Decisión: reformular qué vende cada plan, no repararlo con código nuevo
+
+Dos pilares reales, verificables, que ya funcionan de punta a punta hoy:
+
+1. **Techo de ventanillas por cola** — Basic 1, Pro 10, Premium 20. Es un
+   límite operativo tangible: un local con más puestos de atención
+   simultáneos que su plan permite lo choca en la práctica al intentar
+   crear la ventanilla de más (`EnsureServiceWindowCreationAllowedUseCase`).
+2. **Multi-sucursal** — Premium permite hasta 3 negocios bajo la misma
+   cuenta. Es, además, la única forma de tener más de un `Business` con una
+   sola cuenta: `Organization` es 1:1 con su dueño, así que Basic/Pro
+   (`maxBusinesses: 1`) no tienen ningún atajo — no es una comodidad, es la
+   única puerta de entrada a operar más de un local con una sola identidad.
+
+`maxQueuesPerBusiness` pasa a **1 en los tres planes** — no es que la
+funcionalidad de multi-cola se rompa o se retire: `CreateQueueUseCase`,
+`ToggleQueueUseCase` y todo el mecanismo quedan intactos en el código,
+simplemente no hay ningún plan que hoy permita usarlos para una segunda
+cola. Subirlo de nuevo por plan es un cambio de una constante, el día que
+exista ruteo de cliente hacia una cola específica (ver "Caminos futuros"
+abajo).
+
+`maxBusinesses` de Premium pasa de `Infinity` a **3** — la única señal de
+mercado real hasta ahora es un prospecto con 2 sucursales; prometer
+ilimitado sin haber probado el producto a esa escala es el mismo
+sobre-prometer que el punto anterior. **Nota**: no existe hoy ningún
+mecanismo de override por organización — si una cuenta real necesita más
+de 3, la única forma de dárselo hoy es subir esta constante para *todos*
+los Premium, no solo para esa cuenta. Queda anotado como pregunta abierta,
+no resuelta acá.
+
+### Caminos futuros considerados, no implementados
+
+- **Opción A — routear cliente a una cola específica**: QR por cola, o un
+  paso "¿qué necesitás?" antes de sacar turno en la web ligera. Recién ahí
+  una segunda cola le da al cliente algo que las ventanillas tipadas no
+  dan (saber cuánto espera su línea específica). Costo: agrega fricción al
+  flujo de entrada ("un tap y listo"), que es hoy un diferencial del
+  producto.
+- **Opción C — estimar espera por `ServiceWindow.type` dentro de una sola
+  cola**, en vez de por `Queue`. Da el mismo valor sin tocar el flujo de
+  entrada del cliente — reutiliza `QueueWaitEstimateService`, solo cambia
+  el agrupamiento del cálculo. Más barata y menos riesgosa que la Opción A
+  para el mismo objetivo; preferible si en algún momento hay señal real de
+  que esto importa.
+- **Patrón "banco"** (varias colas por trámite — Caja/Atención/Informes,
+  cada una con su propia numeración y sus propias ventanillas) — el
+  modelo `Queue > ServiceWindow` ya lo soporta sin cambios de arquitectura
+  (`Queue.prefix` existe justamente para eso). Evaluado y descartado como
+  dirección *actual*: implica que el cliente declare intención antes de
+  sacar número (la Opción A, pero obligatoria, no opcional), reabre el
+  terreno de HU-4.4 (dispensador físico, diferido a propósito), y apunta a
+  un rubro (trámites/salud) con exigencias de trazabilidad/SLA que no son
+  las del foco actual (peluquerías/estéticas). Sin señal de mercado
+  empujándolo. El modelo queda disponible para cuando ese segmento
+  aparezca — no hace falta decidir la arquitectura ahora.
+- **Segundo pilar de Premium ligado a la app móvil**: la gestión
+  unificada multi-sucursal (un login, una factura, switch entre locales)
+  ya es valor real hoy, sin depender de la app — no es "3 cuentas Pro con
+  mejor login", es la única forma de operar más de un negocio con una
+  cuenta. Lo que sí depende de la app es la visibilidad *cruzada* para el
+  cliente final (comparar tiempos de espera entre sucursales de una
+  cadena) — eso es un salto de valor futuro sobre Premium, no una
+  condición para que el actual tenga sentido.
+
+### Reglas de negocio
+
+1. Ningún plan permite crear una segunda `Queue` por negocio hoy —
+   `PLAN_QUEUE_LIMIT_REACHED` aplica a Basic, Pro y Premium por igual.
+2. El techo de ventanillas por cola es el eje real de diferenciación
+   dentro de un mismo negocio: 1 → 10 → 20.
+3. El techo de negocios por cuenta (`maxBusinesses`) solo aplica a
+   Premium — Basic y Pro topean en 1 por el diseño de `Organization`
+   (1:1 con el dueño), no por una regla de plan independiente.
+
+### Cobertura
+
+- `tests/unit/organization/EnsureQueueCreationAllowedUseCase.test.ts`
+  (caso *rejects a second queue under PRO and PREMIUM plans too*,
+  reemplaza el caso que afirmaba lo contrario)
+- `tests/unit/organization/EnsureServiceWindowCreationAllowedUseCase.test.ts`
+  (números actualizados a 10/20)
+- `tests/unit/organization/EnsureBusinessCreationAllowedUseCase.test.ts`
+  (caso nuevo: rechaza el 4to negocio en Premium)
+- `tests/unit/queue/CreateQueueUseCase.test.ts` / `CreateServiceWindowUseCase.test.ts`
+  (casos ajustados a los nuevos números; el test de colisión de prefix
+  aísla el chequeo de plan con un stub, porque con el límite en 1 ya no es
+  alcanzable a través del flujo normal — queda documentado en el propio
+  test por qué)
+
+613 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
 ## Refinamiento — Ownership en CRUD de ventanillas (bugfix, 2026-08-10)
 
 Rama: `bugfix/service-window-ownership-check`.
@@ -2078,5 +2207,56 @@ Fix: `GetGuestTurnStatusUseCase` trata `no_show` igual que `cancelled`/
   tratado como terminal, no como "sigue esperando")
 
 585 tests en verde (suite completa).
+
+Validación manual: pendiente.
+
+## Refinamiento — recursos rechazados/inactivos ocupaban cupo del plan para siempre (2026-08-20)
+
+Rama: `bugfix/restructurar-limites-planes` (mismo trabajo que la
+reformulación del pitch de planes, arriba). Encontrado al explicar los
+flujos de creación en detalle: los tres chequeos de límite de plan
+(negocios, colas, ventanillas) contaban recursos sin filtrar por estado.
+
+### El problema
+
+- `RegisterBusinessUseCase`, vía `IBusinessRepo.countByOrganizationId`,
+  contaba *todos* los negocios de la organización — incluidos `rejected`.
+  En Basic (techo 1 negocio), si el primer alta se rechazaba, la cuenta
+  quedaba bloqueada para siempre, sin ningún camino para volver a
+  registrar.
+- `CreateQueueUseCase`, vía `IQueueRepo.findByBusinessId(...).length`,
+  contaba todas las colas del negocio sin filtrar `isActive`. Con
+  `maxQueuesPerBusiness` en 1 para los tres planes (ver refinamiento
+  anterior), desactivar la única cola con `ToggleQueueUseCase` dejaba al
+  negocio sin ninguna forma de crear una de reemplazo.
+- `CreateServiceWindowUseCase`, mismo patrón con
+  `IServiceWindowRepo.findByQueueId(...).length` — una ventanilla
+  desactivada con `ToggleServiceWindowUseCase` ocupaba su cupo para
+  siempre.
+
+### Fix
+
+- `countByOrganizationId` ahora excluye `rejected` (`status: { not:
+  "REJECTED" }` en la query de Postgres). `suspended` sigue contando a
+  propósito: es una acción temporal de la plataforma sobre un negocio real
+  que ya operó y puede reactivarse — no es lo mismo que un alta que nunca
+  llegó a existir.
+- `CreateQueueUseCase` y `CreateServiceWindowUseCase` filtran por
+  `isActive` antes de pasarle el conteo a
+  `EnsureQueueCreationAllowedUseCase`/`EnsureServiceWindowCreationAllowedUseCase`.
+  La unicidad de `prefix` en `CreateQueueUseCase` sigue mirando *todas*
+  las colas (activas o no) — reusar el prefijo de una cola pausada
+  seguiría siendo confuso si se reactiva.
+
+### Cobertura
+
+- `tests/unit/business/RegisterBusinessUseCase.test.ts` (2 casos: un
+  negocio `rejected` no cuenta, uno `suspended` sí)
+- `tests/unit/queue/CreateQueueUseCase.test.ts` (una cola desactivada no
+  cuenta)
+- `tests/unit/queue/CreateServiceWindowUseCase.test.ts` (una ventanilla
+  desactivada no cuenta)
+
+617 tests en verde (suite completa).
 
 Validación manual: pendiente.

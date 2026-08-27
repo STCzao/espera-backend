@@ -35,24 +35,47 @@ const buildUseCase = (options: {
 };
 
 describe("CreateQueueUseCase", () => {
-  it("creates an additional queue for the business, with a default service window", async () => {
-    const { useCase, queueRepo, windowRepo } = buildUseCase();
+  it("creates a queue for the business, with a default service window", async () => {
+    // maxQueuesPerBusiness is 1 across every plan (see PlanLimits.ts) — a
+    // business that already has a queue can't get a second one under any
+    // plan, so the happy path here starts from zero queues.
+    const { useCase, queueRepo, windowRepo } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     const result = await useCase.execute({
       businessId: BUSINESS_ID,
       ownerUserId: OWNER_ID,
-      name: "Caja 2",
-      prefix: "b",
+      name: "Caja principal",
+      prefix: "a",
     });
 
     expect(result.businessId).toBe(BUSINESS_ID);
-    expect(result.prefix).toBe("B");
+    expect(result.prefix).toBe("A");
     expect(result.isActive).toBe(true);
-    expect(queueRepo.all()).toHaveLength(2);
+    expect(queueRepo.all()).toHaveLength(1);
 
     const windows = await windowRepo.findByQueueId(result.id);
     expect(windows).toHaveLength(1);
     expect(windows[0]).toMatchObject({ name: "Ventanilla 1", type: "cashier", isActive: true });
+  });
+
+  it("does not count a deactivated queue against the plan's limit", async () => {
+    // A queue turned off via ToggleQueueUseCase shouldn't permanently
+    // occupy its slot — the business should be able to create a
+    // replacement even under Basic (limit 1).
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_ID, plan: "basic" }),
+    ]);
+    const queueRepo = new InMemoryQueueRepo([
+      buildQueue({ id: "queue-old", businessId: BUSINESS_ID, prefix: "A", isActive: false }),
+    ]);
+    const { useCase } = buildUseCase({ subscriptionRepo, queueRepo });
+
+    const result = await useCase.execute({
+      businessId: BUSINESS_ID, ownerUserId: OWNER_ID, name: "Caja nueva", prefix: "b",
+    });
+
+    expect(result.prefix).toBe("B");
+    expect(queueRepo.all()).toHaveLength(2);
   });
 
   describe("errores", () => {
@@ -95,7 +118,19 @@ describe("CreateQueueUseCase", () => {
     });
 
     it("throws 409 when the prefix is already used by another queue of the same business", async () => {
-      const { useCase } = buildUseCase();
+      // Bypasses the plan gate (a no-op stub) on purpose: with
+      // maxQueuesPerBusiness at 1 for every plan, PLAN_QUEUE_LIMIT_REACHED
+      // would always fire first on a business that already has a queue —
+      // this isolates the prefix-collision check, which still matters for
+      // whenever the per-plan limit goes back up.
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID, organizationId: ORG_ID, status: "approved" }),
+      ]);
+      const queueRepo = new InMemoryQueueRepo([
+        buildQueue({ id: "queue-existing", businessId: BUSINESS_ID, prefix: "A" }),
+      ]);
+      const noOpEnsureQueueCreationAllowed = { execute: async () => undefined } as unknown as EnsureQueueCreationAllowedUseCase;
+      const useCase = new CreateQueueUseCase(businessRepo, queueRepo, noOpEnsureQueueCreationAllowed, new InMemoryServiceWindowRepo());
 
       await expect(
         useCase.execute({ businessId: BUSINESS_ID, ownerUserId: OWNER_ID, name: "Caja 2", prefix: "a" }),

@@ -49,9 +49,12 @@ export class CreateServiceWindowUseCase implements UseCase<CreateServiceWindowIn
     }
 
     const existingWindows = await this.windowRepo.findByQueueId(parsed.data.queueId);
+    // Plan limit counts only active windows — a deactivated one shouldn't
+    // occupy its slot forever (same fix as CreateQueueUseCase).
+    const activeWindowCount = existingWindows.filter((window) => window.isActive).length;
     await this.ensureServiceWindowCreationAllowedUseCase.execute({
       organizationId: business.organizationId,
-      currentServiceWindowCountForQueue: existingWindows.length,
+      currentServiceWindowCountForQueue: activeWindowCount,
     });
 
     const now = new Date();

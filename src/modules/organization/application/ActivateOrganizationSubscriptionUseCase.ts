@@ -13,12 +13,18 @@ const schema = z.object({
 
 export type ActivateOrganizationSubscriptionInput = z.infer<typeof schema>;
 
-const ACTIVATABLE_STATUSES: Subscription["status"][] = ["pending", "trial"];
+const ACTIVATABLE_STATUSES: Subscription["status"][] = ["pending", "trial", "cancelled", "expired"];
 
 /**
  * Manually marks a Subscription active once the Espera team confirms
- * payment out-of-band (there is no payment gateway in the MVP). Only makes
- * sense from "pending" (never paid yet) or "trial" (paid before it ends).
+ * payment out-of-band (there is no payment gateway in the MVP). Covers both
+ * a first activation ("pending"/"trial" — never paid, or paid before the
+ * trial ends) and a renewal ("cancelled"/"expired" — the account is paying
+ * again after lapsing). Renewal used to be impossible: this use case
+ * refused anything but pending/trial, and nothing else in the codebase set
+ * status back to "active" either — a lapsed account had no way back in.
+ * cancelledByUserId/cancellationReason/cancelledAt are left untouched as
+ * history, not cleared, even on a renewal.
  */
 export class ActivateOrganizationSubscriptionUseCase
   implements UseCase<ActivateOrganizationSubscriptionInput, Subscription>
@@ -36,7 +42,7 @@ export class ActivateOrganizationSubscriptionUseCase
 
     if (!ACTIVATABLE_STATUSES.includes(subscription.status)) {
       throw AppError.conflict(
-        "Only a pending or trial subscription can be activated.",
+        "This subscription is already active.",
         "SUBSCRIPTION_CANNOT_BE_ACTIVATED",
       );
     }

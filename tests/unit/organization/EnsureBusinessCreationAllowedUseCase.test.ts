@@ -29,15 +29,29 @@ describe("EnsureBusinessCreationAllowedUseCase", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("allows multiple businesses under a PREMIUM plan", async () => {
+  it("allows up to 3 businesses under a PREMIUM plan", async () => {
     const subscriptionRepo = new InMemorySubscriptionRepo([
       buildSubscription({ organizationId: "org-1", plan: "premium" }),
     ]);
     const useCase = new EnsureBusinessCreationAllowedUseCase(subscriptionRepo);
 
     await expect(
-      useCase.execute({ organizationId: "org-1", currentBusinessCount: 5 }),
+      useCase.execute({ organizationId: "org-1", currentBusinessCount: 2 }),
     ).resolves.toBeUndefined();
+  });
+
+  it("rejects a 4th business under a PREMIUM plan", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: "org-1", plan: "premium" }),
+    ]);
+    const useCase = new EnsureBusinessCreationAllowedUseCase(subscriptionRepo);
+
+    await expect(
+      useCase.execute({ organizationId: "org-1", currentBusinessCount: 3 }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "PLAN_BUSINESS_LIMIT_REACHED",
+    });
   });
 
   describe("estado de la subscription", () => {

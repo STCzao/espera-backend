@@ -18,7 +18,10 @@ describe("EnsureQueueCreationAllowedUseCase", () => {
     });
   });
 
-  it("allows multiple queues under PRO and PREMIUM plans", async () => {
+  it("rejects a second queue under PRO and PREMIUM plans too", async () => {
+    // maxQueuesPerBusiness is 1 across every plan on purpose — a second
+    // Queue only matters once a customer can be routed to it, and no entry
+    // point does that yet (see PlanLimits.ts). This isn't a Basic-only cap.
     const proRepo = new InMemorySubscriptionRepo([
       buildSubscription({ organizationId: "org-1", plan: "pro" }),
     ]);
@@ -29,15 +32,26 @@ describe("EnsureQueueCreationAllowedUseCase", () => {
     await expect(
       new EnsureQueueCreationAllowedUseCase(proRepo).execute({
         organizationId: "org-1",
-        currentQueueCountForBusiness: 10,
+        currentQueueCountForBusiness: 1,
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ statusCode: 403, code: "PLAN_QUEUE_LIMIT_REACHED" });
 
     await expect(
       new EnsureQueueCreationAllowedUseCase(premiumRepo).execute({
         organizationId: "org-2",
-        currentQueueCountForBusiness: 10,
+        currentQueueCountForBusiness: 1,
       }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "PLAN_QUEUE_LIMIT_REACHED" });
+  });
+
+  it("allows the first queue under any plan", async () => {
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: "org-1", plan: "premium" }),
+    ]);
+    const useCase = new EnsureQueueCreationAllowedUseCase(subscriptionRepo);
+
+    await expect(
+      useCase.execute({ organizationId: "org-1", currentQueueCountForBusiness: 0 }),
     ).resolves.toBeUndefined();
   });
 

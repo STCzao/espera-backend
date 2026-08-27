@@ -17,3 +17,9 @@ export type { ListBusinessQueuesInput } from "./application/ListBusinessQueuesUs
 
 export { ToggleQueueUseCase } from "./application/ToggleQueueUseCase";
 export type { ToggleQueueInput } from "./application/ToggleQueueUseCase";
+
+export { EnforceQueueLimitsForOrganizationUseCase } from "./application/EnforceQueueLimitsForOrganizationUseCase";
+export type {
+  EnforceQueueLimitsForOrganizationInput,
+  EnforceQueueLimitsForOrganizationOutput,
+} from "./application/EnforceQueueLimitsForOrganizationUseCase";

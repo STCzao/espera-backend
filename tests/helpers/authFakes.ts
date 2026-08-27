@@ -228,7 +228,7 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
 
   public async countByOrganizationId(organizationId: string): Promise<number> {
     return [...this.businesses.values()].filter(
-      (business) => business.organizationId === organizationId,
+      (business) => business.organizationId === organizationId && business.status !== "rejected",
     ).length;
   }
 
