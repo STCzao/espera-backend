@@ -584,13 +584,25 @@ npm run test:integration
 integración (con Docker), `tsc --noEmit` limpio en `src` y en tests
 (`tsconfig.test.json` ahora también incluye `vitest.integration.config.ts`).
 
-**Pendiente, deuda reconocida:** un solo repositorio cubierto
-(`PostgresUserRepo`, elegido por no tener dependencias de FK). Los
-candidatos de mayor valor para extender esto —`PostgresTurnRepo`, en
-particular `countWaitingAhead`/`findActiveByQueue` documentados en el
-bugfix de `epica-4-canales-entrada.md`— requieren primero crear
-Organization/Business/Queue reales (cadena de FKs), así que quedan fuera
-de este "mínimo, como base".
+**Extendido (2026-09-01):** `tests/integration/PostgresTurnRepo.integration.test.ts`
+— el candidato de mayor valor que había quedado pendiente arriba.
+`beforeAll` arma la cadena de FKs completa una sola vez (User → Organization
+→ BusinessCategory → Business → Queue, todos borrados en `afterAll`); cada
+test crea y limpia solo sus propios `Turn`. 6 casos: las 4 prioridades
+(`arrived`/`physical`/`in_transit`/`registered`) hacen round-trip exacto
+por `createWithNextNumber` + `findById` contra Postgres real,
+`findActiveByQueue` ordena por prioridad y no por orden de creación, y
+`countWaitingAhead` cuenta turnos de prioridad más alta. El caso de
+`in_transit` no es arbitrario — es exactamente el test que hubiera
+atrapado el bug real que salió a la luz al deduplicar `PRIORITY_RANK` (ver
+`docs/epica-4-canales-entrada.md`): `PostgresTurnRepo` mapeaba
+`IN_TRANSIT` a `"in-transit"` (guion) en vez de `"in_transit"` (guion
+bajo, el valor real de `TurnPriority`), invisible para el fake en memoria
+porque nunca pasa por esa conversión.
+
+718 tests en verde en la suite default (sin Docker), 9 en la suite de
+integración (con Docker: 3 de `PostgresUserRepo` + 6 de
+`PostgresTurnRepo`), `tsc --noEmit` limpio en `src` y en tests.
 
 ### Cierre del resto de hallazgos bajos de la auditoría (2026-09-01)
 

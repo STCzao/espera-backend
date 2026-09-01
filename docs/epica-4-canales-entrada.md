@@ -461,3 +461,58 @@ faltaban para que un cambio futuro que rompa esta garantía sí falle.
 
 660 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
 tests.
+
+## Bugfix — `PRIORITY_RANK` unificado, y un bug real que estaba escondido detrás de la duplicación (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto: el objeto `{ arrived: 1, physical: 2,
+in_transit: 3, registered: 4 }` (o su versión en mayúsculas para Prisma)
+estaba copiado a mano 5 veces — dos dentro de `PostgresTurnRepo.ts`
+(`findNextWaitingTurn`, `findActiveByQueue`) y tres en el fake de test
+(`tests/helpers/queueFakes.ts`), más una sexta variante como array
+(`PRIORITY_ORDER`) en `countWaitingAhead`. Exactamente el tipo de
+divergencia silenciosa que ya había costado un bug real una vez (ver el
+bugfix de reservas futuras, arriba).
+
+### El bug que apareció al unificarlo
+
+Al mover la lógica a un solo lugar, apareció uno nuevo: `toTurn` (y por
+extensión `findActiveByQueue`/`findRecentCalls`) mapeaba el priority de
+Postgres con `raw.priority.toLowerCase().replace("_", "-")` — convertía
+`IN_TRANSIT` a `"in-transit"` (con guion), un valor que **el tipo
+`TurnPriority` ni siquiera incluye** (es `"in_transit"`, con guion bajo).
+El cast `as TurnPriority` lo dejaba pasar sin error de compilación. Ningún
+test lo detectó nunca porque el fake en memoria trabaja directo con
+objetos `Turn` de dominio — nunca pasa por esta conversión Postgres→dominio,
+así que el mismo bug de "el fake no puede replicar un problema que solo
+existe en el mapeo real" que ya había pasado una vez, volvió a pasar.
+
+### Fix
+
+- Nuevo `src/modules/queue/domain/turnPriority.ts`: `TURN_PRIORITY_ORDER`
+  (el array canónico) y `turnPriorityRank()`, fuente única de verdad para
+  el orden. Ambos `PostgresTurnRepo.ts` y `queueFakes.ts` lo importan;
+  cada archivo mantiene un comparador local liviano (porque uno ordena
+  filas crudas de Prisma y el otro objetos `Turn` de dominio — las formas
+  de entrada difieren), pero el *dato* de la jerarquía vive en un solo
+  lugar.
+- `fromPrismaPriority()` (nuevo, en `PostgresTurnRepo.ts`) reemplaza el
+  `.replace("_", "-")` roto — un `toLowerCase()` simple alcanza porque
+  Prisma ya usa snake_case en mayúsculas (`IN_TRANSIT`) y el dominio usa
+  snake_case en minúsculas (`in_transit`), sin ningún guion de por medio.
+  `toPriorityEnum()` (la dirección inversa) tenía el mismo `.replace("-",
+  "_")` de más — inofensivo en la práctica porque nunca había un guion que
+  reemplazar, pero mismo malentendido, eliminado igual.
+- `countWaitingAhead` deriva su `higherPriorities` de `TURN_PRIORITY_ORDER`
+  en vez de mantener su propio array `PRIORITY_ORDER` — sexta copia
+  eliminada de paso.
+
+### Cobertura
+
+- `tests/integration/PostgresTurnRepo.integration.test.ts` (nuevo — ver
+  `docs/quality-and-testing.md`): el round-trip de las 4 prioridades
+  contra Postgres real, incluido `in_transit`, es exactamente el test que
+  hubiera detectado este bug antes de mergear.
+
+718 tests en verde (suite default) + 9 en la suite de integración,
+`tsc --noEmit` limpio en `src` y en tests.

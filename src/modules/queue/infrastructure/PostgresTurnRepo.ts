@@ -2,7 +2,27 @@ import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
+import { TURN_PRIORITY_ORDER, turnPriorityRank } from "../domain/turnPriority";
 import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
+
+// Prisma's enum is upper snake_case ("IN_TRANSIT"); the domain type is
+// lower snake_case ("in_transit") — a plain toLowerCase() round-trips it
+// exactly. (A previous version of this file also swapped "_" for "-" here,
+// which quietly mislabeled every in_transit turn read from real Postgres
+// as "in-transit" — a value TurnPriority doesn't even include. Nothing
+// caught it because the in-memory test fake never goes through this
+// conversion at all.)
+const fromPrismaPriority = (raw: string): TurnPriority => raw.toLowerCase() as TurnPriority;
+
+const compareByPriorityThenJoin = (
+  a: { priority: string; queueJoinedAt: Date; number: number },
+  b: { priority: string; queueJoinedAt: Date; number: number },
+): number => {
+  const rankDiff = turnPriorityRank(fromPrismaPriority(a.priority)) - turnPriorityRank(fromPrismaPriority(b.priority));
+  if (rankDiff !== 0) return rankDiff;
+  const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+  return byJoin !== 0 ? byJoin : a.number - b.number;
+};
 
 const toTurn = (raw: {
   id: string;
@@ -37,7 +57,7 @@ const toTurn = (raw: {
   number: raw.number,
   displayNumber: raw.displayNumber,
   status: raw.status.toLowerCase() as TurnStatus,
-  priority: raw.priority.toLowerCase().replace("_", "-") as TurnPriority,
+  priority: fromPrismaPriority(raw.priority),
   source: raw.source.toLowerCase() as TurnSource,
   turnDate: raw.turnDate,
   queueJoinedAt: raw.queueJoinedAt,
@@ -51,7 +71,7 @@ const toTurn = (raw: {
 });
 
 const toPriorityEnum = (p: TurnPriority) =>
-  p.toUpperCase().replace("-", "_") as "ARRIVED" | "PHYSICAL" | "IN_TRANSIT" | "REGISTERED";
+  p.toUpperCase() as "ARRIVED" | "PHYSICAL" | "IN_TRANSIT" | "REGISTERED";
 
 const toSourceEnum = (s: TurnSource) =>
   s.toUpperCase() as "APP" | "MANUAL" | "QR" | "WEB" | "PHONE";
@@ -97,9 +117,6 @@ export class PostgresTurnRepo implements ITurnRepo {
   }
 
   public async findNextWaitingTurn(queueId: string): Promise<Turn | null> {
-    const PRIORITY_RANK: Record<string, number> = {
-      ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
-    };
     const rows = await prisma.turn.findMany({
       // A phone reservation with a future queueJoinedAt hasn't "arrived" yet
       // — calling it before its ETA would summon someone who was told they
@@ -107,13 +124,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: { queueId, status: "WAITING", queueJoinedAt: { lte: new Date() } },
       orderBy: { queueJoinedAt: "asc" },
     });
-    const sorted = rows.sort((a, b) => {
-      const pa = PRIORITY_RANK[a.priority] ?? 5;
-      const pb = PRIORITY_RANK[b.priority] ?? 5;
-      if (pa !== pb) return pa - pb;
-      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
-      return byJoin !== 0 ? byJoin : a.number - b.number;
-    });
+    const sorted = rows.sort(compareByPriorityThenJoin);
     return sorted[0] ? toTurn(sorted[0]) : null;
   }
 
@@ -185,10 +196,9 @@ export class PostgresTurnRepo implements ITurnRepo {
 
   // Intentionally counts future-dated reservations too — see ITurnRepo.
   public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
-    const PRIORITY_ORDER = ["ARRIVED", "PHYSICAL", "IN_TRANSIT", "REGISTERED"] as const;
     const priorityEnum = toPriorityEnum(priority);
-    const myRank = PRIORITY_ORDER.indexOf(priorityEnum);
-    const higherPriorities = PRIORITY_ORDER.slice(0, myRank);
+    const myRank = TURN_PRIORITY_ORDER.indexOf(priority);
+    const higherPriorities = TURN_PRIORITY_ORDER.slice(0, myRank).map(toPriorityEnum);
 
     const countHigher = higherPriorities.length > 0
       ? prisma.turn.count({
@@ -232,21 +242,12 @@ export class PostgresTurnRepo implements ITurnRepo {
 
   // Intentionally includes future-dated reservations too — see ITurnRepo.
   public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
-    const PRIORITY_RANK: Record<string, number> = {
-      ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,
-    };
     const rows = await prisma.turn.findMany({
       where: { queueId, status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] } },
       include: { customer: { select: { firstName: true, lastName: true } } },
       orderBy: { queueJoinedAt: "asc" },
     });
-    rows.sort((a, b) => {
-      const pa = PRIORITY_RANK[a.priority] ?? 5;
-      const pb = PRIORITY_RANK[b.priority] ?? 5;
-      if (pa !== pb) return pa - pb;
-      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
-      return byJoin !== 0 ? byJoin : a.number - b.number;
-    });
+    rows.sort(compareByPriorityThenJoin);
     return rows.map((row) => ({
       turnId: row.id,
       displayNumber: row.displayNumber,
@@ -256,7 +257,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       guestName: row.guestName ?? null,
       phone: row.phone ?? null,
       source: row.source.toLowerCase() as TurnSource,
-      priority: row.priority.toLowerCase().replace("_", "-") as TurnPriority,
+      priority: fromPrismaPriority(row.priority),
       status: row.status.toLowerCase() as "waiting" | "called" | "attending" | "redirected",
       createdAt: row.createdAt,
       queueJoinedAt: row.queueJoinedAt,
@@ -318,7 +319,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       customerName:  row.customer ? `${row.customer.firstName} ${row.customer.lastName}`.trim() : null,
       guestName:     row.guestName ?? null,
       source:        row.source.toLowerCase() as TurnSource,
-      priority:      row.priority.toLowerCase().replace("_", "-") as TurnPriority,
+      priority:      fromPrismaPriority(row.priority),
       status:        row.status.toLowerCase() as "completed" | "cancelled" | "no_show",
       createdAt:     row.createdAt,
       calledAt:      row.calledAt,
