@@ -570,3 +570,41 @@ mismo tipo de fuga que el resto.
 tests.
 
 Validación manual: pendiente.
+
+## Bugfix — `RefreshTokenUseCase` no chequeaba `isBlocked` directamente (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto.
+
+### El problema
+
+`LoginUseCase` y `LoginWithGoogleUseCase` chequean `isBlocked`
+explícitamente. `RefreshTokenUseCase` no — hoy funciona igual porque
+`BlockUserUseCase` siempre revoca todas las refresh sessions al bloquear,
+así que el rechazo llega indirecto (`session.revokedAt`), pero es un
+chequeo transitivo, no una regla propia del use case. Cualquier código
+futuro que ponga `isBlocked: true` sin también revocar sesiones (un script
+de admin, una actualización masiva) dejaría a un usuario bloqueado
+refrescando tokens sin límite.
+
+### Fix
+
+Chequeo directo de `isBlocked` en `RefreshTokenUseCase`, mismo código y
+mensaje que `LoginUseCase` (`403 ACCOUNT_BLOCKED`) — defensa en
+profundidad, no reemplaza la revocación de sesiones que ya hace
+`BlockUserUseCase`.
+
+De paso, se reforzaron las 4 ramas de error que la auditoría señaló como
+no cubiertas en este mismo archivo: token vacío, sesión inexistente,
+sesión expirada, usuario borrado con sesión huérfana.
+
+### Cobertura
+
+- `tests/unit/auth/RefreshTokenUseCase.test.ts` (5 casos nuevos: usuario
+  bloqueado, token vacío, sesión inexistente, sesión expirada, usuario
+  inexistente)
+
+718 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
