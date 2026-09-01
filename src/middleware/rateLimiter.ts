@@ -16,41 +16,34 @@ interface MemoryEntry {
 
 const memoryStore = new Map<string, MemoryEntry>();
 
+// Keyed by "METHOD path" so a GET route is exactly as visible here as a
+// POST one — the previous POST-only switch made every non-POST route an
+// unwritten special case, which is exactly how GET /google/url ended up
+// wired to `rateLimiter` with no policy actually matching it (caught by
+// tests/unit/middleware/rateLimiterCoverage.test.ts, which now guards this
+// table against drifting from the real route wiring).
+const POLICIES: Record<string, RateLimitPolicy> = {
+  "POST /login":                       { bucket: "login",                     limit: 5,  windowSeconds: 10 * 60 },
+  "POST /login/google":                { bucket: "login-google",              limit: 10, windowSeconds: 10 * 60 },
+  "GET /google/url":                   { bucket: "google-oauth-url",          limit: 20, windowSeconds: 10 * 60 },
+  "POST /register":                    { bucket: "register",                  limit: 5,  windowSeconds: 60 * 60 },
+  "POST /register-business":           { bucket: "register-business",         limit: 5,  windowSeconds: 60 * 60 },
+  "POST /register-business/google":    { bucket: "register-business-google",  limit: 10, windowSeconds: 10 * 60 },
+  "POST /forgot-password":             { bucket: "forgot-password",           limit: 3,  windowSeconds: 15 * 60 },
+  "POST /resend-verification":         { bucket: "resend-verification",       limit: 3,  windowSeconds: 15 * 60 },
+  "POST /reset-password":              { bucket: "reset-password",            limit: 5,  windowSeconds: 10 * 60 },
+  "POST /refresh-token":               { bucket: "refresh-token",             limit: 20, windowSeconds: 10 * 60 },
+  "POST /guest-turns":                 { bucket: "guest-turns",               limit: 5,  windowSeconds: 10 * 60 },
+  "GET /:token":                       { bucket: "qr-resolve",                limit: 30, windowSeconds: 60 },
+};
+
 const getPolicy = (request: Request): RateLimitPolicy | null => {
   // request.route.path is the matched route *pattern* (e.g. "/:token"), set
   // by Express before invoking route-specific middleware — falls back to
   // request.path for the literal (param-free) routes below, where both are
   // identical anyway.
   const routePath = request.route?.path ?? request.path;
-
-  if (request.method === "GET" && routePath === "/:token") {
-    return { bucket: "qr-resolve", limit: 30, windowSeconds: 60 };
-  }
-
-  if (request.method !== "POST") {
-    return null;
-  }
-
-  switch (routePath) {
-    case "/login":
-      return { bucket: "login", limit: 5, windowSeconds: 10 * 60 };
-    case "/login/google":
-      return { bucket: "login-google", limit: 10, windowSeconds: 10 * 60 };
-    case "/register":
-      return { bucket: "register", limit: 5, windowSeconds: 60 * 60 };
-    case "/register-business":
-      return { bucket: "register-business", limit: 5, windowSeconds: 60 * 60 };
-    case "/register-business/google":
-      return { bucket: "register-business-google", limit: 10, windowSeconds: 10 * 60 };
-    case "/forgot-password":
-      return { bucket: "forgot-password", limit: 3, windowSeconds: 15 * 60 };
-    case "/refresh-token":
-      return { bucket: "refresh-token", limit: 20, windowSeconds: 10 * 60 };
-    case "/guest-turns":
-      return { bucket: "guest-turns", limit: 5, windowSeconds: 10 * 60 };
-    default:
-      return null;
-  }
+  return POLICIES[`${request.method} ${routePath}`] ?? null;
 };
 
 /**
