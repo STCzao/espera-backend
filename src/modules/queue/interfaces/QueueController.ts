@@ -84,6 +84,7 @@ export class QueueController {
   public getQueueList = async (request: Request, response: Response): Promise<void> => {
     const result = await this.getQueueListUseCase.execute({
       queueId: String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
     });
     response.status(200).json(result);
   };
@@ -91,6 +92,7 @@ export class QueueController {
   public createManualTurn = async (request: Request, response: Response): Promise<void> => {
     const result = await this.createManualTurnUseCase.execute({
       queueId:    String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
       guestName:  String(request.body.guestName),
       phone:      request.body.phone ? String(request.body.phone) : undefined,
       source:     request.body.source,
@@ -121,6 +123,7 @@ export class QueueController {
   public callNext = async (request: Request, response: Response): Promise<void> => {
     const result = await this.callNextUseCase.execute({
       queueId: String(request.body.queueId),
+      requestingUserId: String(request.user?.id),
     });
     logger.info({ turnId: result.turnId, queueId: result.queueId }, "Next turn called");
     response.status(200).json(result);
@@ -129,6 +132,7 @@ export class QueueController {
   public attendTurn = async (request: Request, response: Response): Promise<void> => {
     const result = await this.attendTurnUseCase.execute({
       turnId:          String(request.params.turnId),
+      requestingUserId: String(request.user?.id),
       serviceWindowId: request.body.serviceWindowId ? String(request.body.serviceWindowId) : undefined,
     });
     logger.info({ turnId: result.turnId }, "Turn marked as attended");
@@ -138,6 +142,7 @@ export class QueueController {
   public listServiceWindows = async (request: Request, response: Response): Promise<void> => {
     const result = await this.listServiceWindowsUseCase.execute({
       queueId: String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
     });
     response.status(200).json(result);
   };
@@ -185,6 +190,7 @@ export class QueueController {
   public redirectTurn = async (request: Request, response: Response): Promise<void> => {
     const result = await this.redirectTurnUseCase.execute({
       turnId:                String(request.params.turnId),
+      requestingUserId:      String(request.user?.id),
       targetServiceWindowId: String(request.body.targetServiceWindowId),
     });
     logger.info({ turnId: result.turnId, serviceWindowId: result.serviceWindowId }, "Turn redirected to another service window");
@@ -194,6 +200,7 @@ export class QueueController {
   public markTurnNoShow = async (request: Request, response: Response): Promise<void> => {
     const result = await this.markTurnNoShowUseCase.execute({
       turnId: String(request.params.turnId),
+      requestingUserId: String(request.user?.id),
     });
     logger.info({ turnId: result.turnId }, "Turn marked as no-show");
     response.status(200).json(result);
@@ -202,6 +209,7 @@ export class QueueController {
   public cancelTurnByEmployee = async (request: Request, response: Response): Promise<void> => {
     const result = await this.cancelTurnByEmployeeUseCase.execute({
       turnId: String(request.params.turnId),
+      requestingUserId: String(request.user?.id),
     });
     logger.info({ turnId: result.turnId }, "Turn cancelled by employee");
     response.status(200).json(result);
@@ -210,6 +218,7 @@ export class QueueController {
   public getQueueMetrics = async (request: Request, response: Response): Promise<void> => {
     const result = await this.getQueueMetricsUseCase.execute({
       queueId: String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
       date:    request.query.date ? String(request.query.date) : undefined,
     });
     response.status(200).json(result);
@@ -218,6 +227,7 @@ export class QueueController {
   public getTurnHistory = async (request: Request, response: Response): Promise<void> => {
     const result = await this.getTurnHistoryUseCase.execute({
       queueId: String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
       date:    request.query.date ? String(request.query.date) : undefined,
     });
     response.status(200).json(result);
@@ -226,6 +236,7 @@ export class QueueController {
   public getQueueStatus = async (request: Request, response: Response): Promise<void> => {
     const result = await this.getQueueStatusUseCase.execute({
       queueId: String(request.params.queueId),
+      requestingUserId: String(request.user?.id),
     });
     response.status(200).json(result);
   };

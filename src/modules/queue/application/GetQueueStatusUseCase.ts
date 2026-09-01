@@ -2,9 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
-import type { BusinessOperationalStatus } from "@modules/business/domain/Business";
-import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import type { IBusinessRepo, BusinessOperationalStatus } from "@modules/business/public-api";
+import { EnsureBusinessMembershipUseCase, PostgresBusinessRepo } from "@modules/business/public-api";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
@@ -15,6 +14,7 @@ import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
 });
 
 export type GetQueueStatusInput = z.infer<typeof schema>;
@@ -57,6 +57,7 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: GetQueueStatusInput): Promise<GetQueueStatusOutput> {
@@ -65,6 +66,11 @@ export class GetQueueStatusUseCase implements UseCase<GetQueueStatusInput, GetQu
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: queue.businessId,
+      userId: parsed.data.requestingUserId,
+    });
 
     const today = todayUTC();
     const [activeTurns, business, avgMinutes, windows, recentCalls] = await Promise.all([

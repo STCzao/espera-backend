@@ -1,21 +1,38 @@
 import { Prisma } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { AttendTurnUseCase } from "../../../src/modules/queue/application/AttendTurnUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemoryServiceWindowRepo, InMemoryTurnRepo, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
 const TURN_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUEUE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const BUSINESS_ID = "business-1"; // matches buildTurn() default
+const OWNER_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const STRANGER_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
 const buildUseCase = (options: {
   turnRepo?: InMemoryTurnRepo;
   windowRepo?: InMemoryServiceWindowRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const turnRepo   = options.turnRepo ?? new InMemoryTurnRepo();
   const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
   const emitter    = options.emitter === undefined ? null : options.emitter;
-  return { useCase: new AttendTurnUseCase(turnRepo, windowRepo, emitter as never), turnRepo, windowRepo };
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return {
+    useCase: new AttendTurnUseCase(turnRepo, windowRepo, emitter as never, ensureBusinessMembershipUseCase),
+    turnRepo,
+    windowRepo,
+  };
 };
 
 describe("AttendTurnUseCase — called → attending", () => {
@@ -25,7 +42,7 @@ describe("AttendTurnUseCase — called → attending", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(result).toMatchObject({ turnId: TURN_ID, status: "attending" });
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.status).toBe("attending");
@@ -38,7 +55,7 @@ describe("AttendTurnUseCase — called → attending", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     const saved = turnRepo.all().find((t) => t.id === TURN_ID);
     expect(saved?.startedAttentionAt).toBeInstanceOf(Date);
@@ -54,7 +71,7 @@ describe("AttendTurnUseCase — called → attending", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
 
-    await useCase.execute({ turnId: TURN_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(emitQueueUpdate).toHaveBeenCalledOnce();
     expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
@@ -71,7 +88,7 @@ describe("AttendTurnUseCase — attending → completed", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(result).toMatchObject({ turnId: TURN_ID, status: "completed" });
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.status).toBe("completed");
@@ -84,7 +101,7 @@ describe("AttendTurnUseCase — attending → completed", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     const saved = turnRepo.all().find((t) => t.id === TURN_ID);
     expect(saved?.attendedAt).toBeInstanceOf(Date);
@@ -100,7 +117,7 @@ describe("AttendTurnUseCase — attending → completed", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
 
-    await useCase.execute({ turnId: TURN_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(emitQueueUpdate).toHaveBeenCalledOnce();
     expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
@@ -115,7 +132,7 @@ describe("AttendTurnUseCase — attending → completed", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: null });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).resolves.toMatchObject({ status: "completed" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).resolves.toMatchObject({ status: "completed" });
   });
 });
 
@@ -128,7 +145,7 @@ describe("AttendTurnUseCase — serviceWindowId", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID });
 
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
   });
@@ -139,7 +156,7 @@ describe("AttendTurnUseCase — serviceWindowId", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ turnId: TURN_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
   });
@@ -156,7 +173,7 @@ describe("AttendTurnUseCase — ocupación de ventanilla", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
   });
 
@@ -167,7 +184,7 @@ describe("AttendTurnUseCase — ocupación de ventanilla", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID }),
     ).resolves.toMatchObject({ status: "attending" });
   });
 
@@ -178,7 +195,7 @@ describe("AttendTurnUseCase — ocupación de ventanilla", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
     ).resolves.toMatchObject({ status: "attending" });
   });
 
@@ -190,7 +207,7 @@ describe("AttendTurnUseCase — ocupación de ventanilla", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
   });
 });
@@ -215,7 +232,7 @@ describe("AttendTurnUseCase — carrera entre dos attend concurrentes (red de se
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
 
     turnRepo.save = originalSave;
@@ -231,7 +248,7 @@ describe("AttendTurnUseCase — carrera entre dos attend concurrentes (red de se
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, serviceWindowId: WINDOW_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, serviceWindowId: WINDOW_ID }),
     ).rejects.toThrow("boom");
   });
 });
@@ -249,7 +266,7 @@ describe("AttendTurnUseCase — ventanilla obligatoria si la cola tiene ventanil
     const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400, code: "SERVICE_WINDOW_REQUIRED" });
   });
 
@@ -260,7 +277,7 @@ describe("AttendTurnUseCase — ventanilla obligatoria si la cola tiene ventanil
     const { useCase } = buildUseCase({ turnRepo, windowRepo: new InMemoryServiceWindowRepo() });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
     ).resolves.toMatchObject({ status: "attending" });
   });
 
@@ -274,7 +291,7 @@ describe("AttendTurnUseCase — ventanilla obligatoria si la cola tiene ventanil
     const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
     ).resolves.toMatchObject({ status: "attending" });
   });
 });
@@ -288,7 +305,7 @@ describe("AttendTurnUseCase — redirected → attending", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(result.status).toBe("attending");
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.serviceWindowId).toBe(WINDOW_ID);
@@ -301,7 +318,7 @@ describe("AttendTurnUseCase — redirected → attending", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(result.startedAttentionAt).toBe(originalStart.toISOString());
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.startedAttentionAt).toEqual(originalStart);
@@ -312,7 +329,7 @@ describe("AttendTurnUseCase — errores", () => {
   it("throws 404 when the turn does not exist", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
   });
 
   it("throws 409 when the turn is waiting", async () => {
@@ -321,7 +338,7 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when the turn is already completed", async () => {
@@ -330,7 +347,7 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
   });
 
   it("throws 409 when the turn is cancelled", async () => {
@@ -339,12 +356,23 @@ describe("AttendTurnUseCase — errores", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ turnId: TURN_ID, requestingUserId: STRANGER_ID }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
   });
 
   it("throws 400 for an invalid turnId", async () => {
     const { useCase } = buildUseCase();
 
-    await expect(useCase.execute({ turnId: "not-a-uuid" })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(useCase.execute({ turnId: "not-a-uuid", requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 400 });
   });
 });

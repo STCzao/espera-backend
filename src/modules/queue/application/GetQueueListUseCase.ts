@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { TurnPriority, TurnSource } from "../domain/Turn";
 import type { IQueueRepo } from "../domain/IQueueRepo";
@@ -13,6 +14,7 @@ import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
 });
 
 export type GetQueueListInput = z.infer<typeof schema>;
@@ -51,6 +53,7 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: GetQueueListInput): Promise<GetQueueListOutput> {
@@ -61,6 +64,11 @@ export class GetQueueListUseCase implements UseCase<GetQueueListInput, GetQueueL
 
     const queue = await this.queueRepo.findById(queueId);
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: queue.businessId,
+      userId: parsed.data.requestingUserId,
+    });
 
     const now = new Date();
     const today = todayUTC();

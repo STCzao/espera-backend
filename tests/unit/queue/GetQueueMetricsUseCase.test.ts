@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { GetQueueMetricsUseCase } from "../../../src/modules/queue/application/GetQueueMetricsUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
   InMemoryTurnRepo,
@@ -9,17 +11,28 @@ import {
 } from "../../helpers/queueFakes";
 
 const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
+const BUSINESS_ID = "business-1"; // matches buildQueue() default
 const DATE_STR = "2026-03-10";
 const DATE_UTC = new Date("2026-03-10T00:00:00.000Z");
 const PREV_UTC = new Date("2026-03-09T00:00:00.000Z");
+const OWNER_ID = "22222222-2222-4222-8222-222222222222";
+const STRANGER_ID = "33333333-3333-4333-8333-333333333333";
 
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?:  InMemoryTurnRepo;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID })]);
   const turnRepo  = options.turnRepo  ?? new InMemoryTurnRepo();
-  return new GetQueueMetricsUseCase(queueRepo, turnRepo);
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return new GetQueueMetricsUseCase(queueRepo, turnRepo, ensureBusinessMembershipUseCase);
 };
 
 const completedTurn = (id: string, date: Date, startHour: number, serviceMinutes: number) => {
@@ -30,7 +43,7 @@ const completedTurn = (id: string, date: Date, startHour: number, serviceMinutes
 
 describe("GetQueueMetricsUseCase — métricas vacías", () => {
   it("returns zero metrics when there are no turns", async () => {
-    const result = await buildUseCase().execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.date).toBe(DATE_STR);
     expect(result.today).toMatchObject({
@@ -57,7 +70,7 @@ describe("GetQueueMetricsUseCase — completedCount y cancelledCount", () => {
       buildTurn({ id: "t-c3", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.completedCount).toBe(2);
     expect(result.today.cancelledCount).toBe(3);
@@ -71,7 +84,7 @@ describe("GetQueueMetricsUseCase — completedCount y cancelledCount", () => {
       buildTurn({ id: "t-c", queueId: QUEUE_ID, status: "called",  turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.completedCount).toBe(1);
     expect(result.today.cancelledCount).toBe(0);
@@ -87,7 +100,7 @@ describe("GetQueueMetricsUseCase — noShowCount", () => {
       buildTurn({ id: "t-ns2", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.completedCount).toBe(1);
     expect(result.today.cancelledCount).toBe(1);
@@ -103,7 +116,7 @@ describe("GetQueueMetricsUseCase — noShowCount", () => {
       buildTurn({ id: "t-ns", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.avgServiceMinutes).toBe(10);
   });
@@ -119,7 +132,7 @@ describe("GetQueueMetricsUseCase — noShowRate", () => {
       buildTurn({ id: "t-ns2", queueId: QUEUE_ID, status: "no_show", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.noShowRate).toBe(50);
   });
@@ -135,13 +148,13 @@ describe("GetQueueMetricsUseCase — cancellationRate", () => {
       buildTurn({ id: "t-c3", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.cancellationRate).toBe(75);
   });
 
   it("returns 0 rate when there are no closed turns", async () => {
-    const result = await buildUseCase().execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
     expect(result.today.cancellationRate).toBe(0);
   });
 });
@@ -152,7 +165,7 @@ describe("GetQueueMetricsUseCase — avgServiceMinutes", () => {
       buildTurn({ id: "t-c", queueId: QUEUE_ID, status: "cancelled", turnDate: DATE_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.avgServiceMinutes).toBeNull();
   });
@@ -164,7 +177,7 @@ describe("GetQueueMetricsUseCase — avgServiceMinutes", () => {
       completedTurn("t-2", DATE_UTC, 10, 10),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.avgServiceMinutes).toBe(8);
   });
@@ -172,7 +185,7 @@ describe("GetQueueMetricsUseCase — avgServiceMinutes", () => {
 
 describe("GetQueueMetricsUseCase — peakHour", () => {
   it("returns null when there are no completed turns", async () => {
-    const result = await buildUseCase().execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
     expect(result.today.peakHour).toBeNull();
   });
 
@@ -186,7 +199,7 @@ describe("GetQueueMetricsUseCase — peakHour", () => {
       completedTurn("t-6", DATE_UTC, 14, 5),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     // Buenos Aires is UTC-3 (no DST): the busiest UTC hour (11, with 3 turns)
     // is 8am local — peakHour must reflect the business's local time, not UTC.
@@ -201,7 +214,7 @@ describe("GetQueueMetricsUseCase — peakHour", () => {
       completedTurn("t-1", DATE_UTC, 1, 5),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.peakHour).toBe(22);
   });
@@ -215,7 +228,7 @@ describe("GetQueueMetricsUseCase — comparativa yesterday", () => {
       buildTurn({ id: "t-c-y", queueId: QUEUE_ID, status: "cancelled", turnDate: PREV_UTC }),
     ]);
 
-    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase({ turnRepo }).execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.today.completedCount).toBe(1);
     expect(result.yesterday.completedCount).toBe(1);
@@ -228,19 +241,25 @@ describe("GetQueueMetricsUseCase — errores", () => {
     const useCase = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID, date: DATE_STR }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR }),
     ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {
     await expect(
-      buildUseCase().execute({ queueId: "not-a-uuid" }),
+      buildUseCase().execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("throws BAD_REQUEST for an invalid date format", async () => {
     await expect(
-      buildUseCase().execute({ queueId: QUEUE_ID, date: "10/03/2026" }),
+      buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: "10/03/2026" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    await expect(
+      buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID, date: DATE_STR }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
   });
 });

@@ -2260,3 +2260,70 @@ flujos de creación en detalle: los tres chequeos de límite de plan
 617 tests en verde (suite completa).
 
 Validación manual: pendiente.
+
+## Bugfix — IDOR en operaciones de cola: `authorize` no probaba pertenencia al negocio (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola`. Encontrado en una auditoría
+general del proyecto (arquitectura, seguridad, tests, lógica de negocio):
+finding crítico de seguridad.
+
+### El problema
+
+El middleware `authorize(...permissions)` solo valida el rol **global** del
+usuario autenticado (`user`/`employee`/`business_admin`/`super_admin`)
+contra una tabla estática de permisos. Nunca comprueba que ese usuario
+pertenezca al negocio específico sobre el que está operando — el propio
+comentario del código en `authorize.ts` ya lo advertía: *"Business
+ownership and employee membership are intentionally checked inside use
+cases, because permissions alone cannot prove access to a specific
+business instance."*
+
+Ese chequeo, sin embargo, no existía en once casos de uso del módulo de
+colas. Cualquier `employee`/`business_admin` autenticado podía operar sobre
+la cola o los turnos de **cualquier negocio** de la plataforma con solo
+conocer (o adivinar) su `queueId`/`turnId` — llamar siguiente turno,
+atender, redirigir, marcar no-show, cancelar, crear turnos manuales, listar
+ventanillas, ver métricas e historial de un negocio ajeno.
+
+### Fix
+
+Nuevo `EnsureBusinessMembershipUseCase` (módulo `business`, expuesto en su
+`public-api`): dado `businessId` + `userId`, permite el paso si el usuario
+es el dueño (`ownerUserId`) o tiene un registro activo en
+`IBusinessEmployeeRepo.findActiveByBusinessAndUser`; si no, lanza `403
+BUSINESS_MEMBERSHIP_REQUIRED`. Es un chequeo interno (como
+`EnsureQueueCreationAllowedUseCase`), sin validación Zod propia — la
+validación de forma de `businessId`/`userId` ya la hace el use case que lo
+invoca.
+
+Se inyectó en los once casos de uso de `queue` que operan sobre una cola o
+turno existente, cada uno ahora recibe `requestingUserId` (tomado de
+`request.user.id` en el controller) y llama al guard inmediatamente
+después de resolver la cola/turno, antes de cualquier otra lógica:
+
+`CallNextUseCase`, `GetQueueListUseCase`, `GetQueueStatusUseCase`,
+`GetQueueMetricsUseCase`, `GetTurnHistoryUseCase`,
+`ListServiceWindowsUseCase`, `CreateManualTurnUseCase`, `AttendTurnUseCase`,
+`RedirectTurnUseCase`, `MarkTurnNoShowUseCase`, `CancelTurnByEmployeeUseCase`.
+
+De paso, `GetQueueStatusUseCase` y `CreateManualTurnUseCase` importaban
+tipos e implementaciones del módulo `business` saltándose su `public-api`
+(`domain`/`infrastructure` directos) — se corrigió para importar todo desde
+`@modules/business/public-api`, siguiendo la convención de dependencia
+unidireccional entre módulos.
+
+### Cobertura
+
+- `tests/unit/business/EnsureBusinessMembershipUseCase.test.ts` (nuevo, 6
+  casos: dueño permitido, empleado activo permitido, empleado dado de baja
+  rechazado, usuario sin ninguna relación rechazado, empleado activo en
+  *otro* negocio rechazado, `404` si el negocio no existe)
+- Cada uno de los once casos de uso de `queue` listados arriba gana un caso
+  *"throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the
+  business"`, además de un `requestingUserId` en todos sus casos
+  preexistentes
+
+644 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

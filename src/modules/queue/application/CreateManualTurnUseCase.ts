@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
-import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import type { IBusinessRepo } from "@modules/business/public-api";
+import { EnsureBusinessMembershipUseCase, PostgresBusinessRepo } from "@modules/business/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
@@ -12,6 +12,7 @@ import { todayUTC } from "./CreateTurnUseCase";
 
 const schema = z.object({
   queueId:   z.string().uuid("Invalid queue id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
   guestName: z.string().min(1, "Guest name is required.").max(100, "Guest name is too long."),
   phone:     z.string().trim().min(1).max(30).optional(),
   // "manual" = walk-in, staff enters it while the person is physically
@@ -45,6 +46,7 @@ export class CreateManualTurnUseCase
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: CreateManualTurnInput): Promise<CreateManualTurnOutput> {
@@ -53,6 +55,12 @@ export class CreateManualTurnUseCase
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: queue.businessId,
+      userId: parsed.data.requestingUserId,
+    });
+
     if (!queue.isActive) throw AppError.conflict("This queue is not accepting new turns.", "QUEUE_NOT_ACCEPTING_TURNS");
 
     const business = await this.businessRepo.findById(queue.businessId);

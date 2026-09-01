@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { GetTurnHistoryUseCase } from "../../../src/modules/queue/application/GetTurnHistoryUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
   InMemoryTurnRepo,
@@ -9,16 +11,27 @@ import {
 } from "../../helpers/queueFakes";
 
 const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
+const BUSINESS_ID = "business-1"; // matches buildQueue() default
 const DATE_STR = "2026-01-15";
 const DATE_UTC = new Date("2026-01-15T00:00:00.000Z");
+const OWNER_ID = "22222222-2222-4222-8222-222222222222";
+const STRANGER_ID = "33333333-3333-4333-8333-333333333333";
 
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?:  InMemoryTurnRepo;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID })]);
   const turnRepo  = options.turnRepo  ?? new InMemoryTurnRepo();
-  return new GetTurnHistoryUseCase(queueRepo, turnRepo);
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return new GetTurnHistoryUseCase(queueRepo, turnRepo, ensureBusinessMembershipUseCase);
 };
 
 const calledAt   = new Date("2026-01-15T09:05:00.000Z");
@@ -26,7 +39,7 @@ const attendedAt = new Date("2026-01-15T09:10:00.000Z");
 
 describe("GetTurnHistoryUseCase — listado", () => {
   it("returns empty array when no completed turns exist", async () => {
-    const result = await buildUseCase().execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
     expect(result).toEqual([]);
   });
 
@@ -42,7 +55,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -69,7 +82,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result.map((r) => r.turnId).sort()).toEqual(["t-ns", "t-ok", "t-x"]);
   });
@@ -84,7 +97,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -107,7 +120,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -132,7 +145,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result[0].waitMinutes).toBe(8);
   });
@@ -145,7 +158,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result).toHaveLength(1);
     expect(result[0].turnId).toBe("t-ok");
@@ -160,7 +173,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result).toHaveLength(1);
     expect(result[0].turnId).toBe("t-today");
@@ -175,7 +188,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result[0].turnId).toBe("t-1");
     expect(result[1].turnId).toBe("t-2");
@@ -190,7 +203,7 @@ describe("GetTurnHistoryUseCase — listado", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID, date: DATE_STR });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR });
 
     expect(result[0].waitMinutes).toBe(12);
   });
@@ -201,19 +214,25 @@ describe("GetTurnHistoryUseCase — errores", () => {
     const useCase = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID, date: DATE_STR }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: DATE_STR }),
     ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {
     await expect(
-      buildUseCase().execute({ queueId: "not-a-uuid" }),
+      buildUseCase().execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("throws BAD_REQUEST for an invalid date format", async () => {
     await expect(
-      buildUseCase().execute({ queueId: QUEUE_ID, date: "15-01-2026" }),
+      buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, date: "15-01-2026" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    await expect(
+      buildUseCase().execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID, date: DATE_STR }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
   });
 });

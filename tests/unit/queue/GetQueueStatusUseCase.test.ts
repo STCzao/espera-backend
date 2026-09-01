@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { GetQueueStatusUseCase } from "../../../src/modules/queue/application/GetQueueStatusUseCase";
-import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
   InMemoryServiceWindowRepo,
@@ -14,6 +15,8 @@ import {
 const QUEUE_ID    = "11111111-1111-4111-8111-111111111111";
 const BUSINESS_ID = "22222222-2222-4222-8222-222222222222";
 const TODAY       = new Date("2026-01-01T00:00:00.000Z");
+const OWNER_ID    = "44444444-4444-4444-8444-444444444444";
+const STRANGER_ID = "55555555-5555-4555-8555-555555555555";
 
 const buildUseCase = (options: {
   queueRepo?:    InMemoryQueueRepo;
@@ -23,18 +26,22 @@ const buildUseCase = (options: {
 } = {}) => {
   const queueRepo    = options.queueRepo    ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, businessId: BUSINESS_ID })]);
   const turnRepo     = options.turnRepo     ?? new InMemoryTurnRepo();
-  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([buildBusiness({ id: BUSINESS_ID, operationalStatus: "normal" })]);
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([buildBusiness({ id: BUSINESS_ID, operationalStatus: "normal", ownerUserId: OWNER_ID })]);
   const windowRepo   = options.windowRepo   ?? new InMemoryServiceWindowRepo([
     buildServiceWindow({ id: "window-1", queueId: QUEUE_ID, isActive: true }),
   ]);
-  return new GetQueueStatusUseCase(queueRepo, turnRepo, businessRepo, windowRepo);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return new GetQueueStatusUseCase(queueRepo, turnRepo, businessRepo, windowRepo, ensureBusinessMembershipUseCase);
 };
 
 describe("GetQueueStatusUseCase — estado básico", () => {
   it("returns zero counts when the queue is empty", async () => {
     const useCase = buildUseCase();
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result).toMatchObject({
       queueId:              QUEUE_ID,
@@ -57,7 +64,7 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.waitingCount).toBe(2);
     expect(result.calledCount).toBe(1);
@@ -73,7 +80,7 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.waitingCount).toBe(1);
     expect(result.calledCount).toBe(0);
@@ -89,18 +96,18 @@ describe("GetQueueStatusUseCase — estado básico", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.waitingCount).toBe(1);
   });
 
   it("reflects the business operationalStatus", async () => {
     const businessRepo = new InMemoryBusinessRepo([
-      buildBusiness({ id: BUSINESS_ID, operationalStatus: "paused" }),
+      buildBusiness({ id: BUSINESS_ID, operationalStatus: "paused", ownerUserId: OWNER_ID }),
     ]);
     const useCase = buildUseCase({ businessRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.operationalStatus).toBe("paused");
   });
@@ -114,7 +121,7 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
     ]);
     const useCase = buildUseCase({ turnRepo, windowRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.estimatedTotalWaitMinutes).toBeNull();
   });
@@ -129,7 +136,7 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.estimatedTotalWaitMinutes).toBe(20);
   });
@@ -148,7 +155,7 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
     ]);
     const useCase = buildUseCase({ turnRepo, windowRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.estimatedTotalWaitMinutes).toBe(10);
   });
@@ -166,7 +173,7 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
     const useCase = buildUseCase({ turnRepo });
 
     // 2 waiting, 1 window, 10 min avg → ceil(2/1) * 10 = 20 min
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.estimatedTotalWaitMinutes).toBe(20);
   });
@@ -176,7 +183,7 @@ describe("GetQueueStatusUseCase — recentCalls", () => {
   it("returns an empty array when no turn was called yet", async () => {
     const useCase = buildUseCase();
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.recentCalls).toEqual([]);
   });
@@ -194,7 +201,7 @@ describe("GetQueueStatusUseCase — recentCalls", () => {
     const turnRepo = new InMemoryTurnRepo(turns);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.recentCalls).toHaveLength(5);
     expect(result.recentCalls.map((c) => c.turnId)).toEqual(["t-6", "t-5", "t-4", "t-3", "t-2"]);
@@ -207,7 +214,7 @@ describe("GetQueueStatusUseCase — recentCalls", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.recentCalls[0]).toMatchObject({
       turnId: "t-1",
@@ -225,7 +232,7 @@ describe("GetQueueStatusUseCase — recentCalls", () => {
     ]);
     const useCase = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.recentCalls).toHaveLength(1);
     expect(result.recentCalls[0].turnId).toBe("t-mine");
@@ -241,7 +248,7 @@ describe("GetQueueStatusUseCase — activeServiceWindows real (ventanillas)", ()
     ]);
     const useCase = buildUseCase({ windowRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.activeServiceWindows).toBe(2);
   });
@@ -252,7 +259,7 @@ describe("GetQueueStatusUseCase — activeServiceWindows real (ventanillas)", ()
     ]);
     const useCase = buildUseCase({ windowRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.activeServiceWindows).toBe(0);
   });
@@ -263,7 +270,7 @@ describe("GetQueueStatusUseCase — errores", () => {
     const useCase = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
@@ -271,7 +278,15 @@ describe("GetQueueStatusUseCase — errores", () => {
     const useCase = buildUseCase();
 
     await expect(
-      useCase.execute({ queueId: "not-a-uuid" }),
+      useCase.execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    const useCase = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
   });
 });
