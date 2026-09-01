@@ -736,6 +736,55 @@ tests.
 
 Validación manual: pendiente.
 
+## Bugfix — paginación real en el directorio de negocios (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto: `ListAllBusinessesUseCase` (el directorio
+`GET /api/business` de la sección de HU-8.5 arriba) traía *todos* los
+negocios que matchearan los filtros de base de datos y recién ahí
+aplicaba `.slice()` en memoria para `page`/`pageSize` — la paginación
+existía en el contrato HTTP, pero cada request igual escaneaba la tabla
+completa.
+
+### Fix
+
+`IBusinessRepo.findMany` gana `sortBy`/`sortDir`/`skip`/`take` opcionales
+(pushean orden y paginación a Postgres), y un nuevo `countMany` para el
+total. `ListAllBusinessesUseCase` ahora tiene dos caminos:
+
+- **Sin filtro de `subscriptionPlan`/`subscriptionStatus`** (el caso
+  común): orden, paginación y conteo van directo a Postgres, y la
+  resolución de suscripción (`ResolveEffectiveSubscriptionStatusUseCase`)
+  corre solo para los negocios de *esa página* — antes corría para el
+  listado filtrado completo.
+- **Con filtro de suscripción**: sigue igual que antes (trae todo lo que
+  matchea los filtros de base de datos, resuelve la suscripción de cada
+  uno, filtra y pagina en memoria) — `subscriptionPlan`/`subscriptionStatus`
+  son campos *derivados* que `ResolveEffectiveSubscriptionStatusUseCase`
+  reconcilia de forma perezosa, no columnas de `Business` consultables
+  directamente, así que no se pueden empujar al mismo `WHERE`. Documentado
+  en el código como límite conocido, no arreglado silenciosamente a medias.
+
+De paso se corrigió un bug que casi se introduce al escribir este fix: el
+cache de suscripción por `organizationId` (para no resolver la misma
+organización dos veces en un listado) casi terminó como campo de
+instancia — como `ListAllBusinessesUseCase` se construye una sola vez y
+se reusa en cada request, eso hubiera servido datos de suscripción
+obsoletos de una request en la siguiente. Quedó como `Map` local a cada
+`execute()`, con un test que lo prueba explícitamente.
+
+### Cobertura
+
+- `tests/unit/business/ListAllBusinessesUseCase.test.ts` (2 casos nuevos:
+  la página 2 no repite el item de la página 1 en el camino de paginación
+  por base de datos, y el cache de suscripción no se filtra entre dos
+  llamadas a `execute()` separadas en la misma instancia)
+
+720 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
+
 ## Observaciones técnicas
 
 - Ningún endpoint de esta épica requiere infraestructura nueva — todos

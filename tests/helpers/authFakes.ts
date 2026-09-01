@@ -239,12 +239,33 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
   }
 
   public async findMany(filters: FindManyBusinessesFilters = {}): Promise<Business[]> {
-    return [...this.businesses.values()].filter((business) => {
+    const matches = [...this.businesses.values()].filter((business) => {
       if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
       if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
       if (filters.status && business.status !== filters.status) return false;
       return true;
     });
+
+    const sortDir = filters.sortDir === "asc" ? 1 : -1;
+    matches.sort((a, b) => {
+      const cmp = filters.sortBy === "businessName"
+        ? a.name.localeCompare(b.name)
+        : a.createdAt.getTime() - b.createdAt.getTime();
+      return cmp * sortDir;
+    });
+
+    if (filters.skip === undefined && filters.take === undefined) return matches;
+    const start = filters.skip ?? 0;
+    return matches.slice(start, filters.take === undefined ? undefined : start + filters.take);
+  }
+
+  public async countMany(filters: FindManyBusinessesFilters = {}): Promise<number> {
+    return [...this.businesses.values()].filter((business) => {
+      if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
+      if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
+      if (filters.status && business.status !== filters.status) return false;
+      return true;
+    }).length;
   }
 
   public async findByOrganizationId(organizationId: string): Promise<Business[]> {

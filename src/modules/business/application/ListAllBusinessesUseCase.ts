@@ -68,38 +68,41 @@ export class ListAllBusinessesUseCase
     const parsed = schema.safeParse(input);
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
-    const businesses = await this.businessRepo.findMany({
-      organizationId: parsed.data.organizationId,
-      categoryId: parsed.data.categoryId,
-      status: parsed.data.status,
-    });
-
-    // Cached by organizationId so businesses under the same account don't
-    // each trigger their own Subscription lookup.
+    const { organizationId, categoryId, status, sortBy, sortDir, page, pageSize } = parsed.data;
+    const baseFilters = { organizationId, categoryId, status };
+    // Scoped to this call, not the instance — this use case is constructed
+    // once and reused across requests, so caching on `this` would leak one
+    // request's subscription data into every later request for that org.
     const subscriptionByOrgId = new Map<string, { plan: SubscriptionPlan; status: SubscriptionStatus } | null>();
-    const items: BusinessListItem[] = [];
-    for (const business of businesses) {
-      if (!subscriptionByOrgId.has(business.organizationId)) {
-        const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
-          .execute({ organizationId: business.organizationId });
-        subscriptionByOrgId.set(
-          business.organizationId,
-          subscription ? { plan: subscription.plan, status: subscription.status } : null,
-        );
-      }
-      const subscription = subscriptionByOrgId.get(business.organizationId);
 
-      items.push({
-        businessId: business.id,
-        businessName: business.name,
-        organizationId: business.organizationId,
-        status: business.status,
-        categoryId: business.categoryId,
-        subscriptionPlan: subscription?.plan,
-        subscriptionStatus: subscription?.status,
-        createdAt: business.createdAt.toISOString(),
-      });
+    // subscriptionPlan/subscriptionStatus are *derived* — ResolveEffectiveSubscriptionStatusUseCase
+    // lazily reconciles them from Subscription, they aren't queryable Business
+    // columns — so they can't be pushed into the same WHERE as the rest.
+    // Without them, pagination/sorting/count all go straight to Postgres and
+    // only the current page's businesses ever get a Subscription lookup.
+    if (!parsed.data.subscriptionPlan && !parsed.data.subscriptionStatus) {
+      const [businesses, total] = await Promise.all([
+        this.businessRepo.findMany({
+          ...baseFilters, sortBy, sortDir, skip: (page - 1) * pageSize, take: pageSize,
+        }),
+        this.businessRepo.countMany(baseFilters),
+      ]);
+
+      const items = await Promise.all(
+        businesses.map((business) => this.toListItem(business, subscriptionByOrgId)),
+      );
+
+      return { items, page, pageSize, total };
     }
+
+    // With a subscription filter, every matching business needs its
+    // Subscription resolved before we know if it belongs on the page —
+    // this is the one path that still reads the full filtered set and
+    // paginates in memory.
+    const businesses = await this.businessRepo.findMany(baseFilters);
+    const items = await Promise.all(
+      businesses.map((business) => this.toListItem(business, subscriptionByOrgId)),
+    );
 
     const filtered = items.filter((item) => {
       if (parsed.data.subscriptionPlan && item.subscriptionPlan !== parsed.data.subscriptionPlan) return false;
@@ -107,19 +110,43 @@ export class ListAllBusinessesUseCase
       return true;
     });
 
-    const sortDir = parsed.data.sortDir === "asc" ? 1 : -1;
+    const dirMultiplier = sortDir === "asc" ? 1 : -1;
     filtered.sort((a, b) => {
-      const cmp = parsed.data.sortBy === "businessName"
+      const cmp = sortBy === "businessName"
         ? a.businessName.localeCompare(b.businessName)
         : a.createdAt.localeCompare(b.createdAt);
-      return cmp * sortDir;
+      return cmp * dirMultiplier;
     });
 
     const total = filtered.length;
-    const page = parsed.data.page;
-    const pageSize = parsed.data.pageSize;
     const pageItems = filtered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
 
     return { items: pageItems, page, pageSize, total };
+  }
+
+  private async toListItem(
+    business: Awaited<ReturnType<IBusinessRepo["findMany"]>>[number],
+    subscriptionByOrgId: Map<string, { plan: SubscriptionPlan; status: SubscriptionStatus } | null>,
+  ): Promise<BusinessListItem> {
+    if (!subscriptionByOrgId.has(business.organizationId)) {
+      const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
+        .execute({ organizationId: business.organizationId });
+      subscriptionByOrgId.set(
+        business.organizationId,
+        subscription ? { plan: subscription.plan, status: subscription.status } : null,
+      );
+    }
+    const subscription = subscriptionByOrgId.get(business.organizationId);
+
+    return {
+      businessId: business.id,
+      businessName: business.name,
+      organizationId: business.organizationId,
+      status: business.status,
+      categoryId: business.categoryId,
+      subscriptionPlan: subscription?.plan,
+      subscriptionStatus: subscription?.status,
+      createdAt: business.createdAt.toISOString(),
+    };
   }
 }
