@@ -140,6 +140,33 @@ describe("GetQueueListUseCase — lista de turnos", () => {
     expect(result.items.map((i) => i.turnId)).toEqual(["t-live", "t-phone"]);
   });
 
+  it("does not inflate a present customer's estimate with a not-yet-due phone reservation ahead of it in the sort", async () => {
+    const solo = await buildUseCase({
+      turnRepo: new InMemoryTurnRepo([
+        buildTurn({ id: "t-live", queueId: QUEUE_ID, number: 1, turnDate: TODAY, queueJoinedAt: TODAY }),
+      ]),
+    }).useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    const withFutureReservation = await buildUseCase({
+      turnRepo: new InMemoryTurnRepo([
+        buildTurn({ id: "t-live", queueId: QUEUE_ID, number: 1, turnDate: TODAY, queueJoinedAt: TODAY }),
+        buildTurn({
+          id: "t-phone", queueId: QUEUE_ID, number: 2, source: "phone", turnDate: TODAY,
+          // Relative to real now (not TODAY) so waitingMinutes below is
+          // actually negative — TODAY is a fixed past date used elsewhere
+          // in this file only for turnDate/ordering, not for "now".
+          queueJoinedAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        }),
+      ]),
+    }).useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    const liveItem = withFutureReservation.items.find((i) => i.turnId === "t-live");
+    expect(liveItem?.estimatedWaitMinutes).toBe(solo.items[0].estimatedWaitMinutes);
+
+    const phoneItem = withFutureReservation.items.find((i) => i.turnId === "t-phone");
+    expect(phoneItem?.waitingMinutes).toBeLessThan(0);
+  });
+
   it("includes guestName for manual turns", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, guestName: "Juan Pérez", source: "manual", turnDate: TODAY }),

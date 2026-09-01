@@ -183,6 +183,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       .sort((a, b) => b.turnCount - a.turnCount);
   }
 
+  // Intentionally counts future-dated reservations too — see ITurnRepo.
   public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
     const PRIORITY_ORDER = ["ARRIVED", "PHYSICAL", "IN_TRANSIT", "REGISTERED"] as const;
     const priorityEnum = toPriorityEnum(priority);
@@ -229,6 +230,7 @@ export class PostgresTurnRepo implements ITurnRepo {
     return total / rows.length;
   }
 
+  // Intentionally includes future-dated reservations too — see ITurnRepo.
   public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
     const PRIORITY_RANK: Record<string, number> = {
       ARRIVED: 1, PHYSICAL: 2, IN_TRANSIT: 3, REGISTERED: 4,

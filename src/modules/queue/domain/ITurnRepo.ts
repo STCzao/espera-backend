@@ -82,8 +82,23 @@ export interface ITurnRepo extends Repository<Turn> {
   // turnNumber is the tiebreaker for turns whose queueJoinedAt is exactly
   // equal (common when a delay isn't declared — several turns can share the
   // same registration instant).
+  //
+  // Unlike findNextWaitingTurn/hasPendingReservation, this does NOT exclude
+  // a phone reservation whose queueJoinedAt is still in the future — it
+  // still holds its fair place in line and will be served before anyone who
+  // joins after it, so it correctly counts toward another turn's personal
+  // position/wait estimate (resolveTurnWaitStatus). It only stops mattering
+  // once the reservation's own queueJoinedAt is later than the turn asking,
+  // which the queueJoinedAt comparison already handles on its own.
   countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number>;
   getAverageServiceMinutes(queueId: string, turnDate: Date): Promise<number | null>;
+  // Also does NOT exclude future-dated reservations — this is the full
+  // active list (used for the staff panel and per-item position/estimate in
+  // GetQueueListUseCase), not "who's eligible to be called right now". A
+  // caller that needs "how many are physically here" as a single aggregate
+  // (e.g. GetQueueStatusUseCase.waitingCount, shown publicly) must filter by
+  // `queueJoinedAt <= now` itself — counting a not-yet-due reservation there
+  // would overstate the queue to someone who hasn't even arrived yet.
   findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]>;
   findHistoryByQueue(queueId: string, date: Date): Promise<TurnHistoryItem[]>;
   getRawMetricsByDate(queueId: string, date: Date): Promise<TurnDayRaw>;

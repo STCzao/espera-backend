@@ -237,6 +237,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
       .sort((a, b) => b.turnCount - a.turnCount);
   }
 
+  // Intentionally counts future-dated reservations too — see ITurnRepo.
   public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
     const PRIORITY_RANK: Record<string, number> = {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,
@@ -272,6 +273,7 @@ export class InMemoryTurnRepo implements ITurnRepo {
     return total / completed.length;
   }
 
+  // Intentionally includes future-dated reservations too — see ITurnRepo.
   public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
     const PRIORITY_RANK: Record<string, number> = {
       arrived: 1, physical: 2, in_transit: 3, registered: 4,

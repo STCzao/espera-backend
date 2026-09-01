@@ -65,6 +65,26 @@ describe("GetMyTurnUseCase — posición", () => {
     expect(result.position).toBe(3);
   });
 
+  it("does not inflate position with a phone reservation whose ETA hasn't arrived yet (HU-4.5 fairness)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-live", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1,
+        turnDate: TODAY, queueJoinedAt: TODAY,
+      }),
+      // Reserved for 6 hours later — still counts as "ahead" for anyone who
+      // joins after it, but must not push back someone already in line.
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 2, source: "phone",
+        turnDate: TODAY, queueJoinedAt: new Date(TODAY.getTime() + 6 * 60 * 60 * 1000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(result.position).toBe(1);
+  });
+
   it("returns position 0 and status called when the turn is being called", async () => {
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: "t-1", queueId: QUEUE_ID, customerId: CUSTOMER_ID, number: 1, status: "called", turnDate: TODAY }),

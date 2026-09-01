@@ -405,3 +405,59 @@ Dos migraciones:
   en vivo en el medio)
 
 Validación manual: pendiente (piloto con negocios reales).
+
+## Bugfix — el filtro de reservas futuras no era parejo entre métodos, sin comentario que lo explicara (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes
+anteriores de esta rama). Encontrado en la auditoría general del proyecto:
+`findNextWaitingTurn` excluye una reserva telefónica cuyo `queueJoinedAt`
+todavía no llegó (HU-4.5), pero `countWaitingAhead`/`findActiveByQueue` no
+aplicaban ese mismo filtro — y el fake en memoria de los tests replicaba
+exactamente la misma asimetría, así que ningún test podía marcarlo como
+regresión.
+
+### Investigación — ¿es un bug o es intencional?
+
+Rastreando cada consumidor de los tres métodos, la asimetría resultó ser
+**intencional y ya correcta en la práctica**, simplemente sin documentar:
+
+- `findNextWaitingTurn` responde "¿a quién puedo llamar *ahora mismo*?" —
+  ahí sí hay que excluir una reserva que aún no llegó a su ETA.
+- `countWaitingAhead` responde "¿cuántos están *virtualmente* antes que yo
+  en el orden de la cola?" (usado para la posición/estimación personal de
+  un turno vía `resolveTurnWaitStatus`). Una reserva futura sigue
+  reservando su lugar y va a ser atendida antes que cualquiera que se
+  registre después — por eso sí debe contar. La comparación por
+  `queueJoinedAt` ya evita, por sí sola, que una reserva futura infle la
+  posición de alguien que ya está físicamente esperando (su
+  `queueJoinedAt` siempre es menor al de cualquier reserva aún no vencida).
+- `findActiveByQueue` es el listado completo (panel de empleado vía
+  `GetQueueListUseCase`), no "quién es elegible ahora" — debe incluir las
+  reservas futuras para que el empleado las vea venir. Quien necesite un
+  agregado de "cuántos están físicamente presentes ahora" (como
+  `GetQueueStatusUseCase.waitingCount`, ya lo hacía) debe filtrar por
+  `queueJoinedAt <= now` él mismo, cosa que ese caso de uso ya hacía
+  correctamente antes de esta auditoría — el hueco real era la falta de
+  comentario/test que lo confirmara como decisión, no un bug de
+  comportamiento.
+
+### Fix
+
+No se cambió comportamiento — se documentó la intención en `ITurnRepo.ts`
+(comentario extendido en `countWaitingAhead`/`findActiveByQueue`,
+replicado en `PostgresTurnRepo.ts` y en el fake de
+`tests/helpers/queueFakes.ts`), y se agregaron los tests de regresión que
+faltaban para que un cambio futuro que rompa esta garantía sí falle.
+
+### Cobertura
+
+- `tests/unit/queue/GetMyTurnUseCase.test.ts` (caso nuevo: una reserva
+  telefónica con ETA de 6hs no infla la posición de un cliente que ya está
+  en la fila)
+- `tests/unit/queue/GetQueueListUseCase.test.ts` (caso nuevo: el
+  `estimatedWaitMinutes` de un cliente presente es idéntico con o sin la
+  reserva futura al lado, y la reserva futura muestra `waitingMinutes`
+  negativo)
+
+660 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
