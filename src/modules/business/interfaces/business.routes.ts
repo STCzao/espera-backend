@@ -65,6 +65,12 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     authorize("employee:manage"),
     controller.revokeEmployee
   );
+  businessRouter.delete(
+    "/:businessId/employees/invitations/:invitationId",
+    authenticate,
+    authorize("employee:manage"),
+    controller.cancelEmployeeInvitation
+  );
   businessRouter.put(
     "/:businessId/hours",
     authenticate,

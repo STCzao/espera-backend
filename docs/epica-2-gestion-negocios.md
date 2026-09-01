@@ -39,6 +39,7 @@ POST /api/business/:businessId/employees/invitations
 GET /api/business/:businessId/employees
 GET /api/business/:businessId/employees/invitations
 DELETE /api/business/:businessId/employees/:userId
+DELETE /api/business/:businessId/employees/invitations/:invitationId
 ```
 
 Público:
@@ -883,6 +884,7 @@ POST /api/business/:businessId/employees/invitations
 GET /api/business/:businessId/employees
 GET /api/business/:businessId/employees/invitations
 DELETE /api/business/:businessId/employees/:userId
+DELETE /api/business/:businessId/employees/invitations/:invitationId
 ```
 
 Todos requieren autenticación, permiso `employee:manage` y ownership del
@@ -1030,6 +1032,50 @@ Cobertura actual:
 - revocación de empleado
 - invalidación de refresh sessions al revocar
 - contratos HTTP de invitación, listado, aceptación y revocación
+
+### Bugfix — no existía forma de cancelar una invitación pendiente (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes
+anteriores de esta rama). Encontrado en la auditoría general del proyecto:
+`InviteBusinessEmployeeUseCase` no tenía contraparte de cancelación — una
+invitación enviada por error (email equivocado, candidato que el negocio
+descartó) quedaba con un link de aceptación válido por los 7 días
+completos, sin que el owner pudiera hacer nada al respecto. El modelo de
+datos ya anticipaba esto (`BusinessEmployeeInvitationStatus` incluye
+`"revoked"`, `revokedAt` ya existía en el schema) — simplemente ningún caso
+de uso lo escribía.
+
+Nuevo endpoint, mismo permiso y ownership que el resto de la gestión de
+empleados:
+
+```text
+DELETE /api/business/:businessId/employees/invitations/:invitationId   employee:manage
+```
+
+`CancelBusinessEmployeeInvitationUseCase` (nuevo): valida ownership del
+negocio, resuelve la invitación por id y confirma que pertenece a ese
+negocio (mismo espíritu que los fixes de IDOR de `epica-3-cola.md` — evita
+que un id de invitación de otro negocio, adivinado o filtrado, sea
+cancelable desde una request ajena), exige que esté `"pending"` (409
+`EMPLOYEE_INVITATION_NOT_PENDING` si ya fue aceptada/revocada), y la marca
+`"revoked"` con `revokedAt`. `AcceptBusinessEmployeeInvitationUseCase` ya
+rechaza cualquier invitación que no esté `"pending"` con
+`EMPLOYEE_INVITATION_NOT_FOUND` — cancelar corta el link de aceptación de
+inmediato, sin tocar ese use case.
+
+Response:
+
+```json
+{ "invitationId": "uuid", "businessId": "uuid", "status": "revoked" }
+```
+
+Cobertura: `tests/unit/business/CancelBusinessEmployeeInvitationUseCase.test.ts`
+(9 casos: cancelación exitosa, corta la aceptación posterior, `404` negocio
+inexistente, `403` no-owner, `404` invitación inexistente, `404` invitación
+de otro negocio, `409` ya aceptada, `409` ya revocada, `400` id inválido).
+
+669 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
 
 ## Bugfix - Resolución del negocio del usuario autenticado
 
