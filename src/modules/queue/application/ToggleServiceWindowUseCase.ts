@@ -4,6 +4,7 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import { EnsureServiceWindowCreationAllowedUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../domain/ServiceWindow";
@@ -25,6 +26,7 @@ export class ToggleServiceWindowUseCase implements UseCase<ToggleServiceWindowIn
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly ensureServiceWindowCreationAllowedUseCase: EnsureServiceWindowCreationAllowedUseCase = new EnsureServiceWindowCreationAllowedUseCase(),
   ) {}
 
   public async execute(input: ToggleServiceWindowInput): Promise<ServiceWindow> {
@@ -51,6 +53,17 @@ export class ToggleServiceWindowUseCase implements UseCase<ToggleServiceWindowIn
       if (occupant) {
         throw AppError.conflict("Cannot deactivate a service window that is currently attending a turn.", "SERVICE_WINDOW_IN_USE");
       }
+    } else {
+      // Reactivating is a second door into the same slot
+      // CreateServiceWindowUseCase guards — a window deactivated by
+      // EnforceQueueLimitsForOrganizationUseCase (plan downgrade) must not
+      // come back for free.
+      const siblings = await this.windowRepo.findByQueueId(queue.id);
+      const activeWindowCount = siblings.filter((w) => w.id !== window.id && w.isActive).length;
+      await this.ensureServiceWindowCreationAllowedUseCase.execute({
+        organizationId: business.organizationId,
+        currentServiceWindowCountForQueue: activeWindowCount,
+      });
     }
 
     return this.windowRepo.save({ ...window, isActive: !window.isActive, updatedAt: new Date() });

@@ -2327,3 +2327,59 @@ unidireccional entre módulos.
 tests.
 
 Validación manual: pendiente.
+
+## Bugfix — reactivar una cola/ventanilla esquivaba el límite del plan (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda auditoría
+general del proyecto (verificación de la anterior + pasada nueva desde
+cero).
+
+### El problema
+
+El refinamiento de arriba ("recursos rechazados/inactivos ocupaban cupo
+del plan para siempre") cerró el lado de la *creación*: una cola/ventanilla
+desactivada no cuenta contra el límite al crear una nueva. Pero dejó
+abierto el lado de la *reactivación*: `ToggleQueueUseCase` y
+`ToggleServiceWindowUseCase` vuelven a prender `isActive` sin volver a
+preguntarle a `EnsureQueueCreationAllowedUseCase`/
+`EnsureServiceWindowCreationAllowedUseCase` si el plan actual lo permite.
+
+**Escenario concreto (ventanillas, el que sí es explotable hoy — ver nota
+sobre colas abajo):** una organización Pro con 5 ventanillas activas en una
+cola baja a Basic (techo 1). `EnforceQueueLimitsForOrganizationUseCase`
+desactiva las 4 que sobran. El dueño, sin hacer nada raro, toca
+"reactivar" sobre cualquiera de esas 4 en el panel — el toggle la prende
+de nuevo sin chequear nada. El enforcement de planes protegía la puerta de
+adelante y dejaba la de atrás abierta.
+
+**Nota sobre colas:** hoy `maxQueuesPerBusiness` es `1` en los tres planes
+(ver comentario en `PlanLimits.ts`), así que este mismo hueco en
+`ToggleQueueUseCase` está dormido — nunca hay más de 1 cola para empezar,
+entonces nunca hay una cola de sobra para reactivar de más. Se arregló
+igual, por consistencia con `ToggleServiceWindowUseCase` y porque
+`PlanLimits.ts` ya documenta que subir ese límite por plan es "un cambio
+de una línea" a futuro — cuando eso pase, el hueco ya no estará dormido.
+
+### Fix
+
+Mismo patrón que `CreateQueueUseCase`/`CreateServiceWindowUseCase`: antes
+de pasar de `isActive: false` a `true`, se cuentan los hermanos activos
+(excluyendo el propio recurso) y se llama a
+`EnsureQueueCreationAllowedUseCase`/`EnsureServiceWindowCreationAllowedUseCase`
+con ese conteo. El chequeo de "no desactivar la última cola activa"
+(`ToggleQueueUseCase`) y el de "no desactivar una ventanilla ocupada"
+(`ToggleServiceWindowUseCase`) no cambian — el nuevo chequeo corre en la
+rama contraria (`else`), solo al reactivar.
+
+### Cobertura
+
+- `tests/unit/queue/ToggleQueueUseCase.test.ts` (2 casos nuevos: bloquea
+  reactivar si excede `maxQueuesPerBusiness`, permite reactivar dentro del
+  límite)
+- `tests/unit/queue/ToggleServiceWindowUseCase.test.ts` (2 casos nuevos:
+  mismo par para `maxServiceWindowsPerQueue`)
+
+699 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

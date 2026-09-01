@@ -4,6 +4,7 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import { EnsureQueueCreationAllowedUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { Queue } from "../domain/Queue";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
@@ -32,6 +33,7 @@ export class ToggleQueueUseCase implements UseCase<ToggleQueueInput, Queue> {
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
+    private readonly ensureQueueCreationAllowedUseCase: EnsureQueueCreationAllowedUseCase = new EnsureQueueCreationAllowedUseCase(),
   ) {}
 
   public async execute(input: ToggleQueueInput): Promise<Queue> {
@@ -59,6 +61,16 @@ export class ToggleQueueUseCase implements UseCase<ToggleQueueInput, Queue> {
           "QUEUE_LAST_ACTIVE",
         );
       }
+    } else {
+      // Reactivating is a second door into the same slot CreateQueueUseCase
+      // guards — a queue deactivated by EnforceQueueLimitsForOrganizationUseCase
+      // (plan downgrade) must not come back for free.
+      const siblings = await this.queueRepo.findByBusinessId(business.id);
+      const activeQueueCount = siblings.filter((q) => q.id !== queue.id && q.isActive).length;
+      await this.ensureQueueCreationAllowedUseCase.execute({
+        organizationId: business.organizationId,
+        currentQueueCountForBusiness: activeQueueCount,
+      });
     }
 
     return this.queueRepo.save({ ...queue, isActive: !queue.isActive, updatedAt: new Date() });
