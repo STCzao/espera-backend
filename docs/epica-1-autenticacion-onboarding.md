@@ -440,3 +440,44 @@ tests.
 
 Validación manual: pendiente (requiere probar contra el proxy real de
 despliegue, todavía no definido).
+
+## Bugfix — `APP_ORIGIN` opcional dejaba CORS abierto por default en producción (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes
+anteriores de esta sección). Encontrado en la misma auditoría general del
+proyecto.
+
+### Problema
+
+`app.ts` configura `cors({ origin: env.APP_ORIGIN ?? true, credentials:
+true })`, pero `APP_ORIGIN` era completamente opcional en `env.ts` — sin
+distinción por `NODE_ENV`. Si se olvidaba definir la variable en un deploy
+de producción (fácil en un despliegue apurado, y la app arranca sin ningún
+error), CORS caía a `origin: true`: refleja cualquier origen que pida la
+request, **con `credentials: true`** — cualquier sitio puede hacer
+requests autenticadas contra la API. No era un bug de código sino una
+trampa de configuración silenciosa.
+
+### Fix
+
+`env.ts` agrega un `superRefine` sobre el schema: si `NODE_ENV ===
+"production"` y `APP_ORIGIN` no está definida, la validación falla y la
+app no arranca — mismo mecanismo que ya usan `COOKIE_SECRET`/
+`JWT_ACCESS_SECRET` (`z.string().min(1, ...)`), pero condicional a
+`NODE_ENV` porque en desarrollo/test `APP_ORIGIN` debe seguir siendo
+opcional (`origin: true` es intencional en local). En desarrollo y test el
+comportamiento no cambia.
+
+### Cobertura
+
+- `tests/unit/shared/env.test.ts` (nuevo, 3 casos: falla al arrancar en
+  producción sin `APP_ORIGIN`, arranca normal en producción con
+  `APP_ORIGIN` seteada, sigue siendo opcional fuera de producción) — usa
+  `vi.resetModules()` + `import()` dinámico para forzar la reevaluación del
+  módulo con distintos `process.env`, ya que `env.ts` valida al importarse.
+
+658 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente (requiere confirmar en el entorno de
+despliegue real que `APP_ORIGIN` está seteada).

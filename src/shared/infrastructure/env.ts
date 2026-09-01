@@ -24,10 +24,23 @@ const baseEnvSchema = z.object({
   TRUST_PROXY: z.string().optional(),
 });
 
+const envSchema = baseEnvSchema.superRefine((data, ctx) => {
+  // Without this, `cors({ origin: env.APP_ORIGIN ?? true, credentials: true })`
+  // reflects any request origin in production — an authenticated CORS bypass
+  // that's easy to miss in a rushed deploy since everything still "works".
+  if (data.NODE_ENV === "production" && !data.APP_ORIGIN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["APP_ORIGIN"],
+      message: "APP_ORIGIN is required in production.",
+    });
+  }
+});
+
 const formatEnvErrors = (issues: z.ZodIssue[]): string =>
   issues.map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`).join("; ");
 
-const parsedEnv = baseEnvSchema.safeParse(process.env);
+const parsedEnv = envSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
   throw new Error(`Invalid environment configuration: ${formatEnvErrors(parsedEnv.error.issues)}`);
