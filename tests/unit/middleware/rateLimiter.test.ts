@@ -76,6 +76,36 @@ describe("rateLimiter", () => {
     );
   });
 
+  it("applies the qr-resolve policy to GET requests matched to the /:token route", async () => {
+    const next = buildNext();
+
+    await rateLimiter(
+      buildRequest({
+        method: "GET",
+        path: "/some-real-token-value",
+        route: { path: "/:token" } as Request["route"],
+      }),
+      {} as Response,
+      next,
+    );
+
+    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:127.0.0.1");
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("does not rate-limit an unrelated GET request without a matching route", async () => {
+    const next = buildNext();
+
+    await rateLimiter(
+      buildRequest({ method: "GET", path: "/me", route: undefined }),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith();
+    expect(redisMocks.incr).not.toHaveBeenCalled();
+  });
+
   it("ignores a spoofed X-Forwarded-For header — buckets by request.ip only", async () => {
     const next = buildNext();
 

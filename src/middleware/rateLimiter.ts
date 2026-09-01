@@ -17,11 +17,21 @@ interface MemoryEntry {
 const memoryStore = new Map<string, MemoryEntry>();
 
 const getPolicy = (request: Request): RateLimitPolicy | null => {
+  // request.route.path is the matched route *pattern* (e.g. "/:token"), set
+  // by Express before invoking route-specific middleware — falls back to
+  // request.path for the literal (param-free) routes below, where both are
+  // identical anyway.
+  const routePath = request.route?.path ?? request.path;
+
+  if (request.method === "GET" && routePath === "/:token") {
+    return { bucket: "qr-resolve", limit: 30, windowSeconds: 60 };
+  }
+
   if (request.method !== "POST") {
     return null;
   }
 
-  switch (request.path) {
+  switch (routePath) {
     case "/login":
       return { bucket: "login", limit: 5, windowSeconds: 10 * 60 };
     case "/login/google":

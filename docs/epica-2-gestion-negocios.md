@@ -548,7 +548,9 @@ GET /api/qr/:token
 ```
 
 Este endpoint resuelve un token escaneado y devuelve el contrato para abrir el
-flujo de turno del negocio en web/app.
+flujo de turno del negocio en web/app. Tiene `rateLimiter` (30 req/60s por IP,
+2026-09-01) — era la única ruta pública del proyecto sin ningún control de
+volumen (hallazgo de auditoría, ver `docs/quality-and-testing.md`).
 
 Responsabilidad de módulos: `business-qr` conserva la generación, descarga,
 regeneración y resolución backend del QR. La pantalla pública frontend
