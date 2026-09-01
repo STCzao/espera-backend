@@ -18,7 +18,7 @@ import { organizationRouter } from "./modules/organization/interfaces/organizati
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
 import { reportRouter } from "./modules/report/interfaces/report.routes";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
-import { env } from "./shared/infrastructure/env";
+import { env, getTrustProxySetting } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
 import { prisma } from "./shared/infrastructure/prisma";
 import { ensureRedisConnection, redis } from "./shared/infrastructure/redis";
@@ -36,6 +36,8 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 2_000): Promise<T
 
 export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): express.Express => {
   const app = express();
+
+  app.set("trust proxy", getTrustProxySetting());
 
   app.use(helmet());
   app.use(

@@ -76,6 +76,18 @@ describe("rateLimiter", () => {
     );
   });
 
+  it("ignores a spoofed X-Forwarded-For header — buckets by request.ip only", async () => {
+    const next = buildNext();
+
+    await rateLimiter(
+      buildRequest({ headers: { "x-forwarded-for": "1.2.3.4" } }),
+      {} as Response,
+      next,
+    );
+
+    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:login:127.0.0.1");
+  });
+
   it("falls back to memory when Redis is unavailable", async () => {
     redisMocks.ensureRedisConnection.mockRejectedValue(new Error("redis down"));
     const requester = "fallback-test";

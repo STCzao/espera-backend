@@ -43,17 +43,13 @@ const getPolicy = (request: Request): RateLimitPolicy | null => {
   }
 };
 
-const getRequesterKey = (request: Request): string => {
-  const forwardedFor = request.headers["x-forwarded-for"];
-  if (typeof forwardedFor === "string" && forwardedFor.length > 0) {
-    const forwardedIp = forwardedFor.split(",")[0]?.trim();
-    if (forwardedIp) {
-      return forwardedIp;
-    }
-  }
-
-  return request.ip || "unknown";
-};
+/**
+ * `request.ip` already resolves `X-Forwarded-For` according to Express's
+ * `trust proxy` setting (see env.ts's `getTrustProxySetting`) — reading the
+ * header directly here would let any client pick its own rate-limit bucket
+ * by sending a different fake value on every request.
+ */
+const getRequesterKey = (request: Request): string => request.ip || "unknown";
 
 const consumeFromMemory = (key: string, policy: RateLimitPolicy): number => {
   const now = Date.now();

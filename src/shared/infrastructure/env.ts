@@ -21,6 +21,7 @@ const baseEnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().optional(),
   APP_URL: z.string().url().optional(),
+  TRUST_PROXY: z.string().optional(),
 });
 
 const formatEnvErrors = (issues: z.ZodIssue[]): string =>
@@ -43,6 +44,22 @@ const requireConfiguredValue = (value: string | undefined, name: string): string
 };
 
 export const getAccessTokenSecret = (): string => env.JWT_ACCESS_SECRET;
+
+/**
+ * Parses `TRUST_PROXY` into what Express's `app.set("trust proxy", ...)`
+ * expects (see https://expressjs.com/en/guide/behind-proxies.html). Defaults
+ * to `false` (no proxy trusted, `req.ip` is the raw socket address) — a
+ * spoofable `X-Forwarded-For` cannot influence rate limiting unless this is
+ * explicitly configured for the real deployment topology (e.g. `"1"` for a
+ * single reverse proxy hop, or a specific proxy IP/CIDR).
+ */
+export const parseTrustProxyValue = (raw: string | undefined): number | string | boolean => {
+  if (!raw) return false;
+  return /^\d+$/.test(raw) ? Number(raw) : raw;
+};
+
+export const getTrustProxySetting = (): number | string | boolean =>
+  parseTrustProxyValue(env.TRUST_PROXY);
 
 export const getGoogleOAuthConfig = () => ({
   callbackUrl: requireConfiguredValue(env.GOOGLE_CALLBACK_URL, "GOOGLE_CALLBACK_URL"),
