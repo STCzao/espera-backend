@@ -1364,6 +1364,44 @@ antes con un mensaje coherente.
 - `tests/unit/business/ApproveBusinessUseCase.test.ts` (caso
   `BUSINESS_SUSPENDED_USE_REACTIVATE`)
 
+## Refactor — `BusinessController` dividido en tres (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto, y ya en la primera: `BusinessController`
+había crecido a 397 líneas/28 métodos (era 379/27 en la auditoría
+anterior) — notablemente más grande que sus pares (`AuthController` 257,
+`QueueController` 241) — mezclando perfil de negocio, gestión de
+empleados, y acciones de plataforma/admin en un solo archivo. Cada feature
+nueva de estos tres grupos se agregaba ahí mismo (el endpoint de cancelar
+invitación de empleado, agregado esta misma rama de trabajo hace unas
+horas, fue el último ejemplo).
+
+### Fix
+
+Dividido en tres controllers por responsabilidad, sin cambio de
+comportamiento — mismos use cases, mismas rutas, mismos permisos:
+
+- **`BusinessController`** (188 líneas): perfil propio del negocio —
+  registro, actualizar perfil, horarios, QR, estado operativo, colas.
+- **`BusinessEmployeeController`** (106 líneas, nuevo): invitar/listar/
+  revocar empleados, listar y cancelar invitaciones pendientes, aceptar
+  invitación.
+- **`BusinessAdminController`** (136 líneas, nuevo): cola de revisión,
+  aprobar/rechazar/suspender/reactivar, métricas de plataforma, directorio
+  completo de negocios. Es el único de los tres que necesita `emitter`
+  (lo usa `SuspendBusinessUseCase` para notificar en tiempo real).
+
+`business.routes.ts` construye los tres e instancia cada método al
+controller correspondiente — mismo array de middlewares
+(`authenticate`/`authorize`) por ruta, sin cambios.
+
+### Cobertura
+
+Ningún test nuevo — es un refactor puro. `tests/api/business/business.api.test.ts`
+mockea cada caso de uso importado (no `BusinessController` directamente),
+así que siguió funcionando sin tocarlo. 718 tests en verde (suite
+completa), `tsc --noEmit` limpio en `src` y en tests.
+
 ## Observaciones técnicas iniciales
 
 - Algunos criterios dependen de épicas posteriores:
