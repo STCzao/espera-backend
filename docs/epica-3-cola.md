@@ -2383,3 +2383,26 @@ rama contraria (`else`), solo al reactivar.
 tests.
 
 Validación manual: pendiente.
+
+## Refactor — 9 archivos de `queue` saltaban `business/public-api` (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto: `business/public-api.ts` ya exportaba
+`IBusinessRepo`/`PostgresBusinessRepo`, pero `CreateQueueUseCase`,
+`ToggleQueueUseCase`, `ToggleServiceWindowUseCase`,
+`DeleteServiceWindowUseCase`, `CreateTurnUseCase`,
+`ListBusinessQueuesUseCase`, `UpdateServiceWindowUseCase`,
+`CreateServiceWindowUseCase` y `EnforceQueueLimitsForOrganizationUseCase`
+seguían importando directo de `business/domain`/`business/infrastructure`
+— la misma frontera que ya se había corregido para
+`GetQueueStatusUseCase`/`CreateManualTurnUseCase` en el fix de IDOR de
+cola (ver más arriba en este documento) no llegó a estos 9.
+
+Sin cambio de comportamiento: es un swap de import, no una reescritura.
+`CreateTurnUseCase` también necesitaba `BusinessAvailabilityService` e
+`IBusinessHoursRepo`/`PostgresBusinessHoursRepo`, que `public-api.ts`
+todavía no exportaba — se agregaron ahí antes de tocar el import. Los
+otros 8 archivos solo usaban `IBusinessRepo`/`PostgresBusinessRepo`.
+
+713 tests en verde (suite completa) sin ningún cambio en la suite —
+refactor puro. `tsc --noEmit` limpio en `src` y en tests.
