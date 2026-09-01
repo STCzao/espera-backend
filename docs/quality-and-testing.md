@@ -495,7 +495,9 @@ de integracion ni de API.
 
 ### Lo que aun no cubre
 
-- Persistencia real automatizada con Prisma/PostgreSQL.
+- ~~Persistencia real automatizada con Prisma/PostgreSQL.~~ Arrancado (ver
+  sección "Tests de integración contra Postgres real" más abajo) — un solo
+  repositorio cubierto por ahora, el resto queda como deuda a extender.
 - Redis real para rate limit y bloqueo de intentos.
 - Integracion real con Resend o Google OAuth.
 - Intercambio real automatizado contra Google OAuth.
@@ -508,9 +510,86 @@ Los comandos actuales separan el typecheck de produccion y el de tests:
 - `npm run typecheck`: valida el codigo incluido en `tsconfig.json`.
 - `npm run typecheck:test`: valida codigo de `src`, tests y configuracion de
   Vitest usando `tsconfig.test.json`.
-- `npm run test:run`: ejecuta la suite automatizada una vez.
+- `npm run test:run`: ejecuta la suite automatizada una vez (sin tocar
+  Postgres/Redis reales — todo con fakes en memoria).
+- `npm run test:integration:setup`: aplica las migraciones pendientes a la
+  base de test (`espera_test`), sin depender de la `DATABASE_URL` que tenga
+  seteada la terminal.
+- `npm run test:integration`: corre los tests contra Postgres real (ver
+  sección "Tests de integración contra Postgres real" más abajo). Requiere
+  Docker levantado (`docker compose up -d`) y haber corrido el setup antes.
 - `npm run lint`: valida ESLint sobre `src`.
 - `npm run build`: compila el backend a `dist`.
+
+### Tests de integración contra Postgres real (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes
+anteriores de esta rama). Encontrado en la auditoría general del proyecto:
+ningún test en todo el repo tocaba una Postgres real — la capa SQL (Prisma)
+dependía 100% de revisión manual. Se estableció la base pedida por el
+hallazgo (`aunque sea uno, como base`).
+
+**Gap adicional encontrado al intentar migrar una base desde cero:** la
+migración `20260810000000_revert_membership_self_service` revierte
+`20260809000000_membership_self_service`, pero ese archivo había sido
+borrado del repo (el feature se revirtió por completo — ver
+`docs/project-status.md` / PR #79-#80). Eso rompía `prisma migrate deploy`
+contra cualquier base nueva: `develop` y producción no lo notaban porque ya
+tenían ambas migraciones aplicadas de cuando existían, pero cualquier
+entorno nuevo (CI, un teammate nuevo, esta base de test) fallaba con `P3018
+— table "membership_invitations" does not exist`. Se restauró el archivo
+original desde el historial de git (commit `c621d62`) — el par
+feature+revert vuelve a ser un no-op neto, igual que hoy en `schema.prisma`,
+y la cadena de 32 migraciones aplica limpia desde cero.
+
+**Infraestructura agregada:**
+
+- `docker-compose.yml`: el servicio `redis` ahora persiste con un volumen
+  (`redis_data:/data`), igual que ya hacía `postgres` — antes perdía todo
+  al recrear el contenedor.
+- `vitest.integration.config.ts`: config separada, `include:
+  ["tests/integration/**/*.test.ts"]`, `fileParallelism: false` (todos los
+  tests comparten una sola base real). `vitest.config.ts` (la suite
+  default) excluye `tests/integration/**` explícitamente — `npm test`
+  nunca necesita Docker levantado.
+- `tests/setup/integration-env.ts`: reusa `tests/setup/env.ts` y agrega una
+  guarda — si `DATABASE_URL` no contiene `"test"` en el nombre, lanza un
+  error en vez de correr. Protege contra el caso de que la terminal ya
+  tenga `DATABASE_URL` exportada apuntando a la base de desarrollo.
+- `src/scripts/setup-test-db.ts` (`npm run test:integration:setup`): corre
+  `prisma migrate deploy` fijando `DATABASE_URL` a la base de test
+  explícitamente (default `postgresql://postgres:postgres@localhost:5432/espera_test`,
+  overrideable con `TEST_DATABASE_URL`) — así el paso de migrar nunca
+  depende de qué `DATABASE_URL` tenga la terminal, y nunca migra por
+  accidente la base de desarrollo.
+- `tests/integration/PostgresUserRepo.integration.test.ts` (nuevo, 3
+  casos): guarda un `User` real y lo relee por id/email verificando que el
+  mapeo de enums (`role`/`approvalStatus`/`authProvider`) y campos
+  opcionales sea correcto contra Postgres real (no solo contra el fake);
+  actualiza una fila existente vía upsert; confirma que el constraint
+  `UNIQUE(email)` se hace cumplir a nivel de base, algo que ningún fake en
+  memoria puede detectar si diverge. Cada test limpia sus propias filas al
+  terminar (`afterEach`).
+
+**Cómo correrlo:**
+
+```
+docker compose up -d
+npm run test:integration:setup
+npm run test:integration
+```
+
+660 tests en verde en la suite default (sin Docker), 3 en la suite de
+integración (con Docker), `tsc --noEmit` limpio en `src` y en tests
+(`tsconfig.test.json` ahora también incluye `vitest.integration.config.ts`).
+
+**Pendiente, deuda reconocida:** un solo repositorio cubierto
+(`PostgresUserRepo`, elegido por no tener dependencias de FK). Los
+candidatos de mayor valor para extender esto —`PostgresTurnRepo`, en
+particular `countWaitingAhead`/`findActiveByQueue` documentados en el
+bugfix de `epica-4-canales-entrada.md`— requieren primero crear
+Organization/Business/Queue reales (cadena de FKs), así que quedan fuera
+de este "mínimo, como base".
 
 ### Pruebas manuales con Postman
 
