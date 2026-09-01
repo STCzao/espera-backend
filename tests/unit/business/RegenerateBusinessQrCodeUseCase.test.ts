@@ -74,5 +74,43 @@ describe("RegenerateBusinessQrCodeUseCase", () => {
         code: "BUSINESS_NOT_OPERATING",
       });
     });
+
+    it("throws 404 when the business does not exist", async () => {
+      const useCase = new RegenerateBusinessQrCodeUseCase(
+        new InMemoryBusinessRepo(),
+        new InMemoryBusinessQrCodeRepo(),
+      );
+
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 404,
+        code: "BUSINESS_NOT_FOUND",
+      });
+    });
+
+    it("throws 403 when the requester does not own the business", async () => {
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({ id: validInput.businessId, ownerUserId: "someone-else", status: "approved" }),
+      ]);
+      const useCase = new RegenerateBusinessQrCodeUseCase(
+        businessRepo,
+        new InMemoryBusinessQrCodeRepo(),
+      );
+
+      await expect(useCase.execute(validInput)).rejects.toMatchObject({
+        statusCode: 403,
+        code: "BUSINESS_OWNERSHIP_REQUIRED",
+      });
+    });
+
+    it("throws 400 for an invalid businessId", async () => {
+      const useCase = new RegenerateBusinessQrCodeUseCase(
+        new InMemoryBusinessRepo(),
+        new InMemoryBusinessQrCodeRepo(),
+      );
+
+      await expect(
+        useCase.execute({ ...validInput, businessId: "not-a-uuid" }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
   });
 });

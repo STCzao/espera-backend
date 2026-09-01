@@ -23,6 +23,24 @@ describe("VerifyEmailUseCase", () => {
     expect(updatedUser?.emailVerificationExpiry).toBeUndefined();
   });
 
+  it("rejects an empty token", async () => {
+    const useCase = new VerifyEmailUseCase(new InMemoryUserRepo());
+
+    await expect(useCase.execute({ token: "" })).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Invalid verification token.",
+    });
+  });
+
+  it("rejects a token with no matching user", async () => {
+    const useCase = new VerifyEmailUseCase(new InMemoryUserRepo());
+
+    await expect(useCase.execute({ token: "never-issued-token" })).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Invalid verification token.",
+    });
+  });
+
   it("rejects expired verification tokens", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({

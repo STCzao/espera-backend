@@ -668,6 +668,27 @@ la suite completa 3 veces seguidas sin fallos, y una vez más con Docker
 completamente apagado (el archivo no necesita Redis ni Postgres para
 nada — solo ejercita ruteo de Express con use cases mockeados).
 
+### Refuerzo — los 3 archivos de test que quedaron "de cobertura mínima" (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Cierra el último ítem del bucket
+de hallazgos bajos de la segunda auditoría: la primera ronda de esta rama
+ya había reforzado `RefreshTokenUseCase.test.ts` (ver
+`docs/epica-1-autenticacion-onboarding.md`); estos tres quedaban.
+
+- **`ListBusinessEmployeesUseCase.test.ts`** — 1 caso (solo camino feliz)
+  → 7 casos: negocio vacío, empleado revocado correctamente filtrado
+  (confirma que el `findByBusinessId` real y el fake coinciden en filtrar
+  por `status: "active"`), `email`/`firstName`/`lastName` en blanco cuando
+  el usuario no tiene esos datos cargados, `404` negocio inexistente,
+  `403` no-owner, `400` id inválido.
+- **`VerifyEmailUseCase.test.ts`** — 2 de 4 ramas → 4/4: token vacío,
+  token sin usuario asociado.
+- **`RegenerateBusinessQrCodeUseCase.test.ts`** — 2 de 4 ramas → 4/4:
+  `404` negocio inexistente, `403` no-owner, `400` businessId inválido.
+
+731 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
 ### Pruebas manuales con Postman
 
 Ademas de los comandos automatizados, Epica 1 puede validarse manualmente con
