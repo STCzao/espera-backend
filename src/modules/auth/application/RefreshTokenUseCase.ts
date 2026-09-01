@@ -45,6 +45,13 @@ export class RefreshTokenUseCase
       throw AppError.unauthorized("Invalid or expired token.");
     }
 
+    // Direct check, not just reliance on BlockUserUseCase revoking sessions
+    // at block time — a future path that flips isBlocked without also
+    // revoking sessions shouldn't let a blocked user keep refreshing.
+    if (user.isBlocked) {
+      throw AppError.forbidden("Your account has been blocked.", "ACCOUNT_BLOCKED");
+    }
+
     // Rotate token on every use to reduce replay risk if an old token is leaked.
     const { token, hash: newHash } = this.tokenService.generateRefreshToken();
     await this.refreshSessionRepo.save({

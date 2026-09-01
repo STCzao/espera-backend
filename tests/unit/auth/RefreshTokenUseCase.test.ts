@@ -46,6 +46,20 @@ describe("RefreshTokenUseCase", () => {
     });
   });
 
+  it("rejects a blocked user even with an otherwise-valid, non-revoked session", async () => {
+    // Direct isBlocked check, not just reliance on BlockUserUseCase having
+    // revoked the session at block time.
+    const userRepo = new InMemoryUserRepo([buildUser({ isBlocked: true })]);
+    const refreshSessionRepo = new InMemoryRefreshSessionRepo([
+      buildSession({ tokenHash: "hash:blocked-user-token" }),
+    ]);
+    const useCase = new RefreshTokenUseCase(userRepo, refreshSessionRepo, tokenService);
+
+    await expect(
+      useCase.execute({ refreshToken: "blocked-user-token" }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "ACCOUNT_BLOCKED" });
+  });
+
   it("rejects revoked refresh tokens", async () => {
     const userRepo = new InMemoryUserRepo([buildUser()]);
     const refreshSessionRepo = new InMemoryRefreshSessionRepo([
@@ -66,5 +80,59 @@ describe("RefreshTokenUseCase", () => {
       statusCode: 401,
       message: "Invalid or expired token.",
     });
+  });
+
+  it("rejects an empty refresh token", async () => {
+    const useCase = new RefreshTokenUseCase(
+      new InMemoryUserRepo(),
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+    );
+
+    await expect(useCase.execute({ refreshToken: "" })).rejects.toMatchObject({
+      statusCode: 400,
+    });
+  });
+
+  it("rejects a token with no matching session", async () => {
+    const useCase = new RefreshTokenUseCase(
+      new InMemoryUserRepo([buildUser()]),
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+    );
+
+    await expect(
+      useCase.execute({ refreshToken: "never-issued-token" }),
+    ).rejects.toMatchObject({ statusCode: 401, message: "Invalid or expired token." });
+  });
+
+  it("rejects an expired session", async () => {
+    const userRepo = new InMemoryUserRepo([buildUser()]);
+    const refreshSessionRepo = new InMemoryRefreshSessionRepo([
+      buildSession({
+        tokenHash: "hash:expired-token",
+        expiresAt: new Date("2020-01-01T00:00:00.000Z"),
+      }),
+    ]);
+    const useCase = new RefreshTokenUseCase(userRepo, refreshSessionRepo, tokenService);
+
+    await expect(
+      useCase.execute({ refreshToken: "expired-token" }),
+    ).rejects.toMatchObject({ statusCode: 401, message: "Invalid or expired token." });
+  });
+
+  it("rejects a session whose user no longer exists", async () => {
+    const refreshSessionRepo = new InMemoryRefreshSessionRepo([
+      buildSession({ tokenHash: "hash:orphaned-token", userId: "deleted-user" }),
+    ]);
+    const useCase = new RefreshTokenUseCase(
+      new InMemoryUserRepo(),
+      refreshSessionRepo,
+      tokenService,
+    );
+
+    await expect(
+      useCase.execute({ refreshToken: "orphaned-token" }),
+    ).rejects.toMatchObject({ statusCode: 401, message: "Invalid or expired token." });
   });
 });

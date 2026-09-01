@@ -3,5 +3,7 @@ export * from "./domain/Business";
 export * from "./domain/Category";
 export * from "./domain/IBusinessRepo";
 export * from "./infrastructure/PostgresBusinessRepo";
+export * from "./interfaces/BusinessAdminController";
 export * from "./interfaces/BusinessController";
+export * from "./interfaces/BusinessEmployeeController";
 export * from "./interfaces/business.routes";

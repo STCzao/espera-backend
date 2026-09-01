@@ -1,4 +1,5 @@
 import { AppError } from "@shared/kernel/AppError";
+import { EnforceQueueLimitsForOrganizationUseCase } from "@modules/queue/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import { PLAN_LIMITS } from "../domain/PlanLimits";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
@@ -27,6 +28,7 @@ export class EnsureQueueCreationAllowedUseCase
 {
   public constructor(
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly enforceQueueLimitsForOrganizationUseCase: EnforceQueueLimitsForOrganizationUseCase = new EnforceQueueLimitsForOrganizationUseCase(),
   ) {}
 
   public async execute(input: EnsureQueueCreationAllowedInput): Promise<void> {
@@ -34,6 +36,17 @@ export class EnsureQueueCreationAllowedUseCase
       .execute({ organizationId: input.organizationId });
 
     if (subscription && (subscription.status === "cancelled" || subscription.status === "expired")) {
+      // A lapsed trial never goes through OrganizationController.cancelSubscription
+      // (nothing calls it — ResolveEffectiveSubscriptionStatusUseCase flips the
+      // status lazily, on read, with no explicit action attached). This is the
+      // first place that reliably notices "this org no longer has a paid plan"
+      // for every Business under it, so it's also where the same Basic-level
+      // cleanup an explicit cancellation gets finally gets a chance to run.
+      await this.enforceQueueLimitsForOrganizationUseCase.execute({
+        organizationId: input.organizationId,
+        limit: PLAN_LIMITS.basic,
+      });
+
       throw AppError.forbidden(
         "Your organization's subscription is not active.",
         "SUBSCRIPTION_INACTIVE",

@@ -3,10 +3,14 @@ import { Router } from "express";
 import type { SocketIOEmitter } from "@modules/queue/public-api";
 import { authenticate } from "../../../middleware/authenticate";
 import { authorize } from "../../../middleware/authorize";
+import { BusinessAdminController } from "./BusinessAdminController";
 import { BusinessController } from "./BusinessController";
+import { BusinessEmployeeController } from "./BusinessEmployeeController";
 
 export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Router => {
-  const controller = new BusinessController(emitter);
+  const controller = new BusinessController();
+  const employeeController = new BusinessEmployeeController();
+  const adminController = new BusinessAdminController(emitter);
 
   const businessRouter = Router();
 
@@ -15,7 +19,7 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     "/",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.listAll
+    adminController.listAll
   );
   businessRouter.get("/me", authenticate, controller.listMine);
   businessRouter.get("/categories", controller.listCategories);
@@ -27,7 +31,7 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
   );
   businessRouter.post(
     "/employee-invitations/:token/accept",
-    controller.acceptEmployeeInvitation
+    employeeController.acceptEmployeeInvitation
   );
   businessRouter.patch(
     "/:businessId/profile",
@@ -45,31 +49,31 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     "/:businessId/employees/invitations",
     authenticate,
     authorize("employee:manage"),
-    controller.inviteEmployee
+    employeeController.inviteEmployee
   );
   businessRouter.get(
     "/:businessId/employees",
     authenticate,
     authorize("employee:manage"),
-    controller.listEmployees
+    employeeController.listEmployees
   );
   businessRouter.get(
     "/:businessId/employees/invitations",
     authenticate,
     authorize("employee:manage"),
-    controller.listPendingEmployeeInvitations
+    employeeController.listPendingEmployeeInvitations
   );
   businessRouter.delete(
     "/:businessId/employees/:userId",
     authenticate,
     authorize("employee:manage"),
-    controller.revokeEmployee
+    employeeController.revokeEmployee
   );
   businessRouter.delete(
     "/:businessId/employees/invitations/:invitationId",
     authenticate,
     authorize("employee:manage"),
-    controller.cancelEmployeeInvitation
+    employeeController.cancelEmployeeInvitation
   );
   businessRouter.put(
     "/:businessId/hours",
@@ -123,43 +127,43 @@ export const createBusinessRouter = (emitter: SocketIOEmitter | null = null): Ro
     "/pending",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.listPending
+    adminController.listPending
   );
   businessRouter.get(
     "/:businessId/review",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.getReviewDetail
+    adminController.getReviewDetail
   );
   businessRouter.patch(
     "/:businessId/approve",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.approve
+    adminController.approve
   );
   businessRouter.patch(
     "/:businessId/reject",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.reject
+    adminController.reject
   );
   businessRouter.patch(
     "/:businessId/suspend",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.suspend
+    adminController.suspend
   );
   businessRouter.patch(
     "/:businessId/reactivate",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.reactivate
+    adminController.reactivate
   );
   businessRouter.get(
     "/platform/metrics",
     authenticate,
     authorize("platform:manage_approvals"),
-    controller.getPlatformMetrics
+    adminController.getPlatformMetrics
   );
 
   return businessRouter;

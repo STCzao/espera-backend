@@ -4,8 +4,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
-import { PostgresBusinessRepo } from "@modules/business/infrastructure/PostgresBusinessRepo";
+import type { IBusinessRepo } from "@modules/business/public-api";
+import { PostgresBusinessRepo } from "@modules/business/public-api";
 import { EnsureQueueCreationAllowedUseCase } from "@modules/organization/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";

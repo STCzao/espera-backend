@@ -584,13 +584,25 @@ npm run test:integration
 integración (con Docker), `tsc --noEmit` limpio en `src` y en tests
 (`tsconfig.test.json` ahora también incluye `vitest.integration.config.ts`).
 
-**Pendiente, deuda reconocida:** un solo repositorio cubierto
-(`PostgresUserRepo`, elegido por no tener dependencias de FK). Los
-candidatos de mayor valor para extender esto —`PostgresTurnRepo`, en
-particular `countWaitingAhead`/`findActiveByQueue` documentados en el
-bugfix de `epica-4-canales-entrada.md`— requieren primero crear
-Organization/Business/Queue reales (cadena de FKs), así que quedan fuera
-de este "mínimo, como base".
+**Extendido (2026-09-01):** `tests/integration/PostgresTurnRepo.integration.test.ts`
+— el candidato de mayor valor que había quedado pendiente arriba.
+`beforeAll` arma la cadena de FKs completa una sola vez (User → Organization
+→ BusinessCategory → Business → Queue, todos borrados en `afterAll`); cada
+test crea y limpia solo sus propios `Turn`. 6 casos: las 4 prioridades
+(`arrived`/`physical`/`in_transit`/`registered`) hacen round-trip exacto
+por `createWithNextNumber` + `findById` contra Postgres real,
+`findActiveByQueue` ordena por prioridad y no por orden de creación, y
+`countWaitingAhead` cuenta turnos de prioridad más alta. El caso de
+`in_transit` no es arbitrario — es exactamente el test que hubiera
+atrapado el bug real que salió a la luz al deduplicar `PRIORITY_RANK` (ver
+`docs/epica-4-canales-entrada.md`): `PostgresTurnRepo` mapeaba
+`IN_TRANSIT` a `"in-transit"` (guion) en vez de `"in_transit"` (guion
+bajo, el valor real de `TurnPriority`), invisible para el fake en memoria
+porque nunca pasa por esa conversión.
+
+718 tests en verde en la suite default (sin Docker), 9 en la suite de
+integración (con Docker: 3 de `PostgresUserRepo` + 6 de
+`PostgresTurnRepo`), `tsc --noEmit` limpio en `src` y en tests.
 
 ### Cierre del resto de hallazgos bajos de la auditoría (2026-09-01)
 
@@ -635,6 +647,47 @@ esta rama). Último punto del plan de acción priorizado — bundle de deuda
 
 695 tests en verde (suite completa, 96 archivos), `tsc --noEmit` limpio en
 `src` y en tests.
+
+### Bugfix — flake de Redis en `auth.api.test.ts` (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto: `tests/api/auth/auth.api.test.ts` mockea
+cada caso de uso importado por `AuthController`, pero corre contra la app
+real de Express — incluido el middleware `rateLimiter` real, que habla
+contra Redis de verdad si `docker compose up -d` está corriendo (flujo
+normal de desarrollo). Cada política tiene una ventana (`login` 5/10min,
+`register` 5/hora, etc.) — con corridas repetidas de `npm run test:run`
+dentro de esa ventana, el límite se llenaba y el test terminaba recibiendo
+un `429` real. `tests/unit/middleware/rateLimiter.test.ts` ya mockeaba
+Redis para probar el middleware en sí; este archivo nunca lo hacía, pese a
+ejercitar las mismas rutas.
+
+**Fix**: mismo mock de `@shared/infrastructure/redis` que ya usa
+`rateLimiter.test.ts`, agregado a `auth.api.test.ts`. Confirmado corriendo
+la suite completa 3 veces seguidas sin fallos, y una vez más con Docker
+completamente apagado (el archivo no necesita Redis ni Postgres para
+nada — solo ejercita ruteo de Express con use cases mockeados).
+
+### Refuerzo — los 3 archivos de test que quedaron "de cobertura mínima" (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Cierra el último ítem del bucket
+de hallazgos bajos de la segunda auditoría: la primera ronda de esta rama
+ya había reforzado `RefreshTokenUseCase.test.ts` (ver
+`docs/epica-1-autenticacion-onboarding.md`); estos tres quedaban.
+
+- **`ListBusinessEmployeesUseCase.test.ts`** — 1 caso (solo camino feliz)
+  → 7 casos: negocio vacío, empleado revocado correctamente filtrado
+  (confirma que el `findByBusinessId` real y el fake coinciden en filtrar
+  por `status: "active"`), `email`/`firstName`/`lastName` en blanco cuando
+  el usuario no tiene esos datos cargados, `404` negocio inexistente,
+  `403` no-owner, `400` id inválido.
+- **`VerifyEmailUseCase.test.ts`** — 2 de 4 ramas → 4/4: token vacío,
+  token sin usuario asociado.
+- **`RegenerateBusinessQrCodeUseCase.test.ts`** — 2 de 4 ramas → 4/4:
+  `404` negocio inexistente, `403` no-owner, `400` businessId inválido.
+
+731 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
 
 ### Pruebas manuales con Postman
 

@@ -116,6 +116,42 @@ describe("ListAllBusinessesUseCase — paginación", () => {
     expect(result.pageSize).toBe(1);
     expect(result.total).toBe(2);
   });
+
+  it("returns the second page without repeating the first page's item (no subscription filter, DB-level pagination path)", async () => {
+    const { businessRepo, subscriptionRepo } = buildFilterFixture();
+    const useCase = buildUseCase(businessRepo, subscriptionRepo);
+
+    const page1 = await useCase.execute({ page: 1, pageSize: 1, sortBy: "businessName", sortDir: "asc" });
+    const page2 = await useCase.execute({ page: 2, pageSize: 1, sortBy: "businessName", sortDir: "asc" });
+
+    expect(page1.items[0].businessId).toBe("business-alpha");
+    expect(page2.items[0].businessId).toBe("business-zeta");
+    expect(page2.total).toBe(2);
+  });
+
+  it("does not leak a cached subscription across separate execute() calls on the same instance", async () => {
+    // ListAllBusinessesUseCase is constructed once and reused for every
+    // request — a subscription cache scoped to the instance instead of the
+    // call would serve request 2 stale data resolved during request 1.
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: "business-1", organizationId: ORG_A, createdAt: new Date("2026-01-01T00:00:00.000Z") }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ id: "sub-a", organizationId: ORG_A, plan: "basic", status: "active" }),
+    ]);
+    const useCase = buildUseCase(businessRepo, subscriptionRepo);
+
+    const first = await useCase.execute({});
+    expect(first.items[0].subscriptionPlan).toBe("basic");
+
+    await subscriptionRepo.save({
+      ...(await subscriptionRepo.findByOrganizationId(ORG_A))!,
+      plan: "premium",
+    });
+
+    const second = await useCase.execute({});
+    expect(second.items[0].subscriptionPlan).toBe("premium");
+  });
 });
 
 describe("ListAllBusinessesUseCase — errores", () => {

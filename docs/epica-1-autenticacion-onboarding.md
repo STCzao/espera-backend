@@ -481,3 +481,130 @@ tests.
 
 Validación manual: pendiente (requiere confirmar en el entorno de
 despliegue real que `APP_ORIGIN` está seteada).
+
+## Bugfix — rutas con `rateLimiter` enganchado sin política real, tres veces (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan` (mismo trabajo que los bugfixes de
+límites de plan de esta rama, ver `epica-3-cola.md` y
+`epica-2-5-cuentas-organizaciones.md`). Encontrado en una segunda
+auditoría general del proyecto: mismo bug que ya se había arreglado una
+vez para `GET /api/qr/:token` (ver el bugfix de trust proxy más arriba en
+este documento), reaparecido en dos rutas más.
+
+### El problema
+
+`getPolicy()` en `rateLimiter.ts` era un `switch` que solo evaluaba `POST`
+— cualquier ruta `GET`, salvo el caso especial que ya tenía el QR, caía
+directo a `null` sin importar el path. `POST /resend-verification` y
+`POST /reset-password` tenían el middleware `rateLimiter` en su cadena de
+Express pero ningún `case` en el switch, así que corrían sin límite real
+(no-op silencioso). Al escribir el test de resguardo que la propia
+auditoría sugirió ("un test que falle si una ruta usa `rateLimiter` sin
+tener política"), apareció un **tercer** caso no reportado por la
+auditoría: `GET /google/url` tenía el mismo problema, pero por el motivo
+estructural inverso — es una ruta `GET`, y el switch nunca llegaba a
+evaluar ningún `case` para métodos que no fueran `POST`.
+
+### Fix
+
+- Se agregaron políticas para `/resend-verification` (3/15min, mismo perfil
+  que `/forgot-password`) y `/reset-password` (5/10min, perfil de
+  `/login`).
+- Se agregó `GET /google/url` (20/10min — una lectura, no una mutación
+  sensible, pero sin límite antes).
+- `getPolicy()` se reescribió como una tabla `Record<"MÉTODO path",
+  Policy>` en vez de un `switch` filtrado por `POST` — un `GET` ahora es
+  tan visible en la tabla como un `POST`, en vez de ser un caso especial
+  fuera del switch, fácil de olvidar (que es exactamente cómo apareció el
+  hueco de `GET /google/url`).
+- Nuevo `tests/unit/middleware/rateLimiterCoverage.test.ts`: recorre el
+  `.stack` real de cada router de la app (no una lista mantenida a mano),
+  encuentra toda ruta que tenga `rateLimiter` en su cadena de middleware, y
+  falla si `getPolicy()` le devuelve `null` — el mismo test que encontró el
+  caso de `GET /google/url` ahora corre en cada `npm run test:run`, así que
+  un cuarto caso de este bug no puede volver a colarse sin que la suite
+  falle.
+
+### Cobertura
+
+- `tests/unit/middleware/rateLimiterCoverage.test.ts` (nuevo — recorre 6
+  routers, 12 rutas con `rateLimiter` verificadas, todas con política real)
+
+713 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
+
+## Bugfix — `ResendVerificationUseCase` dejaba enumerar cuentas registradas (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan` (mismo trabajo que los bugfixes de
+esta rama). Encontrado en una segunda auditoría general del proyecto.
+
+### El problema
+
+`ResendVerificationUseCase` devolvía errores distinguibles según el estado
+de la cuenta: `400 "Invalid token."` si el email no estaba registrado,
+`400 "Email is already verified."` si ya estaba verificado, éxito (o `429`
+por cooldown) si existía y no estaba verificado. Un atacante podía usar
+esto para confirmar qué emails tienen cuenta en la plataforma —
+`RequestPasswordResetUseCase` ya resuelve exactamente este mismo problema
+(mismo mensaje genérico exista o no la cuenta), pero el patrón nunca se
+replicó acá.
+
+### Fix
+
+Mismo mensaje genérico (`"If the email needs verification, we sent a new
+link."`) para los tres casos: cuenta inexistente, ya verificada, y reenvío
+real. Fuera de alcance a propósito: el `429` del cooldown de 5 minutos
+sigue siendo distinguible (revela "ya lo pediste hace poco" para una
+cuenta real, no verificada) — es una señal de rate-limit esperable, no el
+mismo tipo de fuga que el resto.
+
+### Cobertura
+
+- `tests/unit/auth/ResendVerificationUseCase.test.ts` (los 2 casos que
+  antes esperaban `400` ahora verifican la respuesta genérica y que
+  `sendVerificationEmail` no se llama)
+
+713 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
+
+## Bugfix — `RefreshTokenUseCase` no chequeaba `isBlocked` directamente (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto.
+
+### El problema
+
+`LoginUseCase` y `LoginWithGoogleUseCase` chequean `isBlocked`
+explícitamente. `RefreshTokenUseCase` no — hoy funciona igual porque
+`BlockUserUseCase` siempre revoca todas las refresh sessions al bloquear,
+así que el rechazo llega indirecto (`session.revokedAt`), pero es un
+chequeo transitivo, no una regla propia del use case. Cualquier código
+futuro que ponga `isBlocked: true` sin también revocar sesiones (un script
+de admin, una actualización masiva) dejaría a un usuario bloqueado
+refrescando tokens sin límite.
+
+### Fix
+
+Chequeo directo de `isBlocked` en `RefreshTokenUseCase`, mismo código y
+mensaje que `LoginUseCase` (`403 ACCOUNT_BLOCKED`) — defensa en
+profundidad, no reemplaza la revocación de sesiones que ya hace
+`BlockUserUseCase`.
+
+De paso, se reforzaron las 4 ramas de error que la auditoría señaló como
+no cubiertas en este mismo archivo: token vacío, sesión inexistente,
+sesión expirada, usuario borrado con sesión huérfana.
+
+### Cobertura
+
+- `tests/unit/auth/RefreshTokenUseCase.test.ts` (5 casos nuevos: usuario
+  bloqueado, token vacío, sesión inexistente, sesión expirada, usuario
+  inexistente)
+
+718 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

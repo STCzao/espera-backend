@@ -6,6 +6,17 @@ import type { Queue } from "../../src/modules/queue/domain/Queue";
 import type { IServiceWindowRepo } from "../../src/modules/queue/domain/IServiceWindowRepo";
 import type { ServiceWindow } from "../../src/modules/queue/domain/ServiceWindow";
 import type { Turn, TurnPriority, TurnSource } from "../../src/modules/queue/domain/Turn";
+import { turnPriorityRank } from "../../src/modules/queue/domain/turnPriority";
+
+// Same comparator PostgresTurnRepo.ts uses (turnPriorityRank is the shared
+// source of truth for the ordering itself) — kept local since this fake
+// sorts domain Turn objects directly, with no Prisma-row conversion step.
+const compareByPriorityThenJoin = (a: Turn, b: Turn): number => {
+  const rankDiff = turnPriorityRank(a.priority) - turnPriorityRank(b.priority);
+  if (rankDiff !== 0) return rankDiff;
+  const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
+  return byJoin !== 0 ? byJoin : a.number - b.number;
+};
 
 export const buildServiceWindow = (overrides: Partial<ServiceWindow> = {}): ServiceWindow => ({
   id:        "window-1",
@@ -157,20 +168,11 @@ export class InMemoryTurnRepo implements ITurnRepo {
   }
 
   public async findNextWaitingTurn(queueId: string): Promise<Turn | null> {
-    const PRIORITY_RANK: Record<string, number> = {
-      arrived: 1, physical: 2, in_transit: 3, registered: 4,
-    };
     const now = new Date();
     const waiting = [...this.turns.values()].filter(
       (t) => t.queueId === queueId && t.status === "waiting" && t.queueJoinedAt.getTime() <= now.getTime(),
     );
-    waiting.sort((a, b) => {
-      const pa = PRIORITY_RANK[a.priority] ?? 5;
-      const pb = PRIORITY_RANK[b.priority] ?? 5;
-      if (pa !== pb) return pa - pb;
-      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
-      return byJoin !== 0 ? byJoin : a.number - b.number;
-    });
+    waiting.sort(compareByPriorityThenJoin);
     return waiting[0] ?? null;
   }
 
@@ -239,13 +241,10 @@ export class InMemoryTurnRepo implements ITurnRepo {
 
   // Intentionally counts future-dated reservations too — see ITurnRepo.
   public async countWaitingAhead(queueId: string, queueJoinedAt: Date, turnNumber: number, priority: TurnPriority): Promise<number> {
-    const PRIORITY_RANK: Record<string, number> = {
-      arrived: 1, physical: 2, in_transit: 3, registered: 4,
-    };
-    const myRank = PRIORITY_RANK[priority] ?? 5;
+    const myRank = turnPriorityRank(priority);
     return [...this.turns.values()].filter((t) => {
       if (t.queueId !== queueId || t.status !== "waiting") return false;
-      const theirRank = PRIORITY_RANK[t.priority] ?? 5;
+      const theirRank = turnPriorityRank(t.priority);
       if (theirRank < myRank) return true;
       if (theirRank !== myRank) return false;
       if (t.queueJoinedAt.getTime() < queueJoinedAt.getTime()) return true;
@@ -275,19 +274,10 @@ export class InMemoryTurnRepo implements ITurnRepo {
 
   // Intentionally includes future-dated reservations too — see ITurnRepo.
   public async findActiveByQueue(queueId: string): Promise<ActiveTurnSummary[]> {
-    const PRIORITY_RANK: Record<string, number> = {
-      arrived: 1, physical: 2, in_transit: 3, registered: 4,
-    };
     const active = [...this.turns.values()].filter(
       (t) => t.queueId === queueId && (t.status === "waiting" || t.status === "called" || t.status === "attending" || t.status === "redirected"),
     );
-    active.sort((a, b) => {
-      const pa = PRIORITY_RANK[a.priority] ?? 5;
-      const pb = PRIORITY_RANK[b.priority] ?? 5;
-      if (pa !== pb) return pa - pb;
-      const byJoin = a.queueJoinedAt.getTime() - b.queueJoinedAt.getTime();
-      return byJoin !== 0 ? byJoin : a.number - b.number;
-    });
+    active.sort(compareByPriorityThenJoin);
     return active.map((t) => ({
       turnId: t.id,
       displayNumber: t.displayNumber,

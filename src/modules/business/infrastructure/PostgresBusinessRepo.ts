@@ -110,9 +110,23 @@ export class PostgresBusinessRepo implements IBusinessRepo {
         categoryId: filters.categoryId,
         status: filters.status ? toStatusEnum(filters.status) : undefined,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: filters.sortBy === "businessName"
+        ? { name: filters.sortDir ?? "desc" }
+        : { createdAt: filters.sortDir ?? "desc" },
+      skip: filters.skip,
+      take: filters.take,
     });
     return rows.map(toBusiness);
+  }
+
+  public async countMany(filters: FindManyBusinessesFilters = {}): Promise<number> {
+    return prisma.business.count({
+      where: {
+        organizationId: filters.organizationId,
+        categoryId: filters.categoryId,
+        status: filters.status ? toStatusEnum(filters.status) : undefined,
+      },
+    });
   }
 
   public async save(entity: Business): Promise<Business> {

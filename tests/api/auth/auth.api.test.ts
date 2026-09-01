@@ -20,6 +20,26 @@ const authMocks = vi.hoisted(() => ({
   verifyEmailExecute: vi.fn(),
 }));
 
+// This suite hits every POST route through the real Express app, including
+// the real `rateLimiter` middleware (only the use cases are mocked below) —
+// without this, repeated local runs against a real Redis (docker compose up)
+// eventually 429 once a route's window fills up. rateLimiter.test.ts already
+// covers the middleware's own behavior against a mocked Redis; this just
+// keeps that real client out of an unrelated suite's way.
+const redisMocks = vi.hoisted(() => ({
+  ensureRedisConnection: vi.fn(),
+  incr: vi.fn(),
+  expire: vi.fn(),
+}));
+
+vi.mock("../../../src/shared/infrastructure/redis", () => ({
+  ensureRedisConnection: redisMocks.ensureRedisConnection,
+  redis: {
+    incr: redisMocks.incr,
+    expire: redisMocks.expire,
+  },
+}));
+
 vi.mock("../../../src/modules/auth/application/ApproveBusinessAccountUseCase", () => ({
   ApproveBusinessAccountUseCase: class {
     public execute = authMocks.approveBusinessAccountExecute;
@@ -113,6 +133,10 @@ describe("auth API", () => {
     authMocks.resendVerificationExecute.mockReset();
     authMocks.resetPasswordExecute.mockReset();
     authMocks.verifyEmailExecute.mockReset();
+
+    redisMocks.ensureRedisConnection.mockReset().mockResolvedValue(undefined);
+    redisMocks.incr.mockReset().mockResolvedValue(1);
+    redisMocks.expire.mockReset().mockResolvedValue(1);
   });
 
   it("registers a local user and returns 201", async () => {
