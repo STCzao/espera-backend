@@ -2,13 +2,13 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { todayUTC } from "@shared/utils/date";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { EnsureBusinessMembershipUseCase, PostgresBusinessRepo } from "@modules/business/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
-import { todayUTC } from "./CreateTurnUseCase";
 
 const schema = z.object({
   queueId:   z.string().uuid("Invalid queue id."),

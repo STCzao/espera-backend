@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { todayUTC } from "@shared/utils/date";
 import type { IBusinessRepo, BusinessOperationalStatus } from "@modules/business/public-api";
 import { EnsureBusinessMembershipUseCase, PostgresBusinessRepo } from "@modules/business/public-api";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
@@ -43,11 +44,6 @@ export interface GetQueueStatusOutput {
 }
 
 const DEFAULT_SERVICE_MINUTES = 5;
-
-const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
 
 const estimateService = new QueueWaitEstimateService();
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { todayUTC } from "@shared/utils/date";
 import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { TurnPriority, TurnSource } from "../domain/Turn";
@@ -40,11 +41,6 @@ export interface GetQueueListOutput {
 }
 
 const DEFAULT_SERVICE_MINUTES = 5;
-
-const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
 
 const estimateService = new QueueWaitEstimateService();
 
