@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
@@ -10,6 +11,7 @@ import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter
 
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
 });
 
 export type CallNextInput = z.infer<typeof schema>;
@@ -25,6 +27,7 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: CallNextInput): Promise<CallNextOutput> {
@@ -33,6 +36,12 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: queue.businessId,
+      userId: parsed.data.requestingUserId,
+    });
+
     if (!queue.isActive) throw AppError.conflict("This queue is not active.", "QUEUE_NOT_ACTIVE");
 
     // A turn still "called" must be resolved explicitly — attended via

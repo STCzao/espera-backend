@@ -17,11 +17,21 @@ interface MemoryEntry {
 const memoryStore = new Map<string, MemoryEntry>();
 
 const getPolicy = (request: Request): RateLimitPolicy | null => {
+  // request.route.path is the matched route *pattern* (e.g. "/:token"), set
+  // by Express before invoking route-specific middleware — falls back to
+  // request.path for the literal (param-free) routes below, where both are
+  // identical anyway.
+  const routePath = request.route?.path ?? request.path;
+
+  if (request.method === "GET" && routePath === "/:token") {
+    return { bucket: "qr-resolve", limit: 30, windowSeconds: 60 };
+  }
+
   if (request.method !== "POST") {
     return null;
   }
 
-  switch (request.path) {
+  switch (routePath) {
     case "/login":
       return { bucket: "login", limit: 5, windowSeconds: 10 * 60 };
     case "/login/google":
@@ -43,17 +53,13 @@ const getPolicy = (request: Request): RateLimitPolicy | null => {
   }
 };
 
-const getRequesterKey = (request: Request): string => {
-  const forwardedFor = request.headers["x-forwarded-for"];
-  if (typeof forwardedFor === "string" && forwardedFor.length > 0) {
-    const forwardedIp = forwardedFor.split(",")[0]?.trim();
-    if (forwardedIp) {
-      return forwardedIp;
-    }
-  }
-
-  return request.ip || "unknown";
-};
+/**
+ * `request.ip` already resolves `X-Forwarded-For` according to Express's
+ * `trust proxy` setting (see env.ts's `getTrustProxySetting`) — reading the
+ * header directly here would let any client pick its own rate-limit bucket
+ * by sending a different fake value on every request.
+ */
+const getRequesterKey = (request: Request): string => request.ip || "unknown";
 
 const consumeFromMemory = (key: string, policy: RateLimitPolicy): number => {
   const now = Date.now();

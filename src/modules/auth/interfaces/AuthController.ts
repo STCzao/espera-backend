@@ -24,6 +24,7 @@ import { VerifyEmailUseCase } from "../application/VerifyEmailUseCase";
 import { RegisterBusinessAccountUseCase } from "../application/RegisterBusinessAccountUseCase";
 import { RegisterBusinessWithGoogleUseCase } from "../application/RegisterBusinessWithGoogleUseCase";
 import { ApproveBusinessAccountUseCase } from "../application/ApproveBusinessAccountUseCase";
+import { UnblockUserUseCase } from "../application/UnblockUserUseCase";
 import { GoogleOAuthService } from "../infrastructure/GoogleOAuthService";
 
 export class AuthController {
@@ -40,6 +41,7 @@ export class AuthController {
     private readonly registerBusinessAccountUseCase = new RegisterBusinessAccountUseCase(),
     private readonly registerBusinessWithGoogleUseCase = new RegisterBusinessWithGoogleUseCase(),
     private readonly approveBusinessAccountUseCase = new ApproveBusinessAccountUseCase(),
+    private readonly unblockUserUseCase = new UnblockUserUseCase(),
     private readonly googleOAuthService = new GoogleOAuthService(),
   ) {}
 
@@ -90,6 +92,22 @@ export class AuthController {
     });
 
     logger.info({ userId: result.userId }, "Business account approved");
+    response.status(200).json(result);
+  };
+
+  /**
+   * Reverses a User block (HU-8.6), restoring login access.
+   */
+  public unblockUser = async (
+    request: Request,
+    response: Response,
+  ): Promise<void> => {
+    const result = await this.unblockUserUseCase.execute({
+      userId: String(request.params.userId),
+      unblockedByUserId: request.user?.id ?? "",
+    });
+
+    logger.info({ userId: result.userId }, "User unblocked");
     response.status(200).json(result);
   };
 

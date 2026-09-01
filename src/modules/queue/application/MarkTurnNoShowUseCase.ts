@@ -2,12 +2,14 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
 const schema = z.object({
   turnId: z.string().uuid("Invalid turn id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
 });
 
 export type MarkTurnNoShowInput = z.infer<typeof schema>;
@@ -37,6 +39,7 @@ export class MarkTurnNoShowUseCase
   public constructor(
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: MarkTurnNoShowInput): Promise<MarkTurnNoShowOutput> {
@@ -45,6 +48,11 @@ export class MarkTurnNoShowUseCase
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
     if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: turn.businessId,
+      userId: parsed.data.requestingUserId,
+    });
 
     if (turn.status !== "called") {
       throw AppError.conflict("Only a called turn can be marked as no-show.", "TURN_NOT_CALLED");

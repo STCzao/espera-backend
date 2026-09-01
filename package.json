@@ -12,6 +12,8 @@
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:integration:setup": "tsx src/scripts/setup-test-db.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "postinstall": "prisma generate",
     "backfill:queues": "tsx src/scripts/backfill-queues.ts",
     "create:super-admin": "tsx src/scripts/create-super-admin.ts"

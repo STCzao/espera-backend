@@ -1,14 +1,10 @@
+import { todayUTC } from "@shared/utils/date";
 import { QueueWaitEstimateService } from "../domain/QueueWaitEstimateService";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import type { Turn } from "../domain/Turn";
 
 const DEFAULT_SERVICE_MINUTES = 5;
-
-const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
 
 const estimateService = new QueueWaitEstimateService();
 

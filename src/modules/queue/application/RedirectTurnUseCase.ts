@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
@@ -10,6 +11,7 @@ import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter
 
 const schema = z.object({
   turnId:                z.string().uuid("Invalid turn id."),
+  requestingUserId:      z.string().uuid("Invalid user id."),
   targetServiceWindowId: z.string().uuid("Invalid service window id."),
 });
 
@@ -26,6 +28,7 @@ export class RedirectTurnUseCase implements UseCase<RedirectTurnInput, RedirectT
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: RedirectTurnInput): Promise<RedirectTurnOutput> {
@@ -34,6 +37,11 @@ export class RedirectTurnUseCase implements UseCase<RedirectTurnInput, RedirectT
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
     if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: turn.businessId,
+      userId: parsed.data.requestingUserId,
+    });
 
     if (turn.status !== "attending") {
       throw AppError.conflict("Only a turn currently being attended can be redirected.", "TURN_INVALID_STATUS_FOR_ATTEND");

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { todayUTC } from "@shared/utils/date";
 import { BusinessAvailabilityService } from "@modules/business/domain/BusinessAvailabilityService";
 import type { IBusinessHoursRepo } from "@modules/business/domain/IBusinessHoursRepo";
 import type { IBusinessRepo } from "@modules/business/domain/IBusinessRepo";
@@ -30,11 +31,6 @@ export interface CreateTurnOutput {
   displayNumber: string;
   position: number;
 }
-
-export const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
 
 export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOutput> {
   public constructor(

@@ -1,17 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { RedirectTurnUseCase } from "../../../src/modules/queue/application/RedirectTurnUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemoryServiceWindowRepo, InMemoryTurnRepo, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
 const TURN_ID     = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUEUE_ID    = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const WINDOW_A_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const WINDOW_B_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const BUSINESS_ID = "business-1"; // matches buildTurn() default
+const OWNER_ID = "11111111-2222-4333-8444-555555555555";
+const STRANGER_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa";
 
 const buildUseCase = (options: {
   turnRepo?: InMemoryTurnRepo;
   windowRepo?: InMemoryServiceWindowRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const turnRepo   = options.turnRepo   ?? new InMemoryTurnRepo();
   const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo([
@@ -19,7 +25,18 @@ const buildUseCase = (options: {
     buildServiceWindow({ id: WINDOW_B_ID, queueId: QUEUE_ID, name: "Caja" }),
   ]);
   const emitter = options.emitter === undefined ? null : options.emitter;
-  return { useCase: new RedirectTurnUseCase(turnRepo, windowRepo, emitter as never), turnRepo, windowRepo };
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return {
+    useCase: new RedirectTurnUseCase(turnRepo, windowRepo, emitter as never, ensureBusinessMembershipUseCase),
+    turnRepo,
+    windowRepo,
+  };
 };
 
 describe("RedirectTurnUseCase", () => {
@@ -29,7 +46,7 @@ describe("RedirectTurnUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID });
 
     expect(result).toMatchObject({ turnId: TURN_ID, status: "redirected", serviceWindowId: WINDOW_B_ID });
     const saved = turnRepo.all().find((t) => t.id === TURN_ID);
@@ -47,7 +64,7 @@ describe("RedirectTurnUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID });
 
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.startedAttentionAt).toEqual(originalStart);
   });
@@ -59,7 +76,7 @@ describe("RedirectTurnUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
 
-    await useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID });
 
     expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
       redirectedTurnId: TURN_ID,
@@ -78,7 +95,7 @@ describe("RedirectTurnUseCase", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID }),
+      useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
     ).resolves.toMatchObject({ status: "redirected" });
   });
 
@@ -87,7 +104,7 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase();
 
       await expect(
-        useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
       ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
     });
 
@@ -98,7 +115,7 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
       ).rejects.toMatchObject({ statusCode: 409, code: "TURN_INVALID_STATUS_FOR_ATTEND" });
     });
 
@@ -109,7 +126,7 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_A_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_A_ID }),
       ).rejects.toMatchObject({ statusCode: 400, code: "REDIRECT_SAME_WINDOW" });
     });
 
@@ -120,7 +137,7 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID, targetServiceWindowId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }),
       ).rejects.toMatchObject({ statusCode: 404, code: "SERVICE_WINDOW_NOT_FOUND" });
     });
 
@@ -135,7 +152,7 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo, windowRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID, targetServiceWindowId: WINDOW_B_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
       ).rejects.toMatchObject({ statusCode: 404, code: "SERVICE_WINDOW_NOT_FOUND" });
     });
 
@@ -143,8 +160,19 @@ describe("RedirectTurnUseCase", () => {
       const { useCase } = buildUseCase();
 
       await expect(
-        useCase.execute({ turnId: "not-a-uuid", targetServiceWindowId: WINDOW_B_ID }),
+        useCase.execute({ turnId: "not-a-uuid", requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+      const turnRepo = new InMemoryTurnRepo([
+        buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending", serviceWindowId: WINDOW_A_ID }),
+      ]);
+      const { useCase } = buildUseCase({ turnRepo });
+
+      await expect(
+        useCase.execute({ turnId: TURN_ID, requestingUserId: STRANGER_ID, targetServiceWindowId: WINDOW_B_ID }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
     });
   });
 });

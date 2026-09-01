@@ -1,18 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { MarkTurnNoShowUseCase } from "../../../src/modules/queue/application/MarkTurnNoShowUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemoryTurnRepo, buildTurn } from "../../helpers/queueFakes";
 
 const TURN_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const QUEUE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const BUSINESS_ID = "business-1"; // matches buildTurn() default
+const OWNER_ID = "11111111-2222-4333-8444-555555555555";
+const STRANGER_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa";
 
 const buildUseCase = (options: {
   turnRepo?: InMemoryTurnRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
   const emitter  = options.emitter === undefined ? null : options.emitter;
-  return { useCase: new MarkTurnNoShowUseCase(turnRepo, emitter as never), turnRepo };
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return { useCase: new MarkTurnNoShowUseCase(turnRepo, emitter as never, ensureBusinessMembershipUseCase), turnRepo };
 };
 
 describe("MarkTurnNoShowUseCase", () => {
@@ -23,7 +36,7 @@ describe("MarkTurnNoShowUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ turnId: TURN_ID });
+    const result = await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(result).toMatchObject({ turnId: TURN_ID, status: "no_show" });
     expect(() => new Date(result.noShowAt)).not.toThrow();
@@ -40,7 +53,7 @@ describe("MarkTurnNoShowUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ turnId: TURN_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(turnRepo.all().find((t) => t.id === TURN_ID)?.attendedAt).toBeUndefined();
   });
@@ -52,7 +65,7 @@ describe("MarkTurnNoShowUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: { emitQueueUpdate } });
 
-    await useCase.execute({ turnId: TURN_ID });
+    await useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID });
 
     expect(emitQueueUpdate).toHaveBeenCalledOnce();
     expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
@@ -67,7 +80,7 @@ describe("MarkTurnNoShowUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: null });
 
-    await expect(useCase.execute({ turnId: TURN_ID })).resolves.toMatchObject({ status: "no_show" });
+    await expect(useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID })).resolves.toMatchObject({ status: "no_show" });
   });
 
   describe("errores", () => {
@@ -75,7 +88,7 @@ describe("MarkTurnNoShowUseCase", () => {
       const { useCase } = buildUseCase();
 
       await expect(
-        useCase.execute({ turnId: TURN_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
       ).rejects.toMatchObject({ statusCode: 404, code: "TURN_NOT_FOUND" });
     });
 
@@ -86,7 +99,7 @@ describe("MarkTurnNoShowUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
       ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CALLED" });
     });
 
@@ -97,7 +110,7 @@ describe("MarkTurnNoShowUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
       ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CALLED" });
     });
 
@@ -108,7 +121,7 @@ describe("MarkTurnNoShowUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
       ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CALLED" });
     });
 
@@ -119,14 +132,25 @@ describe("MarkTurnNoShowUseCase", () => {
       const { useCase } = buildUseCase({ turnRepo });
 
       await expect(
-        useCase.execute({ turnId: TURN_ID }),
+        useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID }),
       ).rejects.toMatchObject({ statusCode: 409, code: "TURN_NOT_CALLED" });
     });
 
     it("throws 400 for an invalid turnId", async () => {
       const { useCase } = buildUseCase();
 
-      await expect(useCase.execute({ turnId: "not-a-uuid" })).rejects.toMatchObject({ statusCode: 400 });
+      await expect(useCase.execute({ turnId: "not-a-uuid", requestingUserId: OWNER_ID })).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+      const turnRepo = new InMemoryTurnRepo([
+        buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "called" }),
+      ]);
+      const { useCase } = buildUseCase({ turnRepo });
+
+      await expect(
+        useCase.execute({ turnId: TURN_ID, requestingUserId: STRANGER_ID }),
+      ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
     });
   });
 });

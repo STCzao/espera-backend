@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { todayUTC } from "@shared/utils/date";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import type { ITurnRepo } from "@modules/queue/public-api";
@@ -53,11 +54,6 @@ export interface GetPlatformMetricsOutput {
 const parseUTCDate = (dateStr: string): Date => {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));
-};
-
-const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 };
 
 const toDateStr = (date: Date): string => date.toISOString().slice(0, 10);

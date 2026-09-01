@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { CallNextUseCase } from "../../../src/modules/queue/application/CallNextUseCase";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
   InMemoryTurnRepo,
@@ -9,20 +11,31 @@ import {
 } from "../../helpers/queueFakes";
 
 const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
+const BUSINESS_ID = "business-1"; // matches buildQueue()/buildTurn() default
+const OWNER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const STRANGER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?: InMemoryTurnRepo;
   emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
+  businessRepo?: InMemoryBusinessRepo;
 } = {}) => {
   const queueRepo =
     options.queueRepo ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, isActive: true })]);
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
   const emitter = options.emitter === undefined ? null : options.emitter;
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
   return {
     queueRepo,
     turnRepo,
-    useCase: new CallNextUseCase(queueRepo, turnRepo, emitter as never),
+    useCase: new CallNextUseCase(queueRepo, turnRepo, emitter as never, ensureBusinessMembershipUseCase),
   };
 };
 
@@ -33,7 +46,7 @@ describe("CallNextUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result).toMatchObject({ queueId: QUEUE_ID, displayNumber: "A-001" });
     expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
@@ -47,7 +60,7 @@ describe("CallNextUseCase", () => {
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "TURN_STILL_CALLED" });
 
     expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
@@ -61,7 +74,7 @@ describe("CallNextUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await useCase.execute({ queueId: QUEUE_ID });
+    await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("attending");
     expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("called");
@@ -75,7 +88,7 @@ describe("CallNextUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.displayNumber).toBe("A-002");
   });
@@ -88,7 +101,7 @@ describe("CallNextUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.displayNumber).toBe("A-001");
   });
@@ -100,7 +113,7 @@ describe("CallNextUseCase", () => {
     const emitter = { emitQueueUpdate: vi.fn() };
     const { useCase } = buildUseCase({ turnRepo, emitter });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(emitter.emitQueueUpdate).toHaveBeenCalledOnce();
     expect(emitter.emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
@@ -115,14 +128,14 @@ describe("CallNextUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ turnRepo, emitter: null });
 
-    await expect(useCase.execute({ queueId: QUEUE_ID })).resolves.toBeDefined();
+    await expect(useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID })).resolves.toBeDefined();
   });
 
   it("throws CONFLICT when the queue is empty", async () => {
     const { useCase } = buildUseCase();
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_EMPTY" });
   });
 
@@ -130,7 +143,7 @@ describe("CallNextUseCase", () => {
     const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
   });
 
@@ -140,15 +153,26 @@ describe("CallNextUseCase", () => {
     });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACTIVE" });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
   });
 
   it("throws BAD_REQUEST for an invalid queueId", async () => {
     const { useCase } = buildUseCase();
 
     await expect(
-      useCase.execute({ queueId: "not-a-uuid" }),
+      useCase.execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
@@ -161,7 +185,7 @@ describe("CallNextUseCase — resolver el turno llamado antes de avanzar", () =>
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.turnId).toBe("t-next");
     expect(turnRepo.all().find((t) => t.id === "t-next")?.status).toBe("called");
@@ -175,7 +199,7 @@ describe("CallNextUseCase — resolver el turno llamado antes de avanzar", () =>
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "TURN_STILL_CALLED" });
 
     expect(turnRepo.all().find((t) => t.id === "t-called")?.status).toBe("called");
@@ -188,7 +212,7 @@ describe("CallNextUseCase — resolver el turno llamado antes de avanzar", () =>
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.turnId).toBe("t-next");
   });
@@ -205,7 +229,7 @@ describe("CallNextUseCase — reserva telefónica que todavía no llegó a su ET
     const { useCase } = buildUseCase({ turnRepo });
 
     await expect(
-      useCase.execute({ queueId: QUEUE_ID }),
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NO_TURN_READY" });
   });
 
@@ -218,7 +242,7 @@ describe("CallNextUseCase — reserva telefónica que todavía no llegó a su ET
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    await expect(useCase.execute({ queueId: QUEUE_ID })).rejects.toThrow();
+    await expect(useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID })).rejects.toThrow();
     expect(turnRepo.all().find((t) => t.id === "t-phone")?.status).toBe("waiting");
   });
 
@@ -231,7 +255,7 @@ describe("CallNextUseCase — reserva telefónica que todavía no llegó a su ET
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
-    const result = await useCase.execute({ queueId: QUEUE_ID });
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
 
     expect(result.turnId).toBe("t-phone");
   });

@@ -389,3 +389,95 @@ implementa ni debe implementar `GET /auth/google/callback`.
 - Validación staging con Resend real.
 - Validación OAuth real fuera de entorno local.
 - Cierre de historias mobile diferidas cuando exista app registrada.
+
+## Bugfix — el rate limiter confiaba en `X-Forwarded-For` sin validar su origen (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes de
+IDOR y bloqueo de usuario, ver `epica-3-cola.md` y `epica-8-backoffice.md`).
+Encontrado en la misma auditoría general del proyecto.
+
+### Problema
+
+`rateLimiter.ts` (protege `login`, `register`, `register-business`,
+`forgot-password`, `guest-turns`, etc.) agrupaba los intentos por
+`X-Forwarded-For` cuando ese header estaba presente, sin `trust proxy`
+configurado en Express y sin validar que la request efectivamente pasó por
+un proxy conocido. Cualquier cliente puede mandar ese header directamente
+en la request — alcanzaba con variar su valor en cada intento para caer
+siempre en un bucket nuevo y evadir el límite por completo. El lockout de
+`LoginUseCase` por email (no por IP) seguía funcionando como defensa
+adicional en login, pero `register`/`guest-turns`/`forgot-password`
+dependían enteramente de este límite evadible.
+
+### Fix
+
+- Nueva variable `TRUST_PROXY` (`env.ts`, opcional): define el `trust
+  proxy` de Express (cantidad de hops, IP, o CIDR del proxy real). Sin
+  configurar, default `false` — Express ignora `X-Forwarded-For` por
+  completo y `request.ip` es la IP real del socket, no spoofeable.
+- `app.ts` aplica `app.set("trust proxy", getTrustProxySetting())` antes de
+  cualquier middleware.
+- `rateLimiter.ts` deja de leer el header a mano — usa `request.ip`
+  directamente, que Express ya resuelve correctamente según `trust proxy`.
+
+En producción, si hay un proxy real (nginx, load balancer) delante de la
+app, `TRUST_PROXY` debe configurarse con el hop count real; si se deja sin
+configurar detrás de un proxy, todas las requests comparten la IP del
+proxy en vez de la del cliente — visible en logs/monitoreo, a diferencia
+del hueco de seguridad anterior, que era silencioso.
+
+### Cobertura
+
+- `tests/unit/shared/parseTrustProxyValue.test.ts` (nuevo, 4 casos: sin
+  configurar → `false`, string vacío → `false`, hop count numérico → number,
+  IP/CIDR/keyword → string tal cual)
+- `tests/unit/middleware/rateLimiter.test.ts` (caso nuevo: un
+  `X-Forwarded-For` spoofeado no cambia el bucket — sigue agrupando por
+  `request.ip`)
+
+655 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente (requiere probar contra el proxy real de
+despliegue, todavía no definido).
+
+## Bugfix — `APP_ORIGIN` opcional dejaba CORS abierto por default en producción (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que los bugfixes
+anteriores de esta sección). Encontrado en la misma auditoría general del
+proyecto.
+
+### Problema
+
+`app.ts` configura `cors({ origin: env.APP_ORIGIN ?? true, credentials:
+true })`, pero `APP_ORIGIN` era completamente opcional en `env.ts` — sin
+distinción por `NODE_ENV`. Si se olvidaba definir la variable en un deploy
+de producción (fácil en un despliegue apurado, y la app arranca sin ningún
+error), CORS caía a `origin: true`: refleja cualquier origen que pida la
+request, **con `credentials: true`** — cualquier sitio puede hacer
+requests autenticadas contra la API. No era un bug de código sino una
+trampa de configuración silenciosa.
+
+### Fix
+
+`env.ts` agrega un `superRefine` sobre el schema: si `NODE_ENV ===
+"production"` y `APP_ORIGIN` no está definida, la validación falla y la
+app no arranca — mismo mecanismo que ya usan `COOKIE_SECRET`/
+`JWT_ACCESS_SECRET` (`z.string().min(1, ...)`), pero condicional a
+`NODE_ENV` porque en desarrollo/test `APP_ORIGIN` debe seguir siendo
+opcional (`origin: true` es intencional en local). En desarrollo y test el
+comportamiento no cambia.
+
+### Cobertura
+
+- `tests/unit/shared/env.test.ts` (nuevo, 3 casos: falla al arrancar en
+  producción sin `APP_ORIGIN`, arranca normal en producción con
+  `APP_ORIGIN` seteada, sigue siendo opcional fuera de producción) — usa
+  `vi.resetModules()` + `import()` dinámico para forzar la reevaluación del
+  módulo con distintos `process.env`, ya que `env.ts` valida al importarse.
+
+658 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente (requiere confirmar en el entorno de
+despliegue real que `APP_ORIGIN` está seteada).

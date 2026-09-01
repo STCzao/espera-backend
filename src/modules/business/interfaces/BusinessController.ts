@@ -5,6 +5,7 @@ import type { SocketIOEmitter } from "@modules/queue/public-api";
 import { CreateQueueUseCase, ListBusinessQueuesUseCase, ToggleQueueUseCase } from "@modules/queue/public-api";
 import { AcceptBusinessEmployeeInvitationUseCase } from "../application/AcceptBusinessEmployeeInvitationUseCase";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
+import { CancelBusinessEmployeeInvitationUseCase } from "../application/CancelBusinessEmployeeInvitationUseCase";
 import { ConfigureBusinessHoursUseCase } from "../application/ConfigureBusinessHoursUseCase";
 import { GenerateBusinessQrPngUseCase } from "../application/GenerateBusinessQrPngUseCase";
 import { GetBusinessCategoriesUseCase } from "../application/GetBusinessCategoriesUseCase";
@@ -47,6 +48,7 @@ export class BusinessController {
     private readonly inviteBusinessEmployeeUseCase = new InviteBusinessEmployeeUseCase(),
     private readonly listBusinessEmployeesUseCase = new ListBusinessEmployeesUseCase(),
     private readonly listPendingBusinessEmployeeInvitationsUseCase = new ListPendingBusinessEmployeeInvitationsUseCase(),
+    private readonly cancelBusinessEmployeeInvitationUseCase = new CancelBusinessEmployeeInvitationUseCase(),
     private readonly listMyBusinessesUseCase = new ListMyBusinessesUseCase(),
     private readonly acceptBusinessEmployeeInvitationUseCase = new AcceptBusinessEmployeeInvitationUseCase(),
     private readonly revokeBusinessEmployeeUseCase = new RevokeBusinessEmployeeUseCase(),
@@ -140,6 +142,22 @@ export class BusinessController {
       businessId: String(request.params.businessId),
       ownerUserId: request.user?.id ?? "",
     });
+    response.status(200).json(result);
+  };
+
+  public cancelEmployeeInvitation = async (
+    request: Request,
+    response: Response
+  ): Promise<void> => {
+    const result = await this.cancelBusinessEmployeeInvitationUseCase.execute({
+      businessId: String(request.params.businessId),
+      ownerUserId: request.user?.id ?? "",
+      invitationId: String(request.params.invitationId),
+    });
+    logger.info(
+      { businessId: result.businessId, invitationId: result.invitationId },
+      "Business employee invitation cancelled"
+    );
     response.status(200).json(result);
   };
 

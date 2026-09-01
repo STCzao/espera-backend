@@ -2,12 +2,14 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
 const schema = z.object({
   turnId: z.string().uuid("Invalid turn id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
 });
 
 export type CancelTurnByEmployeeInput = z.infer<typeof schema>;
@@ -23,6 +25,7 @@ export class CancelTurnByEmployeeUseCase
   public constructor(
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: CancelTurnByEmployeeInput): Promise<CancelTurnByEmployeeOutput> {
@@ -31,6 +34,12 @@ export class CancelTurnByEmployeeUseCase
 
     const turn = await this.turnRepo.findById(parsed.data.turnId);
     if (!turn) throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: turn.businessId,
+      userId: parsed.data.requestingUserId,
+    });
+
     if (turn.status !== "waiting" && turn.status !== "called" && turn.status !== "attending") {
       throw AppError.conflict("This turn cannot be cancelled.", "TURN_NOT_CANCELLABLE");
     }

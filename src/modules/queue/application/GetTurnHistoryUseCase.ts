@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo, TurnHistoryItem } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
@@ -11,6 +12,7 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
+  requestingUserId: z.string().uuid("Invalid user id."),
   date: z
     .string()
     .regex(DATE_REGEX, "Date must be in YYYY-MM-DD format.")
@@ -33,6 +35,7 @@ export class GetTurnHistoryUseCase implements UseCase<GetTurnHistoryInput, GetTu
   public constructor(
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
+    private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
   ) {}
 
   public async execute(input: GetTurnHistoryInput): Promise<GetTurnHistoryOutput> {
@@ -41,6 +44,11 @@ export class GetTurnHistoryUseCase implements UseCase<GetTurnHistoryInput, GetTu
 
     const queue = await this.queueRepo.findById(parsed.data.queueId);
     if (!queue) throw AppError.notFound("Queue not found.", "QUEUE_NOT_FOUND");
+
+    await this.ensureBusinessMembershipUseCase.execute({
+      businessId: queue.businessId,
+      userId: parsed.data.requestingUserId,
+    });
 
     const date = parseToUTCDate(parsed.data.date);
     return this.turnRepo.findHistoryByQueue(parsed.data.queueId, date);
