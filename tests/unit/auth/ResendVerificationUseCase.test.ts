@@ -12,6 +12,7 @@ vi.mock("../../../src/shared/infrastructure/email", () => ({
 }));
 
 const EMAIL = "user@example.com";
+const GENERIC_MESSAGE = "If the email needs verification, we sent a new link.";
 
 describe("ResendVerificationUseCase", () => {
   beforeEach(() => {
@@ -27,7 +28,7 @@ describe("ResendVerificationUseCase", () => {
 
     const result = await useCase.execute({ email: EMAIL });
 
-    expect(result).toEqual({ message: "Verification email resent." });
+    expect(result).toEqual({ message: GENERIC_MESSAGE });
     const updated = await userRepo.findByEmail(EMAIL);
     expect(updated?.emailVerificationToken).not.toBe("old-token");
     expect(updated?.lastVerificationSentAt).toBeInstanceOf(Date);
@@ -44,30 +45,32 @@ describe("ResendVerificationUseCase", () => {
     const useCase = new ResendVerificationUseCase(userRepo);
 
     await expect(useCase.execute({ email: EMAIL })).resolves.toEqual({
-      message: "Verification email resent.",
+      message: GENERIC_MESSAGE,
+    });
+  });
+
+  describe("no account enumeration", () => {
+    it("returns the same generic message when the email does not exist, without sending anything", async () => {
+      const useCase = new ResendVerificationUseCase(new InMemoryUserRepo());
+
+      await expect(useCase.execute({ email: "nobody@example.com" })).resolves.toEqual({
+        message: GENERIC_MESSAGE,
+      });
+      expect(emailMocks.sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it("returns the same generic message when the email is already verified, without sending anything", async () => {
+      const userRepo = new InMemoryUserRepo([buildUser({ email: EMAIL, isEmailVerified: true })]);
+      const useCase = new ResendVerificationUseCase(userRepo);
+
+      await expect(useCase.execute({ email: EMAIL })).resolves.toEqual({
+        message: GENERIC_MESSAGE,
+      });
+      expect(emailMocks.sendVerificationEmail).not.toHaveBeenCalled();
     });
   });
 
   describe("errores", () => {
-    it("throws 400 with a generic message when the email does not exist (no account enumeration)", async () => {
-      const useCase = new ResendVerificationUseCase(new InMemoryUserRepo());
-
-      await expect(useCase.execute({ email: "nobody@example.com" })).rejects.toMatchObject({
-        statusCode: 400,
-        message: "Invalid token.",
-      });
-    });
-
-    it("throws 400 when the email is already verified", async () => {
-      const userRepo = new InMemoryUserRepo([buildUser({ email: EMAIL, isEmailVerified: true })]);
-      const useCase = new ResendVerificationUseCase(userRepo);
-
-      await expect(useCase.execute({ email: EMAIL })).rejects.toMatchObject({
-        statusCode: 400,
-        message: "Email is already verified.",
-      });
-    });
-
     it("throws 429 when requested again within the 5-minute cooldown", async () => {
       const userRepo = new InMemoryUserRepo([
         buildUser({ email: EMAIL, isEmailVerified: false, lastVerificationSentAt: new Date() }),

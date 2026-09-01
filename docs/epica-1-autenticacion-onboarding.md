@@ -534,3 +534,39 @@ evaluar ningún `case` para métodos que no fueran `POST`.
 tests.
 
 Validación manual: pendiente.
+
+## Bugfix — `ResendVerificationUseCase` dejaba enumerar cuentas registradas (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan` (mismo trabajo que los bugfixes de
+esta rama). Encontrado en una segunda auditoría general del proyecto.
+
+### El problema
+
+`ResendVerificationUseCase` devolvía errores distinguibles según el estado
+de la cuenta: `400 "Invalid token."` si el email no estaba registrado,
+`400 "Email is already verified."` si ya estaba verificado, éxito (o `429`
+por cooldown) si existía y no estaba verificado. Un atacante podía usar
+esto para confirmar qué emails tienen cuenta en la plataforma —
+`RequestPasswordResetUseCase` ya resuelve exactamente este mismo problema
+(mismo mensaje genérico exista o no la cuenta), pero el patrón nunca se
+replicó acá.
+
+### Fix
+
+Mismo mensaje genérico (`"If the email needs verification, we sent a new
+link."`) para los tres casos: cuenta inexistente, ya verificada, y reenvío
+real. Fuera de alcance a propósito: el `429` del cooldown de 5 minutos
+sigue siendo distinguible (revela "ya lo pediste hace poco" para una
+cuenta real, no verificada) — es una señal de rate-limit esperable, no el
+mismo tipo de fuga que el resto.
+
+### Cobertura
+
+- `tests/unit/auth/ResendVerificationUseCase.test.ts` (los 2 casos que
+  antes esperaban `400` ahora verifican la respuesta genérica y que
+  `sendVerificationEmail` no se llama)
+
+713 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

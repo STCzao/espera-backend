@@ -35,6 +35,12 @@ export class ResendVerificationUseCase
   /**
    * Resends a verification email to an existing unverified user.
    * Refreshes the verification token and expiry before sending the new email.
+   *
+   * A missing account and an already-verified one return the exact same
+   * generic message as a real resend — same account-enumeration defense
+   * RequestPasswordResetUseCase already uses, applied here too: neither
+   * "this email isn't registered" nor "this email is already verified"
+   * should be distinguishable from "we sent it."
    */
   public async execute(input: ResendVerificationInput): Promise<ResendVerificationOutput> {
     const parsed = resendVerificationSchema.safeParse(input);
@@ -42,14 +48,14 @@ export class ResendVerificationUseCase
       throw AppError.badRequest("Invalid token.");
     }
 
+    const genericResponse: ResendVerificationOutput = {
+      message: "If the email needs verification, we sent a new link.",
+    };
+
     const user = await this.userRepo.findByEmail(parsed.data.email);
 
-    if (!user) {
-      throw AppError.badRequest("Invalid token.");
-    }
-
-    if (user.isEmailVerified) {
-      throw AppError.badRequest("Email is already verified.");
+    if (!user || user.isEmailVerified) {
+      return genericResponse;
     }
 
     // Cooldown prevents email flooding and repeated token churn for the same account.
@@ -80,6 +86,6 @@ export class ResendVerificationUseCase
       throw AppError.internal("Failed to send verification email. Please try again.");
     }
 
-    return { message: "Verification email resent." };
+    return genericResponse;
   }
 }
