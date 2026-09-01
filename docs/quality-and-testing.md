@@ -636,6 +636,26 @@ esta rama). Último punto del plan de acción priorizado — bundle de deuda
 695 tests en verde (suite completa, 96 archivos), `tsc --noEmit` limpio en
 `src` y en tests.
 
+### Bugfix — flake de Redis en `auth.api.test.ts` (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan`. Encontrado en una segunda
+auditoría general del proyecto: `tests/api/auth/auth.api.test.ts` mockea
+cada caso de uso importado por `AuthController`, pero corre contra la app
+real de Express — incluido el middleware `rateLimiter` real, que habla
+contra Redis de verdad si `docker compose up -d` está corriendo (flujo
+normal de desarrollo). Cada política tiene una ventana (`login` 5/10min,
+`register` 5/hora, etc.) — con corridas repetidas de `npm run test:run`
+dentro de esa ventana, el límite se llenaba y el test terminaba recibiendo
+un `429` real. `tests/unit/middleware/rateLimiter.test.ts` ya mockeaba
+Redis para probar el middleware en sí; este archivo nunca lo hacía, pese a
+ejercitar las mismas rutas.
+
+**Fix**: mismo mock de `@shared/infrastructure/redis` que ya usa
+`rateLimiter.test.ts`, agregado a `auth.api.test.ts`. Confirmado corriendo
+la suite completa 3 veces seguidas sin fallos, y una vez más con Docker
+completamente apagado (el archivo no necesita Redis ni Postgres para
+nada — solo ejercita ruteo de Express con use cases mockeados).
+
 ### Pruebas manuales con Postman
 
 Ademas de los comandos automatizados, Epica 1 puede validarse manualmente con
