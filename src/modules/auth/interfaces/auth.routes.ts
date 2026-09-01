@@ -31,6 +31,12 @@ authRouter.patch(
   authorize("platform:approve_business_account"),
   controller.approveBusinessAccount,
 );
+authRouter.patch(
+  "/users/:userId/unblock",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.unblockUser,
+);
 authRouter.get("/verify-email", controller.verifyEmail);
 authRouter.post(
   "/resend-verification",

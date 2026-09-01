@@ -116,6 +116,31 @@ describe("LoginWithGoogleUseCase", () => {
     expect(refreshSessionRepo.all()[0].userId).toBe(created.id);
   });
 
+  it("blocks a blocked user from logging in via Google (HU-8.6)", async () => {
+    const userRepo = new InMemoryUserRepo([
+      buildUser({
+        email: "owner.google@example.com",
+        authProvider: "google",
+        googleId: "google-1",
+        isEmailVerified: true,
+        isBlocked: true,
+      }),
+    ]);
+    const useCase = new LoginWithGoogleUseCase(
+      userRepo,
+      new InMemoryRefreshSessionRepo(),
+      tokenService,
+      buildGoogleOAuthService(),
+    );
+
+    await expect(
+      useCase.execute({ code: "google-code", state: "oauth-state" }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "ACCOUNT_BLOCKED",
+    });
+  });
+
   it("rejects local accounts on Google login", async () => {
     const userRepo = new InMemoryUserRepo([
       buildUser({

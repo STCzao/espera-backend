@@ -87,6 +87,8 @@ export class PostgresUserRepo implements IUserRepo {
         blockedByUserId: user.blockedByUserId ?? null,
         blockedAt: user.blockedAt ?? null,
         blockReason: user.blockReason ?? null,
+        unblockedByUserId: user.unblockedByUserId ?? null,
+        unblockedAt: user.unblockedAt ?? null,
       },
       update: {
         email: user.email,
@@ -110,6 +112,8 @@ export class PostgresUserRepo implements IUserRepo {
         blockedByUserId: user.blockedByUserId ?? null,
         blockedAt: user.blockedAt ?? null,
         blockReason: user.blockReason ?? null,
+        unblockedByUserId: user.unblockedByUserId ?? null,
+        unblockedAt: user.unblockedAt ?? null,
       },
     });
 
@@ -155,6 +159,8 @@ export class PostgresUserRepo implements IUserRepo {
       blockedByUserId: raw.blockedByUserId ?? undefined,
       blockedAt: raw.blockedAt ?? undefined,
       blockReason: raw.blockReason ?? undefined,
+      unblockedByUserId: raw.unblockedByUserId ?? undefined,
+      unblockedAt: raw.unblockedAt ?? undefined,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

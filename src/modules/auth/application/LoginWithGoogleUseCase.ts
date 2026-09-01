@@ -78,6 +78,10 @@ export class LoginWithGoogleUseCase
         throw AppError.unauthorized("Invalid Google account.", "GOOGLE_ACCOUNT_MISMATCH");
       }
 
+      if (existing.isBlocked) {
+        throw AppError.forbidden("Your account has been blocked.", "ACCOUNT_BLOCKED");
+      }
+
       if (existing.role === "business_admin" && existing.approvalStatus === "rejected") {
         throw AppError.forbidden(
           "Your account approval request was rejected.",

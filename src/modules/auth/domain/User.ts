@@ -25,6 +25,8 @@ export interface User {
   blockedByUserId?: string;
   blockedAt?: Date;
   blockReason?: string;
+  unblockedByUserId?: string;
+  unblockedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

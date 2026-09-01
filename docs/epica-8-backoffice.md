@@ -672,6 +672,70 @@ declarado distinto al de su Business contra Postgres local).
 
 ---
 
+## Bugfix — HU-8.6 solo tenía bloqueo de usuario, nunca reversa; y el bloqueo no se hacía cumplir en login con Google (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que el fix de IDOR
+en operaciones de cola, arriba en `epica-3-cola.md`). Encontrado en la
+misma auditoría general del proyecto.
+
+### Problema 1 — bloqueo de usuario sin vuelta atrás
+
+`BlockUserUseCase` (HU-8.6) marca `isBlocked: true` y revoca todas las
+sesiones activas, pero nunca existió un caso de uso, endpoint, ni ruta para
+revertirlo — a diferencia de `Business`, que sí tiene el par
+`SuspendBusinessUseCase`/`ReactivateBusinessUseCase`. Un usuario bloqueado
+(por ejemplo, tras `SuspendReportedUseCase` sobre un reporte que resultó
+ser un malentendido) quedaba bloqueado permanentemente sin ningún camino
+operativo para restaurar el acceso.
+
+**Fix.** Nuevo `UnblockUserUseCase` (mismo patrón que
+`ReactivateBusinessUseCase`): exige que el usuario esté `isBlocked`, limpia
+el flag y registra `unblockedByUserId`/`unblockedAt` — conserva
+`blockedByUserId`/`blockedAt`/`blockReason` como historial, igual que
+`Business` conserva `suspendedByUserId`/`suspensionReason` tras reactivar.
+A diferencia de `BlockUserUseCase` (que nunca se expuso directo, solo lo
+consume `SuspendReportedUseCase`), este caso de uso sí se conecta a un
+endpoint — por eso devuelve un DTO angosto (`userId`, `isBlocked`,
+`unblockedByUserId`, `unblockedAt`) en vez de la entidad `User` completa,
+que carga `passwordHash` y tokens que nunca deben viajar en una respuesta
+HTTP.
+
+```text
+PATCH /api/auth/users/:userId/unblock   platform:manage_approvals
+```
+
+Nueva migración `20260901000000_add_user_unblock_audit` agrega
+`unblockedByUserId`/`unblockedAt` a `users` (mismo patrón que
+`20260801000000_business_suspension`).
+
+### Problema 2 — el bloqueo no se comprobaba en `LoginWithGoogleUseCase`
+
+`LoginUseCase` (login local) sí rechaza a un usuario `isBlocked` con `403
+ACCOUNT_BLOCKED`. `LoginWithGoogleUseCase` nunca tuvo ese chequeo: un
+usuario bloqueado cuya cuenta usa `authProvider: "google"` podía seguir
+iniciando sesión sin límite, sorteando por completo el bloqueo — el vector
+más simple para esto es cualquier usuario que originalmente se registró
+con Google (todo el flujo `business_admin` de Google, más cualquier `user`
+que se logueó así alguna vez).
+
+**Fix.** Se agregó el mismo chequeo (`403 ACCOUNT_BLOCKED`) en
+`LoginWithGoogleUseCase`, ubicado junto a los otros chequeos de identidad
+sobre el usuario existente (después de `GOOGLE_ACCOUNT_MISMATCH`, antes de
+`ACCOUNT_REJECTED`) — mismo orden relativo que sigue `LoginUseCase`.
+
+### Cobertura
+
+- `tests/unit/auth/UnblockUserUseCase.test.ts` (nuevo, 5 casos: desbloqueo
+  exitoso con auditoría, conserva el registro de bloqueo original, `404`
+  usuario inexistente, `409` usuario no bloqueado, `400` userId inválido)
+- `tests/unit/auth/LoginWithGoogleUseCase.test.ts` (caso nuevo: usuario
+  bloqueado rechazado con `403 ACCOUNT_BLOCKED`)
+
+650 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
+
 ## Observaciones técnicas
 
 - Ningún endpoint de esta épica requiere infraestructura nueva — todos
