@@ -501,7 +501,8 @@ de integracion ni de API.
 - Redis real para rate limit y bloqueo de intentos.
 - Integracion real con Resend o Google OAuth.
 - Intercambio real automatizado contra Google OAuth.
-- Reenvio de verificacion automatizado.
+- ~~Reenvio de verificacion automatizado.~~ Cubierto —
+  `tests/unit/auth/ResendVerificationUseCase.test.ts` (2026-09-01).
 
 ### Comandos de calidad
 
@@ -590,6 +591,50 @@ particular `countWaitingAhead`/`findActiveByQueue` documentados en el
 bugfix de `epica-4-canales-entrada.md`— requieren primero crear
 Organization/Business/Queue reales (cadena de FKs), así que quedan fuera
 de este "mínimo, como base".
+
+### Cierre del resto de hallazgos bajos de la auditoría (2026-09-01)
+
+Rama: `bugfix/ownership-operaciones-cola` (mismo trabajo que el resto de
+esta rama). Último punto del plan de acción priorizado — bundle de deuda
+"sin apuro, sin riesgo activo":
+
+- **`todayUTC()` duplicada letra por letra 5 veces** (`GetPlatformMetricsUseCase`,
+  `CreateTurnUseCase`, `GetQueueListUseCase`, `GetQueueStatusUseCase`,
+  `resolveTurnWaitStatus`) — extraída a `src/shared/utils/date.ts`. De paso,
+  `CreateManualTurnUseCase` dejó de importarla desde `CreateTurnUseCase`
+  (un caso de uso importando de otro, en vez de una utilidad compartida).
+  Sin cambio de comportamiento — mismo cálculo exacto en los 6 lugares.
+- **Resolución de QR pública sin rate limiting** (`GET /api/qr/:token`) —
+  única ruta pública sin ningún control de volumen, a diferencia de su
+  par `POST /guest-turns`. `rateLimiter.ts` solo enrutaba por método +
+  path literal (`POST /login`, etc.), lo que no alcanza para una ruta con
+  parámetro (`/:token`); ahora resuelve por `request.route.path` (el
+  patrón de ruta que Express ya expone al middleware específico de una
+  ruta), que para las rutas literales existentes coincide exactamente con
+  el `path` de antes — sin cambio de comportamiento en ellas. Límite
+  nuevo: 30 requests/60s por IP.
+- **Casos de uso sin ningún test** (`RegisterUseCase`,
+  `ResendVerificationUseCase`, `GenerateBusinessQrPngUseCase`,
+  `GetBusinessCategoriesUseCase`, `resolveTurnWaitStatus`) — los 5 que la
+  auditoría señaló con cero cobertura directa ahora tienen su propio
+  archivo de test (24 casos en total: camino feliz, rollback de
+  `RegisterUseCase` si falla el email, cooldown de reenvío de
+  verificación, PNG real de `GenerateBusinessQrPngUseCase`, branches de
+  `resolveTurnWaitStatus` — called/attending/redirected/waiting/sin
+  ventanillas activas).
+- **Migración sin comentario de rollback** (`20260729000002_fix_started_attention_at`)
+  — evaluado y descartado a propósito: es un rename de columna trivial de
+  revertir (`ALTER TABLE "turns" RENAME COLUMN "startedAttentionAt" TO
+  "started_attention_at"`), pero **editar el archivo de una migración ya
+  aplicada cambia su checksum** y rompe `prisma migrate deploy`/`migrate
+  status` contra cualquier base que ya la tenga aplicada (P3005-style
+  drift) — el mismo tipo de problema que costó arreglar la migración de
+  `membership_self_service` en el fix de tests de integración, más
+  arriba. Se documenta acá en texto en vez de tocar el archivo: el
+  rollback, si hiciera falta a mano, es la línea de arriba.
+
+695 tests en verde (suite completa, 96 archivos), `tsc --noEmit` limpio en
+`src` y en tests.
 
 ### Pruebas manuales con Postman
 
