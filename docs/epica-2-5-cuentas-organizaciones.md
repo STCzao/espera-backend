@@ -861,3 +861,60 @@ otro momento.
 627 tests en verde (suite completa).
 
 Validación manual: pendiente.
+
+## Bugfix — el vencimiento pasivo de un trial nunca disparaba la restricción de recursos (2026-09-01)
+
+Rama: `bugfix/enforcement-limites-plan` (mismo trabajo que el fix de
+reactivar cola/ventanilla, ver `epica-3-cola.md`). Cierra el "alcance no
+cubierto, documentado como límite conocido" de arriba. Encontrado en una
+segunda auditoría general del proyecto.
+
+### El problema
+
+`EnforceQueueLimitsForOrganizationUseCase` solo se disparaba desde
+`OrganizationController.cancelSubscription` — una acción explícita. Pero
+`ResolveEffectiveSubscriptionStatusUseCase` resuelve el vencimiento de un
+trial de forma perezosa, sin ningún cron: `EnsureQueueCreationAllowedUseCase`,
+`EnsureServiceWindowCreationAllowedUseCase`, `ApproveBusinessUseCase`,
+`ListAllBusinessesUseCase` y `GetOrganizationSubscriptionUseCase` la
+invocan como una simple lectura de estado. Un trial que vencía bloqueaba
+*crear* recursos nuevos correctamente, pero las colas/ventanillas que ya
+existían desde el trial se quedaban activas para siempre — nadie
+"cancelaba" nada explícitamente, así que la limpieza nunca corría.
+
+### Decisión de diseño: dónde enganchar el disparo
+
+La opción más obvia — engancharlo dentro de
+`ResolveEffectiveSubscriptionStatusUseCase` mismo, ya que ahí es donde se
+detecta la transición — se descartó después de intentarla: ese use case lo
+consumen 6 lugares distintos (algunos son lecturas simples, como
+`GetOrganizationSubscriptionUseCase`, un endpoint de "mostrame mi plan").
+Emparchar un efecto secundario tan grande (desactivar colas/ventanillas de
+toda la organización) dentro de un use case de solo-lectura ampliamente
+reusado significaba: (a) que revisar el estado de tu suscripción podía
+desactivar recursos como side-effect, sorprendente para cualquiera que solo
+quiera ver un dato, y (b) forzar a los 6 call sites (y sus tests) a
+inyectar un fake solo para no pegarle a Postgres real en la suite unitaria
+— demasiado ripple para lo que debería ser un fix acotado.
+
+En cambio, el fix vive en `EnsureQueueCreationAllowedUseCase` y
+`EnsureServiceWindowCreationAllowedUseCase` — los dos únicos lugares cuyo
+trabajo ya es "decidir si el plan permite esto", justo en la rama donde ya
+detectan `status === "cancelled" || status === "expired"` y rechazan con
+`SUBSCRIPTION_INACTIVE`. Ahí, antes de lanzar el error, corren el mismo
+`EnforceQueueLimitsForOrganizationUseCase` con `PLAN_LIMITS.basic` que ya
+usa la cancelación explícita. Se dispara la primera vez que alguien intenta
+crear o reactivar una cola/ventanilla después de que el trial venció — que
+es, en la práctica, el momento en que más importa que el enforcement corra.
+
+### Cobertura
+
+- `tests/unit/organization/EnsureQueueCreationAllowedUseCase.test.ts` (caso
+  nuevo: desactiva colas de sobra al descubrir acá un trial vencido)
+- `tests/unit/organization/EnsureServiceWindowCreationAllowedUseCase.test.ts`
+  (mismo caso para ventanillas)
+
+701 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

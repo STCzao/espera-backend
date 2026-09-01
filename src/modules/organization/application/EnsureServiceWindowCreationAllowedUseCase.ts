@@ -1,4 +1,5 @@
 import { AppError } from "@shared/kernel/AppError";
+import { EnforceQueueLimitsForOrganizationUseCase } from "@modules/queue/public-api";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import { PLAN_LIMITS } from "../domain/PlanLimits";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
@@ -21,6 +22,7 @@ export class EnsureServiceWindowCreationAllowedUseCase
 {
   public constructor(
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly enforceQueueLimitsForOrganizationUseCase: EnforceQueueLimitsForOrganizationUseCase = new EnforceQueueLimitsForOrganizationUseCase(),
   ) {}
 
   public async execute(input: EnsureServiceWindowCreationAllowedInput): Promise<void> {
@@ -28,6 +30,15 @@ export class EnsureServiceWindowCreationAllowedUseCase
       .execute({ organizationId: input.organizationId });
 
     if (subscription && (subscription.status === "cancelled" || subscription.status === "expired")) {
+      // Same reasoning as EnsureQueueCreationAllowedUseCase: a lapsed trial
+      // never goes through OrganizationController.cancelSubscription, so
+      // this is the first reliable place to notice it and run the same
+      // Basic-level cleanup an explicit cancellation already gets.
+      await this.enforceQueueLimitsForOrganizationUseCase.execute({
+        organizationId: input.organizationId,
+        limit: PLAN_LIMITS.basic,
+      });
+
       throw AppError.forbidden(
         "Your organization's subscription is not active.",
         "SUBSCRIPTION_INACTIVE",
