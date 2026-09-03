@@ -23,6 +23,11 @@ const registerBusinessSchema = z.object({
   phone: z.string().trim().max(30).optional(),
   address: z.string().trim().min(5, "Business address is required.").max(200),
   ownerUserId: z.string().uuid("Invalid owner user id."),
+  // Optional here on purpose (HU-2.5.5) — same validation as
+  // UpdateOrganizationUseCase, which is still how it gets set/changed
+  // later. Registration is the first chance an owner has to enter it, not
+  // the only one.
+  legalId: z.string().trim().min(1, "Legal id cannot be empty.").max(50).optional(),
 });
 
 export type RegisterBusinessInput = z.infer<typeof registerBusinessSchema>;
@@ -82,6 +87,7 @@ export class RegisterBusinessUseCase
       const { organizationId } = await this.createOrganizationForOwnerUseCase.execute({
         ownerUserId: parsed.data.ownerUserId,
         organizationName: parsed.data.name,
+        legalId: parsed.data.legalId,
       });
 
       const currentBusinessCount = await this.businessRepo.countByOrganizationId(organizationId);

@@ -11,6 +11,13 @@ import { PostgresSubscriptionRepo } from "../infrastructure/PostgresSubscription
 export interface CreateOrganizationForOwnerInput {
   ownerUserId: string;
   organizationName: string;
+  /**
+   * Optional at this point on purpose (HU-2.5.5) — only applied when a new
+   * Organization is actually created here. An owner registering a second
+   * Business under an Organization they already have keeps using
+   * PATCH /api/organizations/:organizationId to set/change it later.
+   */
+  legalId?: string;
 }
 
 export interface CreateOrganizationForOwnerOutput {
@@ -51,6 +58,7 @@ export class CreateOrganizationForOwnerUseCase
     const organization = await this.organizationRepo.save({
       id: randomUUID(),
       name: input.organizationName,
+      legalId: input.legalId,
       status: "pending",
       createdAt: now,
       updatedAt: now,
