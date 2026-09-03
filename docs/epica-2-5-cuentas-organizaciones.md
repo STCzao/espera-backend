@@ -918,3 +918,54 @@ es, en la práctica, el momento en que más importa que el enforcement corra.
 tests.
 
 Validación manual: pendiente.
+
+## Feature — `legalId` opcional en el registro de negocio (2026-09-02)
+
+Rama: `feature/legal-id-en-registro`.
+
+### El problema
+
+HU-2.5.5 documentaba `legalId` como "opcional al alta, editable después",
+pero en la práctica el registro de negocio (`RegisterBusinessUseCase`) nunca
+pedía el dato — la única vía para cargarlo era
+`PATCH /api/organizations/:organizationId`, una pantalla que todavía no
+existe en el frontend. El resultado: el Backoffice mostraba la advertencia
+de "CUIT faltante" (HU-8.7) en la revisión de todo negocio nuevo, sin que el
+dueño hubiera tenido nunca la oportunidad de cargarlo. No era un bug de
+código — el backend se comportaba tal como estaba documentado — sino un
+hueco de producto entre dos flujos que se diseñaron en momentos distintos.
+
+### La solución
+
+`legalId?: string` se agregó como campo opcional en
+`RegisterBusinessUseCase` (misma validación que
+`UpdateOrganizationUseCase`: `trim().min(1).max(50)`, para no aceptar un
+string vacío silenciosamente) y se lo pasa a
+`CreateOrganizationForOwnerUseCase`, que ya lo aplicaba al crear una
+`Organization` nueva. `BusinessController.register` no necesitó cambios —
+ya hace spread de `request.body` hacia el use case.
+
+Alcance deliberadamente acotado a este único flujo: `legalId` sólo se
+aplica cuando `CreateOrganizationForOwnerUseCase` efectivamente crea una
+`Organization` nueva (el "primer negocio" de un owner). Si el owner ya
+tiene una `Organization` (`Membership` admin existente, típicamente por
+backfill o por un negocio anterior), el `legalId` recibido se ignora — el
+único camino para cambiarlo ahí sigue siendo el `PATCH` existente, tal como
+documenta HU-2.5.5. Los flujos de registro en un solo paso ya marcados como
+en vías de discontinuación (`RegisterBusinessAccountUseCase`,
+`RegisterBusinessWithGoogleUseCase`) no se tocaron.
+
+### Cobertura
+
+- `tests/unit/business/RegisterBusinessUseCase.test.ts` ("passes legalId
+  through to the new Organization when provided", "rejects an empty
+  legalId instead of silently dropping it")
+- `tests/unit/organization/CreateOrganizationForOwnerUseCase.test.ts`
+  ("sets legalId on the new Organization when provided", "leaves legalId
+  unset when not provided", "ignores legalId when reusing an existing
+  Organization")
+
+736 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.

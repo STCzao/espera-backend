@@ -129,6 +129,34 @@ describe("RegisterBusinessUseCase", () => {
     ]);
   });
 
+  it("passes legalId through to the new Organization when provided", async () => {
+    const businessRepo = new InMemoryBusinessRepo();
+    const userRepo = new InMemoryUserRepo([buildUser({ id: OWNER_ID, role: "user" })]);
+    const organizationRepo = new InMemoryOrganizationRepo();
+    const membershipRepo = new InMemoryMembershipRepo();
+    const subscriptionRepo = new InMemorySubscriptionRepo();
+    const useCase = new RegisterBusinessUseCase(
+      businessRepo,
+      userRepo,
+      geocodingService,
+      new CreateOrganizationForOwnerUseCase(organizationRepo, membershipRepo, subscriptionRepo),
+      new EnsureBusinessCreationAllowedUseCase(subscriptionRepo),
+      new InMemoryBusinessCategoryRepo(),
+    );
+
+    await useCase.execute({ ...validInput, legalId: "30-12345678-9" });
+
+    expect(organizationRepo.all()).toMatchObject([{ legalId: "30-12345678-9" }]);
+  });
+
+  it("rejects an empty legalId instead of silently dropping it", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ ...validInput, legalId: "" }),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Legal id cannot be empty." });
+  });
+
   it("persists coordinates when geocoding succeeds", async () => {
     const businessRepo = new InMemoryBusinessRepo();
     const { useCase } = buildUseCase({ businessRepo });

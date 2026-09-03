@@ -34,6 +34,36 @@ describe("CreateOrganizationForOwnerUseCase", () => {
     ]);
   });
 
+  it("sets legalId on the new Organization when provided", async () => {
+    const organizationRepo = new InMemoryOrganizationRepo();
+    const useCase = new CreateOrganizationForOwnerUseCase(
+      organizationRepo,
+      new InMemoryMembershipRepo(),
+      new InMemorySubscriptionRepo(),
+    );
+
+    await useCase.execute({
+      ownerUserId: "user-1",
+      organizationName: "Cafe Espera",
+      legalId: "30-12345678-9",
+    });
+
+    expect(organizationRepo.all()).toMatchObject([{ legalId: "30-12345678-9" }]);
+  });
+
+  it("leaves legalId unset when not provided", async () => {
+    const organizationRepo = new InMemoryOrganizationRepo();
+    const useCase = new CreateOrganizationForOwnerUseCase(
+      organizationRepo,
+      new InMemoryMembershipRepo(),
+      new InMemorySubscriptionRepo(),
+    );
+
+    await useCase.execute({ ownerUserId: "user-1", organizationName: "Cafe Espera" });
+
+    expect(organizationRepo.all()[0].legalId).toBeUndefined();
+  });
+
   it("reuses the existing Organization when the owner already has an ADMIN membership", async () => {
     const membershipRepo = new InMemoryMembershipRepo([
       buildMembership({ userId: "user-1", organizationId: "existing-org", role: "admin" }),
@@ -52,6 +82,26 @@ describe("CreateOrganizationForOwnerUseCase", () => {
     });
 
     expect(result.organizationId).toBe("existing-org");
+    expect(organizationRepo.all()).toHaveLength(0);
+  });
+
+  it("ignores legalId when reusing an existing Organization — PATCH /organizations/:id is the only way to change it after creation", async () => {
+    const membershipRepo = new InMemoryMembershipRepo([
+      buildMembership({ userId: "user-1", organizationId: "existing-org", role: "admin" }),
+    ]);
+    const organizationRepo = new InMemoryOrganizationRepo();
+    const useCase = new CreateOrganizationForOwnerUseCase(
+      organizationRepo,
+      membershipRepo,
+      new InMemorySubscriptionRepo(),
+    );
+
+    await useCase.execute({
+      ownerUserId: "user-1",
+      organizationName: "Cafe Espera 2",
+      legalId: "30-12345678-9",
+    });
+
     expect(organizationRepo.all()).toHaveLength(0);
   });
 });
