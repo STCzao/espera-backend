@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@shared/infrastructure/prisma";
