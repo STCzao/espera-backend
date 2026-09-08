@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { ISubscriptionRepo, SubscriptionPlan, SubscriptionStatus } from "@modules/organization/public-api";
-import { PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase } from "@modules/organization/public-api";
+import type { CommercialState, ISubscriptionRepo, SubscriptionPlan, SubscriptionStatus } from "@modules/organization/public-api";
+import { PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase, computeCommercialState } from "@modules/organization/public-api";
 import type { BusinessStatus } from "../domain/Business";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
@@ -14,6 +14,15 @@ const MAX_PAGE_SIZE = 50;
 const BUSINESS_STATUSES = ["pending", "approved", "rejected", "suspended"] as const;
 const SUBSCRIPTION_PLANS = ["basic", "pro", "premium"] as const;
 const SUBSCRIPTION_STATUSES = ["pending", "trial", "active", "expired", "cancelled"] as const;
+// Kept in sync by hand with CommercialState (organization/domain/CommercialState.ts)
+// — deriving it from that union at the type level isn't worth the
+// indirection for one const array.
+const COMMERCIAL_STATES = [
+  "pending_approval",
+  "trialing_basic", "trialing_pro", "trialing_premium",
+  "paying_basic", "paying_pro", "paying_premium",
+  "expired", "cancelled",
+] as const;
 
 const schema = z.object({
   organizationId:     z.string().uuid("Invalid organization id.").optional(),
@@ -21,6 +30,10 @@ const schema = z.object({
   status:             z.enum(BUSINESS_STATUSES).optional(),
   subscriptionPlan:   z.enum(SUBSCRIPTION_PLANS).optional(),
   subscriptionStatus: z.enum(SUBSCRIPTION_STATUSES).optional(),
+  // Filters on the same plan+status data as the two fields above — a
+  // convenience for operators who think in "is this real revenue?" terms
+  // instead of the two underlying enums (see docs/epica-2-5-cuentas-organizaciones.md).
+  commercialState:    z.enum(COMMERCIAL_STATES).optional(),
   sortBy:             z.enum(["businessName", "createdAt"]).default("createdAt"),
   sortDir:            z.enum(["asc", "desc"]).default("desc"),
   page:               z.number().int().min(1).default(1),
@@ -39,6 +52,7 @@ export interface BusinessListItem {
   categoryId: string;
   subscriptionPlan?: SubscriptionPlan;
   subscriptionStatus?: SubscriptionStatus;
+  commercialState?: CommercialState;
   createdAt: string;
 }
 
@@ -75,12 +89,13 @@ export class ListAllBusinessesUseCase
     // request's subscription data into every later request for that org.
     const subscriptionByOrgId = new Map<string, { plan: SubscriptionPlan; status: SubscriptionStatus } | null>();
 
-    // subscriptionPlan/subscriptionStatus are *derived* — ResolveEffectiveSubscriptionStatusUseCase
-    // lazily reconciles them from Subscription, they aren't queryable Business
-    // columns — so they can't be pushed into the same WHERE as the rest.
-    // Without them, pagination/sorting/count all go straight to Postgres and
-    // only the current page's businesses ever get a Subscription lookup.
-    if (!parsed.data.subscriptionPlan && !parsed.data.subscriptionStatus) {
+    // subscriptionPlan/subscriptionStatus/commercialState are *derived* —
+    // ResolveEffectiveSubscriptionStatusUseCase lazily reconciles them from
+    // Subscription, they aren't queryable Business columns — so they can't
+    // be pushed into the same WHERE as the rest. Without them,
+    // pagination/sorting/count all go straight to Postgres and only the
+    // current page's businesses ever get a Subscription lookup.
+    if (!parsed.data.subscriptionPlan && !parsed.data.subscriptionStatus && !parsed.data.commercialState) {
       const [businesses, total] = await Promise.all([
         this.businessRepo.findMany({
           ...baseFilters, sortBy, sortDir, skip: (page - 1) * pageSize, take: pageSize,
@@ -107,6 +122,7 @@ export class ListAllBusinessesUseCase
     const filtered = items.filter((item) => {
       if (parsed.data.subscriptionPlan && item.subscriptionPlan !== parsed.data.subscriptionPlan) return false;
       if (parsed.data.subscriptionStatus && item.subscriptionStatus !== parsed.data.subscriptionStatus) return false;
+      if (parsed.data.commercialState && item.commercialState !== parsed.data.commercialState) return false;
       return true;
     });
 
@@ -146,6 +162,7 @@ export class ListAllBusinessesUseCase
       categoryId: business.categoryId,
       subscriptionPlan: subscription?.plan,
       subscriptionStatus: subscription?.status,
+      commercialState: subscription ? computeCommercialState(subscription) : undefined,
       createdAt: business.createdAt.toISOString(),
     };
   }

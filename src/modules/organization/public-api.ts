@@ -6,6 +6,8 @@ export type { Membership, MembershipRole } from "./domain/Membership";
 export type { Subscription, SubscriptionPlan, SubscriptionStatus } from "./domain/Subscription";
 export { PLAN_LIMITS } from "./domain/PlanLimits";
 export type { PlanLimit } from "./domain/PlanLimits";
+export { computeCommercialState } from "./domain/CommercialState";
+export type { CommercialState } from "./domain/CommercialState";
 
 export { PostgresOrganizationRepo } from "./infrastructure/PostgresOrganizationRepo";
 export { PostgresMembershipRepo } from "./infrastructure/PostgresMembershipRepo";

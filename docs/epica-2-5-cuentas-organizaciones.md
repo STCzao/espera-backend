@@ -988,72 +988,55 @@ tests.
 
 Validación manual: pendiente.
 
-## Refuerzo — `legalId` obligatorio y con validación real de CUIT (2026-09-08)
+## Feature — `commercialState` derivado para trazabilidad en el Backoffice (2026-09-08)
 
-Rama: `feature/legal-id-obligatorio`.
+Rama: `feature/estado-comercial-subscripcion`.
 
 ### El problema
 
-El feature anterior (arriba, 2026-09-02) resolvía que el dueño *pudiera*
-cargar el CUIT al registrar su negocio, pero lo dejaba opcional y sin
-validar el formato — cualquier texto no vacío de hasta 50 caracteres pasaba
-(la idea original, documentada en HU-2.5.5, era incluso admitir una razón
-social como alternativa). Eso no alcanza como identificador legal: nada
-impedía guardar un CUIT con dígitos trasladados o directamente inventado.
-Pedido explícito: hacerlo obligatorio tanto al registrar el negocio como al
-editar el perfil de la `Organization`, con la validación real que un CUIT
-argentino requiere.
+`Subscription.plan` (basic/pro/premium) y `Subscription.status`
+(pending/trial/active/expired/cancelled) son dos columnas independientes a
+propósito — una es el nivel comercial, la otra la línea de tiempo de pago
+— y esa separación es justamente la que permitió el bugfix anterior
+("La Subscription vencida/cancelada ahora bloquea operar", arriba). Pero
+esa misma independencia le pide al operador del Backoffice cruzar
+mentalmente dos enums para responder una sola pregunta: "¿esto es plata
+real o todavía es prueba gratis?". `ListAllBusinessesUseCase` (la pantalla
+"Negocios" del Backoffice) ya exponía ambos campos por separado, sin
+ningún resumen.
+
+Se evaluó también sacar `trial` del enum de `status` y derivarlo de
+`trialEndsAt`, pero eso reintroduce el mismo problema que el bugfix del
+2026-09-01 resolvió (una transición que dependía de comparar fechas a mano
+en cada lugar en vez de un estado explícito) sin eliminar la necesidad real
+de combinar dos datos — solo cambia cuáles dos.
 
 ### La solución
 
-- `isValidCuit()` nueva en `src/shared/utils/cuit.ts`: normaliza el valor
-  (saca guiones y espacios), exige 11 dígitos y valida el dígito
-  verificador con el algoritmo módulo 11 real — no una regex de forma. Un
-  string con la forma correcta pero dígitos inventados (p. ej.
-  `20-12345678-7` en vez de `20-12345678-6`) se rechaza igual que uno con
-  longitud incorrecta.
-- `RegisterBusinessUseCase`: `legalId` deja de ser `.optional()` — sin un
-  CUIT válido, no se puede registrar un negocio nuevo.
-- `UpdateOrganizationUseCase`: `legalId` sigue siendo opcional *en el
-  schema* — sigue siendo un PATCH parcial, así que renombrar la
-  `Organization` no debería obligar a reenviar el CUIT — pero si el campo
-  viene en la request, debe ser un CUIT válido con el mismo `isValidCuit()`.
-  Ya no se puede guardar un valor vacío ni uno con formato o dígito
-  verificador incorrecto.
+`computeCommercialState()` nueva en
+`src/modules/organization/domain/CommercialState.ts`: función pura que
+combina `plan` + `status` en una sola etiqueta legible
+(`pending_approval`, `trialing_basic/pro/premium`,
+`paying_basic/pro/premium`, `expired`, `cancelled`). No reemplaza a
+`plan`/`status` — es un tercer campo derivado, aditivo, calculado a partir
+de los mismos dos datos que ya se persistían.
 
-### Qué se dejó deliberadamente afuera
-
-- **El gate de aprobación en el Backoffice (HU-8.7) sigue siendo
-  informativo.** `ApproveBusinessUseCase` no bloquea la aprobación de un
-  `Business` cuya `Organization` no tiene `legalId` — sólo lo advierte. No
-  se pidió cambiar esto, y hacerlo bloquearía la aprobación de
-  `Organization`s creadas antes de este cambio (o vía los flujos de un
-  solo paso de abajo) que legítimamente no tienen el dato todavía. Si se
-  quiere que la falta de CUIT bloquee la aprobación, es una decisión de
-  producto aparte — requeriría además una vía para que esas
-  `Organization`s heredadas lo completen antes de intentar aprobar un
-  negocio nuevo.
-- **Los flujos de registro en un solo paso**
-  (`RegisterBusinessAccountUseCase`, `RegisterBusinessWithGoogleUseCase`,
-  ver Observaciones técnicas para Épica 3 más abajo) siguen sin pedir
-  `legalId` — `CreateOrganizationForOwnerUseCase.legalId` sigue siendo
-  opcional a propósito, porque estos dos flujos también lo llaman y están
-  documentados como en vías de discontinuación. Forzarlo ahí habría sido
-  invertir tiempo en código que se va a borrar.
-- **No hay backfill ni gate para `Organization`s existentes sin
-  `legalId`.** Siguen pudiendo operar con normalidad; el único cambio es
-  que, si en algún momento editan el campo, tiene que ser un CUIT real.
+`ListAllBusinessesUseCase` expone `commercialState` en cada
+`BusinessListItem` (calculado sobre la `Subscription` ya reconciliada por
+`ResolveEffectiveSubscriptionStatusUseCase`, así que un trial vencido
+nunca se etiqueta `trialing_*`) y permite filtrar por él además de
+`subscriptionPlan`/`subscriptionStatus` — las tres formas de filtrar
+conviven, ninguna reemplaza a las otras.
 
 ### Cobertura
 
-- `tests/unit/shared/cuit.test.ts` (nuevo — CUIT válido con y sin guiones,
-  dígito verificador incorrecto, longitud incorrecta, el caso borde donde
-  el dígito verificador calculado da 10 y por lo tanto ningún CUIT con esos
-  primeros 10 dígitos es válido, texto no numérico)
-- `tests/unit/business/RegisterBusinessUseCase.test.ts` (legalId faltante,
-  vacío, con dígito verificador incorrecto, con longitud incorrecta)
-- `tests/unit/organization/UpdateOrganizationUseCase.test.ts` (legalId con
-  formato inválido)
+- `tests/unit/organization/CommercialState.test.ts` (nuevo — las cinco
+  ramas de `status`, cada una probada contra los tres planes salvo
+  `trial`/`active` donde el plan sí cambia el resultado)
+- `tests/unit/business/ListAllBusinessesUseCase.test.ts` (bloque
+  "commercialState": deriva `paying_<plan>`, `trialing_<plan>`, `expired`
+  independiente del plan, `undefined` sin `Subscription`; más el filtro
+  nuevo en el bloque de filtros existente)
 
 746 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
 tests.
