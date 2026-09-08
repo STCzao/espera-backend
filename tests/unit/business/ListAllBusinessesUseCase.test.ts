@@ -88,6 +88,50 @@ describe("ListAllBusinessesUseCase — filtros", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].businessId).toBe("business-alpha");
   });
+
+  it("filters by commercialState", async () => {
+    const { businessRepo, subscriptionRepo } = buildFilterFixture();
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({
+      commercialState: "expired",
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].businessId).toBe("business-alpha");
+  });
+});
+
+describe("ListAllBusinessesUseCase — commercialState", () => {
+  it("derives paying_<plan> for an active subscription and exposes it alongside plan/status", async () => {
+    const { businessRepo, subscriptionRepo } = buildFilterFixture();
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({ organizationId: ORG_A });
+    expect(result.items[0]).toMatchObject({
+      subscriptionPlan: "pro",
+      subscriptionStatus: "active",
+      commercialState: "paying_pro",
+    });
+  });
+
+  it("derives trialing_<plan> for a trial subscription", async () => {
+    const businessRepo = new InMemoryBusinessRepo([
+      buildBusiness({ id: "business-1", organizationId: ORG_A }),
+    ]);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ organizationId: ORG_A, plan: "premium", status: "trial" }),
+    ]);
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({});
+    expect(result.items[0].commercialState).toBe("trialing_premium");
+  });
+
+  it("derives expired regardless of the underlying plan", async () => {
+    const { businessRepo, subscriptionRepo } = buildFilterFixture();
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({ organizationId: ORG_B });
+    expect(result.items[0]).toMatchObject({ subscriptionPlan: "basic", commercialState: "expired" });
+  });
+
+  it("leaves commercialState undefined when the organization has no Subscription", async () => {
+    const businessRepo = new InMemoryBusinessRepo([buildBusiness({ id: "business-1" })]);
+    const result = await buildUseCase(businessRepo, new InMemorySubscriptionRepo()).execute({});
+    expect(result.items[0].commercialState).toBeUndefined();
+  });
 });
 
 describe("ListAllBusinessesUseCase — orden", () => {

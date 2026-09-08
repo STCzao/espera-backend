@@ -969,3 +969,58 @@ en vías de discontinuación (`RegisterBusinessAccountUseCase`,
 tests.
 
 Validación manual: pendiente.
+
+## Feature — `commercialState` derivado para trazabilidad en el Backoffice (2026-09-08)
+
+Rama: `feature/estado-comercial-subscripcion`.
+
+### El problema
+
+`Subscription.plan` (basic/pro/premium) y `Subscription.status`
+(pending/trial/active/expired/cancelled) son dos columnas independientes a
+propósito — una es el nivel comercial, la otra la línea de tiempo de pago
+— y esa separación es justamente la que permitió el bugfix anterior
+("La Subscription vencida/cancelada ahora bloquea operar", arriba). Pero
+esa misma independencia le pide al operador del Backoffice cruzar
+mentalmente dos enums para responder una sola pregunta: "¿esto es plata
+real o todavía es prueba gratis?". `ListAllBusinessesUseCase` (la pantalla
+"Negocios" del Backoffice) ya exponía ambos campos por separado, sin
+ningún resumen.
+
+Se evaluó también sacar `trial` del enum de `status` y derivarlo de
+`trialEndsAt`, pero eso reintroduce el mismo problema que el bugfix del
+2026-09-01 resolvió (una transición que dependía de comparar fechas a mano
+en cada lugar en vez de un estado explícito) sin eliminar la necesidad real
+de combinar dos datos — solo cambia cuáles dos.
+
+### La solución
+
+`computeCommercialState()` nueva en
+`src/modules/organization/domain/CommercialState.ts`: función pura que
+combina `plan` + `status` en una sola etiqueta legible
+(`pending_approval`, `trialing_basic/pro/premium`,
+`paying_basic/pro/premium`, `expired`, `cancelled`). No reemplaza a
+`plan`/`status` — es un tercer campo derivado, aditivo, calculado a partir
+de los mismos dos datos que ya se persistían.
+
+`ListAllBusinessesUseCase` expone `commercialState` en cada
+`BusinessListItem` (calculado sobre la `Subscription` ya reconciliada por
+`ResolveEffectiveSubscriptionStatusUseCase`, así que un trial vencido
+nunca se etiqueta `trialing_*`) y permite filtrar por él además de
+`subscriptionPlan`/`subscriptionStatus` — las tres formas de filtrar
+conviven, ninguna reemplaza a las otras.
+
+### Cobertura
+
+- `tests/unit/organization/CommercialState.test.ts` (nuevo — las cinco
+  ramas de `status`, cada una probada contra los tres planes salvo
+  `trial`/`active` donde el plan sí cambia el resultado)
+- `tests/unit/business/ListAllBusinessesUseCase.test.ts` (bloque
+  "commercialState": deriva `paying_<plan>`, `trialing_<plan>`, `expired`
+  independiente del plan, `undefined` sin `Subscription`; más el filtro
+  nuevo en el bloque de filtros existente)
+
+746 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
