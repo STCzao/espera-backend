@@ -21,11 +21,14 @@ import {
 const CATEGORY_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
 
+const VALID_CUIT = "20-12345678-6";
+
 const validInput = {
   name: "Cafe Espera",
   categoryId: CATEGORY_ID,
   address: "Av. Corrientes 1234, CABA",
   ownerUserId: OWNER_ID,
+  legalId: VALID_CUIT,
 };
 
 const geocodingService = {
@@ -144,9 +147,18 @@ describe("RegisterBusinessUseCase", () => {
       new InMemoryBusinessCategoryRepo(),
     );
 
-    await useCase.execute({ ...validInput, legalId: "30-12345678-9" });
+    await useCase.execute({ ...validInput, legalId: "30-12345678-1" });
 
-    expect(organizationRepo.all()).toMatchObject([{ legalId: "30-12345678-9" }]);
+    expect(organizationRepo.all()).toMatchObject([{ legalId: "30-12345678-1" }]);
+  });
+
+  it("rejects a missing legalId — a CUIT is required to register a business", async () => {
+    const { useCase } = buildUseCase();
+    const { legalId, ...inputWithoutLegalId } = validInput;
+
+    await expect(
+      useCase.execute(inputWithoutLegalId as typeof validInput),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Legal id (CUIT) is required." });
   });
 
   it("rejects an empty legalId instead of silently dropping it", async () => {
@@ -154,7 +166,25 @@ describe("RegisterBusinessUseCase", () => {
 
     await expect(
       useCase.execute({ ...validInput, legalId: "" }),
-    ).rejects.toMatchObject({ statusCode: 400, message: "Legal id cannot be empty." });
+    ).rejects.toMatchObject({ statusCode: 400, message: "Legal id (CUIT) is required." });
+  });
+
+  it("rejects a legalId that fails the CUIT check digit", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      // Same 11 digits as VALID_CUIT with the check digit changed — right
+      // shape, wrong checksum.
+      useCase.execute({ ...validInput, legalId: "20-12345678-7" }),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Invalid legal id (CUIT)." });
+  });
+
+  it("rejects a legalId that isn't 11 digits", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ ...validInput, legalId: "123" }),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Invalid legal id (CUIT)." });
   });
 
   it("persists coordinates when geocoding succeeds", async () => {

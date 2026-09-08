@@ -459,17 +459,32 @@ nuevos `Business`.
 
 ### Criterios de Aceptación
 
-- Dado que se crea una `Organization`, entonces admite un campo `legalId`
-  (razón social o CUIT), opcional al momento de alta y editable después.
-- Dado que una `Organization` no tiene `legalId` cargado, cuando se intenta
-  aprobar un `Business` nuevo bajo esa `Organization`, entonces el
-  Backoffice muestra advertencia de dato faltante sin bloquear la revisión
-  manual.
+- Dado que se registra un `Business` (primer negocio de un owner, que
+  dispara la creación de su `Organization`), entonces `legalId` es
+  obligatorio y debe ser un CUIT válido (11 dígitos + dígito verificador
+  correcto) — **revisado el 2026-09-08**, ver sección de abajo. Antes de
+  esa fecha era opcional al alta; ver el bugfix original de HU-8.7 para el
+  motivo del cambio.
+- Dado que se edita una `Organization` existente vía
+  `UpdateOrganizationUseCase`, si la request incluye `legalId`, entonces
+  debe ser el mismo CUIT válido — no se puede guardar un valor con formato
+  o dígito verificador incorrecto. El campo puede omitirse en una edición
+  parcial que sólo toca `name`/`categoryId`.
+- Dado que una `Organization` no tiene `legalId` cargado (dato heredado de
+  antes de este cambio), cuando se intenta aprobar un `Business` nuevo bajo
+  esa `Organization`, entonces el Backoffice muestra advertencia de dato
+  faltante sin bloquear la revisión manual (sin cambios — ver Observaciones
+  técnicas abajo).
 
 ### Implementación backend
 
-- `Organization.legalId?: string` — columna nullable, sin validación de
-  formato (texto libre; puede ser CUIT o razón social).
+- `Organization.legalId?: string` — columna nullable (sigue admitiendo
+  `null` para dar lugar a datos heredados de antes de este cambio y a los
+  flujos de registro en un solo paso, ver más abajo).
+- `isValidCuit()` (`src/shared/utils/cuit.ts`) valida las 11 cifras y el
+  dígito verificador real (algoritmo módulo 11 de AFIP) — no sólo la forma.
+  Se usa tanto en `RegisterBusinessUseCase` (obligatorio) como en
+  `UpdateOrganizationUseCase` (obligatorio sólo si se envía el campo).
 - Editable después de la creación vía `UpdateOrganizationUseCase`
   (`PATCH /api/organizations/:organizationId`, permiso `organization:edit`)
   — ver contrato completo en el refinamiento de abajo.
@@ -480,6 +495,9 @@ nuevos `Business`.
 
 ### Cobertura
 
+- `tests/unit/shared/cuit.test.ts`
+- `tests/unit/business/RegisterBusinessUseCase.test.ts` (bloque de
+  `legalId`: obligatorio, dígito verificador, longitud)
 - `tests/unit/organization/UpdateOrganizationUseCase.test.ts`
 
 ## Documentación inline
@@ -966,6 +984,78 @@ en vías de discontinuación (`RegisterBusinessAccountUseCase`,
   Organization")
 
 736 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente.
+
+## Refuerzo — `legalId` obligatorio y con validación real de CUIT (2026-09-08)
+
+Rama: `feature/legal-id-obligatorio`.
+
+### El problema
+
+El feature anterior (arriba, 2026-09-02) resolvía que el dueño *pudiera*
+cargar el CUIT al registrar su negocio, pero lo dejaba opcional y sin
+validar el formato — cualquier texto no vacío de hasta 50 caracteres pasaba
+(la idea original, documentada en HU-2.5.5, era incluso admitir una razón
+social como alternativa). Eso no alcanza como identificador legal: nada
+impedía guardar un CUIT con dígitos trasladados o directamente inventado.
+Pedido explícito: hacerlo obligatorio tanto al registrar el negocio como al
+editar el perfil de la `Organization`, con la validación real que un CUIT
+argentino requiere.
+
+### La solución
+
+- `isValidCuit()` nueva en `src/shared/utils/cuit.ts`: normaliza el valor
+  (saca guiones y espacios), exige 11 dígitos y valida el dígito
+  verificador con el algoritmo módulo 11 real — no una regex de forma. Un
+  string con la forma correcta pero dígitos inventados (p. ej.
+  `20-12345678-7` en vez de `20-12345678-6`) se rechaza igual que uno con
+  longitud incorrecta.
+- `RegisterBusinessUseCase`: `legalId` deja de ser `.optional()` — sin un
+  CUIT válido, no se puede registrar un negocio nuevo.
+- `UpdateOrganizationUseCase`: `legalId` sigue siendo opcional *en el
+  schema* — sigue siendo un PATCH parcial, así que renombrar la
+  `Organization` no debería obligar a reenviar el CUIT — pero si el campo
+  viene en la request, debe ser un CUIT válido con el mismo `isValidCuit()`.
+  Ya no se puede guardar un valor vacío ni uno con formato o dígito
+  verificador incorrecto.
+
+### Qué se dejó deliberadamente afuera
+
+- **El gate de aprobación en el Backoffice (HU-8.7) sigue siendo
+  informativo.** `ApproveBusinessUseCase` no bloquea la aprobación de un
+  `Business` cuya `Organization` no tiene `legalId` — sólo lo advierte. No
+  se pidió cambiar esto, y hacerlo bloquearía la aprobación de
+  `Organization`s creadas antes de este cambio (o vía los flujos de un
+  solo paso de abajo) que legítimamente no tienen el dato todavía. Si se
+  quiere que la falta de CUIT bloquee la aprobación, es una decisión de
+  producto aparte — requeriría además una vía para que esas
+  `Organization`s heredadas lo completen antes de intentar aprobar un
+  negocio nuevo.
+- **Los flujos de registro en un solo paso**
+  (`RegisterBusinessAccountUseCase`, `RegisterBusinessWithGoogleUseCase`,
+  ver Observaciones técnicas para Épica 3 más abajo) siguen sin pedir
+  `legalId` — `CreateOrganizationForOwnerUseCase.legalId` sigue siendo
+  opcional a propósito, porque estos dos flujos también lo llaman y están
+  documentados como en vías de discontinuación. Forzarlo ahí habría sido
+  invertir tiempo en código que se va a borrar.
+- **No hay backfill ni gate para `Organization`s existentes sin
+  `legalId`.** Siguen pudiendo operar con normalidad; el único cambio es
+  que, si en algún momento editan el campo, tiene que ser un CUIT real.
+
+### Cobertura
+
+- `tests/unit/shared/cuit.test.ts` (nuevo — CUIT válido con y sin guiones,
+  dígito verificador incorrecto, longitud incorrecta, el caso borde donde
+  el dígito verificador calculado da 10 y por lo tanto ningún CUIT con esos
+  primeros 10 dígitos es válido, texto no numérico)
+- `tests/unit/business/RegisterBusinessUseCase.test.ts` (legalId faltante,
+  vacío, con dígito verificador incorrecto, con longitud incorrecta)
+- `tests/unit/organization/UpdateOrganizationUseCase.test.ts` (legalId con
+  formato inválido)
+
+746 tests en verde (suite completa), `tsc --noEmit` limpio en `src` y en
 tests.
 
 Validación manual: pendiente.
