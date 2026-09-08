@@ -11,6 +11,7 @@ import {
 const ORG_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const USER_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const OTHER_USER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const VALID_CUIT = "20-12345678-6";
 
 const buildUseCase = (options: {
   organizationRepo?: InMemoryOrganizationRepo;
@@ -29,9 +30,17 @@ describe("UpdateOrganizationUseCase", () => {
   it("sets legalId (HU-2.5.5 — editable after creation)", async () => {
     const { useCase } = buildUseCase();
 
-    const result = await useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "30-12345678-9" });
+    const result = await useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: VALID_CUIT });
 
-    expect(result.legalId).toBe("30-12345678-9");
+    expect(result.legalId).toBe(VALID_CUIT);
+  });
+
+  it("rejects a legalId that isn't a valid CUIT", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "not-a-cuit" }),
+    ).rejects.toMatchObject({ statusCode: 400, message: "Invalid legal id (CUIT)." });
   });
 
   it("sets categoryId (HU-8.7 — editable after creation)", async () => {
@@ -57,7 +66,7 @@ describe("UpdateOrganizationUseCase", () => {
     ]);
     const { useCase } = buildUseCase({ organizationRepo });
 
-    const result = await useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "30-1" });
+    const result = await useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: VALID_CUIT });
 
     expect(result.status).toBe("approved");
   });
@@ -67,7 +76,7 @@ describe("UpdateOrganizationUseCase", () => {
       const { useCase } = buildUseCase({ organizationRepo: new InMemoryOrganizationRepo() });
 
       await expect(
-        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "x" }),
+        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID }),
       ).rejects.toMatchObject({ statusCode: 404, code: "ORGANIZATION_NOT_FOUND" });
     });
 
@@ -75,7 +84,7 @@ describe("UpdateOrganizationUseCase", () => {
       const { useCase } = buildUseCase({ membershipRepo: new InMemoryMembershipRepo() });
 
       await expect(
-        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "x" }),
+        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID }),
       ).rejects.toMatchObject({ statusCode: 403, code: "ORGANIZATION_OWNERSHIP_REQUIRED" });
     });
 
@@ -86,7 +95,7 @@ describe("UpdateOrganizationUseCase", () => {
       const { useCase } = buildUseCase({ membershipRepo });
 
       await expect(
-        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID, legalId: "x" }),
+        useCase.execute({ organizationId: ORG_ID, requestingUserId: USER_ID }),
       ).rejects.toMatchObject({ statusCode: 403, code: "ORGANIZATION_OWNERSHIP_REQUIRED" });
     });
 
@@ -94,7 +103,7 @@ describe("UpdateOrganizationUseCase", () => {
       const { useCase } = buildUseCase();
 
       await expect(
-        useCase.execute({ organizationId: ORG_ID, requestingUserId: OTHER_USER_ID, legalId: "x" }),
+        useCase.execute({ organizationId: ORG_ID, requestingUserId: OTHER_USER_ID }),
       ).rejects.toMatchObject({ statusCode: 403, code: "ORGANIZATION_OWNERSHIP_REQUIRED" });
     });
 
@@ -102,7 +111,7 @@ describe("UpdateOrganizationUseCase", () => {
       const { useCase } = buildUseCase();
 
       await expect(
-        useCase.execute({ organizationId: "not-a-uuid", requestingUserId: USER_ID, legalId: "x" }),
+        useCase.execute({ organizationId: "not-a-uuid", requestingUserId: USER_ID }),
       ).rejects.toMatchObject({ statusCode: 400 });
     });
   });

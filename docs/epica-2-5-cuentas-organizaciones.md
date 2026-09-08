@@ -459,17 +459,32 @@ nuevos `Business`.
 
 ### Criterios de Aceptación
 
-- Dado que se crea una `Organization`, entonces admite un campo `legalId`
-  (razón social o CUIT), opcional al momento de alta y editable después.
-- Dado que una `Organization` no tiene `legalId` cargado, cuando se intenta
-  aprobar un `Business` nuevo bajo esa `Organization`, entonces el
-  Backoffice muestra advertencia de dato faltante sin bloquear la revisión
-  manual.
+- Dado que se registra un `Business` (primer negocio de un owner, que
+  dispara la creación de su `Organization`), entonces `legalId` es
+  obligatorio y debe ser un CUIT válido (11 dígitos + dígito verificador
+  correcto) — **revisado el 2026-09-08**, ver sección de abajo. Antes de
+  esa fecha era opcional al alta; ver el bugfix original de HU-8.7 para el
+  motivo del cambio.
+- Dado que se edita una `Organization` existente vía
+  `UpdateOrganizationUseCase`, si la request incluye `legalId`, entonces
+  debe ser el mismo CUIT válido — no se puede guardar un valor con formato
+  o dígito verificador incorrecto. El campo puede omitirse en una edición
+  parcial que sólo toca `name`/`categoryId`.
+- Dado que una `Organization` no tiene `legalId` cargado (dato heredado de
+  antes de este cambio), cuando se intenta aprobar un `Business` nuevo bajo
+  esa `Organization`, entonces el Backoffice muestra advertencia de dato
+  faltante sin bloquear la revisión manual (sin cambios — ver Observaciones
+  técnicas abajo).
 
 ### Implementación backend
 
-- `Organization.legalId?: string` — columna nullable, sin validación de
-  formato (texto libre; puede ser CUIT o razón social).
+- `Organization.legalId?: string` — columna nullable (sigue admitiendo
+  `null` para dar lugar a datos heredados de antes de este cambio y a los
+  flujos de registro en un solo paso, ver más abajo).
+- `isValidCuit()` (`src/shared/utils/cuit.ts`) valida las 11 cifras y el
+  dígito verificador real (algoritmo módulo 11 de AFIP) — no sólo la forma.
+  Se usa tanto en `RegisterBusinessUseCase` (obligatorio) como en
+  `UpdateOrganizationUseCase` (obligatorio sólo si se envía el campo).
 - Editable después de la creación vía `UpdateOrganizationUseCase`
   (`PATCH /api/organizations/:organizationId`, permiso `organization:edit`)
   — ver contrato completo en el refinamiento de abajo.
@@ -480,6 +495,9 @@ nuevos `Business`.
 
 ### Cobertura
 
+- `tests/unit/shared/cuit.test.ts`
+- `tests/unit/business/RegisterBusinessUseCase.test.ts` (bloque de
+  `legalId`: obligatorio, dígito verificador, longitud)
 - `tests/unit/organization/UpdateOrganizationUseCase.test.ts`
 
 ## Documentación inline
