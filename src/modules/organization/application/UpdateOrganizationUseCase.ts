@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
+import { isValidCuit } from "../../../shared/utils/cuit";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IMembershipRepo } from "../domain/IMembershipRepo";
 import type { IOrganizationRepo } from "../domain/IOrganizationRepo";
@@ -12,7 +13,12 @@ const schema = z.object({
   organizationId:   z.string().uuid("Invalid organization id."),
   requestingUserId: z.string().uuid("Invalid requesting user id."),
   name:             z.string().trim().min(2, "Organization name is required.").max(120).optional(),
-  legalId:          z.string().trim().min(1, "Legal id cannot be empty.").max(50).optional(),
+  // Optional in this schema only because this is a partial update — you can
+  // still rename an Organization without re-sending its legalId. When it IS
+  // sent, it must be a real CUIT (HU-2.5.5 — mandatory since registration
+  // requires it; this endpoint is how an Organization that predates that
+  // requirement, or a typo, gets it fixed).
+  legalId:          z.string().trim().min(1, "Legal id (CUIT) is required.").refine(isValidCuit, "Invalid legal id (CUIT).").optional(),
   categoryId:       z.string().uuid("Invalid category id.").optional(),
 });
 
@@ -20,8 +26,9 @@ export type UpdateOrganizationInput = z.infer<typeof schema>;
 
 /**
  * Lets an Organization's admin (via Membership) edit its name and/or
- * legalId (HU-2.5.5 — legalId is optional at creation and editable after).
- * Does not touch approval status.
+ * legalId (HU-2.5.5 — legalId is mandatory since registration, editable
+ * here for Organizations that predate that requirement or need a
+ * correction). Does not touch approval status.
  */
 export class UpdateOrganizationUseCase implements UseCase<UpdateOrganizationInput, Organization> {
   public constructor(

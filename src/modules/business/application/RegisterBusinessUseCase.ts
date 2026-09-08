@@ -8,6 +8,7 @@ import {
   CreateOrganizationForOwnerUseCase,
   EnsureBusinessCreationAllowedUseCase,
 } from "@modules/organization/public-api";
+import { isValidCuit } from "../../../shared/utils/cuit";
 import { generateUniqueSlug } from "../../../shared/utils/slug";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
@@ -23,11 +24,15 @@ const registerBusinessSchema = z.object({
   phone: z.string().trim().max(30).optional(),
   address: z.string().trim().min(5, "Business address is required.").max(200),
   ownerUserId: z.string().uuid("Invalid owner user id."),
-  // Optional here on purpose (HU-2.5.5) — same validation as
-  // UpdateOrganizationUseCase, which is still how it gets set/changed
-  // later. Registration is the first chance an owner has to enter it, not
-  // the only one.
-  legalId: z.string().trim().min(1, "Legal id cannot be empty.").max(50).optional(),
+  // Mandatory as of HU-2.5.5's revision — a CUIT is a legal requirement for
+  // an Organization to operate, so registration is the gate that used to
+  // let it through unset. UpdateOrganizationUseCase keeps the same format
+  // rule for later edits.
+  legalId: z
+    .string({ required_error: "Legal id (CUIT) is required." })
+    .trim()
+    .min(1, "Legal id (CUIT) is required.")
+    .refine(isValidCuit, "Invalid legal id (CUIT)."),
 });
 
 export type RegisterBusinessInput = z.infer<typeof registerBusinessSchema>;
