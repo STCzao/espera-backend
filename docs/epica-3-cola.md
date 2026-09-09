@@ -2406,3 +2406,97 @@ otros 8 archivos solo usaban `IBusinessRepo`/`PostgresBusinessRepo`.
 
 713 tests en verde (suite completa) sin ningún cambio en la suite —
 refactor puro. `tsc --noEmit` limpio en `src` y en tests.
+
+## Bugfix — Auditoría de rendimiento: índices faltantes y sobre-fetch en el hot path (2026-09-08/09)
+
+Rama: `bugfix/auditoria-rendimiento`. Salió de una auditoría de rendimiento
+de lectura completa (`business`/`queue`/`organization`/`auth`/`report`,
+`prisma/schema.prisma`, middleware, Socket.IO). El detalle completo con
+archivo:línea de cada hallazgo no vive en el repo — quedó en la
+conversación que lo generó; acá solo el resultado de lo que se corrigió y
+por qué, más lo que se descartó y por qué.
+
+### Índices faltantes en `Turn` (migración `20260908155020_add_turn_and_business_owner_indexes`)
+
+`createWithNextNumber` (`PostgresTurnRepo.ts`) numera un turno nuevo con
+`tx.turn.count({ where: { queueId, turnDate } })` mientras sostiene el row
+lock de la cola (`SELECT ... FOR UPDATE`) — sin `@@index([queueId,
+turnDate])`, ese count escaneaba el historial completo de la cola en cada
+alta, y lo hacía bajo el lock: cada turno nuevo quedaba serializado detrás
+de un scan que crece con el tiempo, el patrón clásico de degradación
+progresiva en producción. El mismo hueco de índice golpeaba
+`getAverageServiceMinutes` (usado por `GetQueueStatusUseCase` y
+`GetQueueListUseCase`, refresco de estado de cola) y `getRawMetricsByDate`.
+
+`findRecentCalls` filtra por `queueId` y ordena por `calledAt desc` — el
+`@@index([queueId, status])` existente solo cubre el prefijo de igualdad
+(`queueId`), no el `ORDER BY`.
+
+Se agregaron `@@index([queueId, turnDate])` y `@@index([queueId,
+calledAt])`.
+
+**Se descartó agregar índice a `serviceWindowId`.** La auditoría marcó
+`findAttendingByServiceWindow` (filtra `serviceWindowId` + `status IN
+(ATTENDING, REDIRECTED)`, usado en cada "atender turno" —
+`AttendTurnUseCase`, `DeleteServiceWindowUseCase`,
+`ToggleServiceWindowUseCase`) como sin índice. Es incorrecto: ya existe un
+índice único parcial creado en la migración
+`20260820000000_unique_active_turn_per_service_window`
+(`turns_active_service_window_unique`, `ON turns (serviceWindowId) WHERE
+status IN ('ATTENDING','REDIRECTED')`, ver comentario en
+`prisma/schema.prisma` junto a `@@map("turns")`) que cubre exactamente ese
+filtro — y al ser parcial, es más selectivo que un índice compuesto
+normal (solo indexa las ventanillas ocupadas ahora mismo, no todo el
+historial). La auditoría solo había revisado los `@@index` declarativos
+del schema, no los `CREATE INDEX` en SQL crudo dentro de las migraciones.
+
+### Índice faltante en `Business.ownerUserId`
+
+`PostgresBusinessRepo.findByOwnerUserId` — la primera query de
+`ListMyBusinessesUseCase` (`business/`), la pantalla "Mis negocios" del
+panel, la más visitada por el dueño — filtraba por esa columna sin ningún
+índice (`Business` solo tenía `@@index([organizationId])`). Se agregó
+`@@index([ownerUserId])` en la misma migración de arriba.
+
+### Sobre-fetch de `User` completo en cada acción de staff
+
+`PostgresBusinessEmployeeRepo` usaba `include: { user: true }` en sus
+cinco métodos (`findById`, `findActiveByBusinessAndUser`,
+`findByBusinessId`, `save`, `revokeByBusinessAndUser`), pero `toDomain`
+sólo lee `email`/`firstName`/`lastName`. `findActiveByBusinessAndUser` en
+particular la llama `EnsureBusinessMembershipUseCase` en **toda** acción
+operativa de un empleado (llamar siguiente, atender, cancelar, redirigir,
+marcar no-show, listar/estado/métricas de cola) sólo para chequear
+`if (!employee)` — ni siquiera lee `.user`. Cada una de esas llamadas
+traía a memoria `passwordHash`, `googleId` y tokens de reset/verificación
+del `User` sin necesidad. Se cambió a `include: { user: { select: {
+email: true, firstName: true, lastName: true } } }` en los cinco métodos
+— mismo shape de salida, sin exposición innecesaria de columnas sensibles.
+
+### Qué queda pendiente de la auditoría (no hecho todavía en esta rama)
+
+- N+1 de `ListMyBusinessesUseCase` (batchear `subscriptionRepo`/`queueRepo`/`windowRepo`
+  por lista de ids en vez de por negocio) y de `GetPlatformMetricsUseCase`
+  (loop secuencial de `businessRepo.findById` por cada negocio del rango,
+  no paralelizado) — refactor de esfuerzo medio, sin tocar todavía.
+- `bcryptjs` sin binding nativo y falta de caché para categorías/`Subscription`
+  efectiva — evaluado y pospuesto a propósito: sin tráfico concurrente
+  real todavía (producto pre-lanzamiento) no hay evidencia de que sean
+  cuello de botella, y una capa de caché prematura es más riesgo de bugs
+  de invalidación que beneficio hoy.
+- Paginación en pantallas admin de bajo tráfico (`ListPendingBusinessesUseCase`,
+  `ListReportsUseCase`) — bajo impacto, no urgente.
+
+### Cobertura
+
+Sin tests nuevos: son cambios de infraestructura pura (índices de DB, columnas
+de un `select`) sin cambio de comportamiento observable — ningún método de
+`ITurnRepo`/`IBusinessRepo`/`IBusinessEmployeeRepo` cambió de forma ni de
+contrato, y los repos Postgres no tienen suite unitaria propia en este
+proyecto (se ejercitan a través de sus fakes en memoria). 756 tests en
+verde (suite completa, sin cambios), `tsc --noEmit` limpio en `src` y en
+tests.
+
+Validación manual: pendiente (verificar el plan de queries de
+`createWithNextNumber`/`findRecentCalls` con `EXPLAIN ANALYZE` contra datos
+reales antes de dar por cerrado el punto de los índices de `Turn`).

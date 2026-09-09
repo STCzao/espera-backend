@@ -36,11 +36,19 @@ const toDomain = (raw: {
   updatedAt: raw.updatedAt,
 });
 
+/**
+ * Every `user` include below is scoped with `select` on purpose — toDomain
+ * only ever reads email/firstName/lastName, but `include: { user: true }`
+ * used to pull the full User row (passwordHash, googleId, reset/verify
+ * tokens) into memory on every one of these calls, including the pure
+ * existence check EnsureBusinessMembershipUseCase does on every staff
+ * action, which never even reads `.user` at all.
+ */
 export class PostgresBusinessEmployeeRepo implements IBusinessEmployeeRepo {
   public async findById(id: string): Promise<BusinessEmployee | null> {
     const employee = await prisma.businessEmployee.findUnique({
       where: { id },
-      include: { user: true },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
     });
     return employee ? toDomain(employee) : null;
   }
@@ -55,7 +63,7 @@ export class PostgresBusinessEmployeeRepo implements IBusinessEmployeeRepo {
         userId,
         status: "ACTIVE",
       },
-      include: { user: true },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
     });
     return employee ? toDomain(employee) : null;
   }
@@ -66,7 +74,7 @@ export class PostgresBusinessEmployeeRepo implements IBusinessEmployeeRepo {
         businessId,
         status: "ACTIVE",
       },
-      include: { user: true },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
       orderBy: { createdAt: "desc" },
     });
     return employees.map(toDomain);
@@ -95,7 +103,7 @@ export class PostgresBusinessEmployeeRepo implements IBusinessEmployeeRepo {
         invitedByUserId: entity.invitedByUserId,
         revokedAt: entity.revokedAt ?? null,
       },
-      include: { user: true },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
     });
     return toDomain(employee);
   }
@@ -125,7 +133,7 @@ export class PostgresBusinessEmployeeRepo implements IBusinessEmployeeRepo {
         status: "REVOKED",
         revokedAt,
       },
-      include: { user: true },
+      include: { user: { select: { email: true, firstName: true, lastName: true } } },
     });
     return toDomain(employee);
   }
