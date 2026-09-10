@@ -252,6 +252,9 @@ model Business {
   turns Turn[]
 
   @@index([organizationId])
+  // findByOwnerUserId (ListMyBusinessesUseCase, the owner's most-visited
+  // screen) filtered on this column with no index at all before this.
+  @@index([ownerUserId])
   @@map("businesses")
 }
 
@@ -459,9 +462,22 @@ model Turn {
   @@index([queueId, status])
   @@index([customerId, status])
   @@index([businessId, turnDate])
+  // createWithNextNumber's tx.turn.count({ queueId, turnDate }) ran this
+  // filter with no covering index while already holding the queue's row
+  // lock (FOR UPDATE) — every new turn creation for a queue was serialized
+  // behind a scan that grows with that queue's full history. Same shape
+  // (queueId, turnDate) also covers getAverageServiceMinutes/getRawMetricsByDate.
+  @@index([queueId, turnDate])
+  // findRecentCalls filters queueId and orders by calledAt desc — the
+  // (queueId, status) index above only helps the equality prefix, not the
+  // ORDER BY.
+  @@index([queueId, calledAt])
   // Also enforced by a partial unique index Prisma's schema DSL can't
   // express (no WHERE clause support): one ATTENDING/REDIRECTED turn per
   // serviceWindowId. See migration
-  // 20260820000000_unique_active_turn_per_service_window.
+  // 20260820000000_unique_active_turn_per_service_window. That partial
+  // index already covers findAttendingByServiceWindow's exact filter
+  // (serviceWindowId + status IN (ATTENDING, REDIRECTED)) — no separate
+  // @@index needed for that lookup.
   @@map("turns")
 }
