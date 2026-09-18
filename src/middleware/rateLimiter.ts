@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { ensureRedisConnection, redis } from "@shared/infrastructure/redis";
+import { logger } from "@shared/infrastructure/logger";
 import { AppError } from "@shared/kernel/AppError";
 
 interface RateLimitPolicy {
@@ -15,6 +16,12 @@ interface MemoryEntry {
 }
 
 const memoryStore = new Map<string, MemoryEntry>();
+
+// Tracked so the Redis-down warning logs once per degradation episode
+// instead of once per request — a sustained outage (or an attacker's own
+// flood of requests) would otherwise flood the logs right when they're
+// least useful. See rateLimiter().
+let isDegradedToMemory = false;
 
 // Keyed by "METHOD path" so a GET route is exactly as visible here as a
 // POST one — the previous POST-only switch made every non-POST route an
@@ -104,7 +111,22 @@ export const rateLimiter = async (
 
   try {
     count = await consumeFromRedis(key, policy);
-  } catch {
+    if (isDegradedToMemory) {
+      isDegradedToMemory = false;
+      logger.info("Rate limiter recovered: back to Redis.");
+    }
+  } catch (error) {
+    if (!isDegradedToMemory) {
+      isDegradedToMemory = true;
+      // Per-process memory means each app instance behind a load balancer
+      // enforces its own separate limit — an N-instance deployment
+      // effectively multiplies every configured limit by N for as long as
+      // this lasts, so it needs to be loud, not just a silent fallback.
+      logger.error(
+        { error },
+        "Rate limiter degraded: Redis unavailable, falling back to per-process memory store.",
+      );
+    }
     count = consumeFromMemory(key, policy);
   }
 
