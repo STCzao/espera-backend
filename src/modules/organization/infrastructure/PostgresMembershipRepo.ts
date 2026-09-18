@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { IMembershipRepo } from "../domain/IMembershipRepo";
 import type { Membership, MembershipRole } from "../domain/Membership";
 
@@ -50,8 +51,8 @@ export class PostgresMembershipRepo implements IMembershipRepo {
     return membership ? toMembership(membership) : null;
   }
 
-  public async save(entity: Membership): Promise<Membership> {
-    const membership = await prisma.membership.upsert({
+  public async save(entity: Membership, tx?: TransactionHandle): Promise<Membership> {
+    const membership = await resolvePrismaClient(tx).membership.upsert({
       where: { id: entity.id },
       create: {
         id: entity.id,
