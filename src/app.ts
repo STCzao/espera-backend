@@ -17,6 +17,8 @@ import { qrRouter } from "./modules/business/interfaces/qr.routes";
 import { organizationRouter } from "./modules/organization/interfaces/organization.routes";
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
 import { reportRouter } from "./modules/report/interfaces/report.routes";
+import { PostgresTurnRepo } from "./modules/queue/infrastructure/PostgresTurnRepo";
+import { authorizeQueueJoin } from "./modules/queue/infrastructure/realtime/authorizeQueueJoin";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env, getTrustProxySetting } from "./shared/infrastructure/env";
 import { logger } from "./shared/infrastructure/logger";
@@ -99,6 +101,7 @@ export const createServer = () => {
 
   const emitter = new SocketIOEmitter(io);
   const app = createApp({ emitter });
+  const turnRepo = new PostgresTurnRepo();
 
   // Attach Express as the request handler after both io and app are ready.
   server.on("request", app);
@@ -106,10 +109,22 @@ export const createServer = () => {
   io.on("connection", (socket) => {
     logger.info({ socketId: socket.id }, "Socket connected");
 
-    socket.on("queue:join", ({ queueId }: { queueId: string }) => {
-      void socket.join(`queue:${queueId}`);
-      logger.info({ socketId: socket.id, queueId }, "Socket joined queue room");
-    });
+    socket.on(
+      "queue:join",
+      async ({ queueId, turnId }: { queueId: string; turnId?: string }) => {
+        const allowed = await authorizeQueueJoin({ queueId, turnId }, turnRepo);
+        if (!allowed) {
+          logger.warn(
+            { socketId: socket.id, queueId, turnId },
+            "Rejected queue:join",
+          );
+          return;
+        }
+
+        void socket.join(`queue:${queueId}`);
+        logger.info({ socketId: socket.id, queueId, turnId }, "Socket joined queue room");
+      },
+    );
 
     socket.on("disconnect", () => {
       logger.info({ socketId: socket.id }, "Socket disconnected");
