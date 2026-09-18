@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { IQueueRepo } from "../../src/modules/queue/domain/IQueueRepo";
+import { TurnConflictError } from "../../src/modules/queue/domain/ITurnRepo";
 import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../../src/modules/queue/domain/ITurnRepo";
 import type { Queue } from "../../src/modules/queue/domain/Queue";
 import type { IServiceWindowRepo } from "../../src/modules/queue/domain/IServiceWindowRepo";
@@ -347,9 +348,19 @@ export class InMemoryTurnRepo implements ITurnRepo {
       }));
   }
 
+  // Mirrors PostgresTurnRepo's optimistic-concurrency guard: rejects a save
+  // whose `updatedAt` doesn't match what's currently stored, so use-case
+  // tests can exercise the same TurnConflictError a real concurrent write
+  // would produce.
   public async save(entity: Turn): Promise<Turn> {
-    this.turns.set(entity.id, entity);
-    return entity;
+    const current = this.turns.get(entity.id);
+    if (current && current.updatedAt.getTime() !== entity.updatedAt.getTime()) {
+      throw new TurnConflictError(entity.id);
+    }
+
+    const saved: Turn = { ...entity, updatedAt: new Date() };
+    this.turns.set(entity.id, saved);
+    return saved;
   }
 
   public all(): Turn[] {

@@ -9,6 +9,7 @@ import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
+import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 const schema = z.object({
   turnId:          z.string().uuid("Invalid turn id."),
@@ -73,7 +74,7 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
       const startedAttentionAt = turn.startedAttentionAt ?? new Date();
       let updated;
       try {
-        updated = await this.turnRepo.save({
+        updated = await saveTurnOrThrowConflict(this.turnRepo, {
           ...turn,
           status: "attending",
           startedAttentionAt,
@@ -105,7 +106,7 @@ export class AttendTurnUseCase implements UseCase<AttendTurnInput, AttendTurnOut
 
     if (turn.status === "attending") {
       const attendedAt = new Date();
-      const updated = await this.turnRepo.save({
+      const updated = await saveTurnOrThrowConflict(this.turnRepo, {
         ...turn,
         status: "completed",
         attendedAt,

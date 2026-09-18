@@ -125,4 +125,33 @@ describe("PostgresTurnRepo (real Postgres)", () => {
 
     expect(count).toBeGreaterThanOrEqual(1);
   });
+
+  describe("save() optimistic concurrency", () => {
+    it("saves normally and bumps updatedAt when the read is fresh", async () => {
+      const created = await repo.createWithNextNumber(buildTurnData());
+      createdTurnIds.push(created.id);
+
+      const saved = await repo.save({ ...created, status: "called", calledAt: new Date() });
+
+      expect(saved.status).toBe("called");
+      expect(saved.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
+    });
+
+    it("rejects a save whose updatedAt is stale (real Postgres CAS, not just the in-memory fake)", async () => {
+      const created = await repo.createWithNextNumber(buildTurnData());
+      createdTurnIds.push(created.id);
+
+      // Simulates a concurrent writer that already claimed this turn: its
+      // save() lands first and bumps the row's updatedAt.
+      await repo.save({ ...created, status: "called", calledAt: new Date() });
+
+      // This caller is still holding its original (now stale) read.
+      await expect(
+        repo.save({ ...created, status: "cancelled", cancelledAt: new Date() }),
+      ).rejects.toThrow("was modified concurrently");
+
+      const reloaded = await repo.findById(created.id);
+      expect(reloaded?.status).toBe("called");
+    });
+  });
 });

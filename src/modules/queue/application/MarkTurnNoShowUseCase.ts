@@ -6,6 +6,7 @@ import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
+import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 const schema = z.object({
   turnId: z.string().uuid("Invalid turn id."),
@@ -59,7 +60,7 @@ export class MarkTurnNoShowUseCase
     }
 
     const noShowAt = new Date();
-    const updated = await this.turnRepo.save({
+    const updated = await saveTurnOrThrowConflict(this.turnRepo, {
       ...turn,
       status: "no_show",
       noShowAt,

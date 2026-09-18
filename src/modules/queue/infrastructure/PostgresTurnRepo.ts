@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@shared/infrastructure/prisma";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
 import { TURN_PRIORITY_ORDER, turnPriorityRank } from "../domain/turnPriority";
+import { TurnConflictError } from "../domain/ITurnRepo";
 import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
 
 // Prisma's enum is upper snake_case ("IN_TRANSIT"); the domain type is
@@ -330,9 +331,16 @@ export class PostgresTurnRepo implements ITurnRepo {
     }));
   }
 
+  // Optimistic concurrency: the WHERE clause only matches if `updatedAt`
+  // still equals what the caller originally read. Two concurrent status
+  // transitions on the same turn (e.g. one employee attends it while
+  // another marks it no-show) race to this update — the first one to reach
+  // Postgres wins and bumps `updatedAt` (Prisma's `@updatedAt`), so the
+  // second one's WHERE no longer matches any row and updateMany reports
+  // count 0 instead of silently overwriting the first write.
   public async save(entity: Turn): Promise<Turn> {
-    const row = await prisma.turn.update({
-      where: { id: entity.id },
+    const { count } = await prisma.turn.updateMany({
+      where: { id: entity.id, updatedAt: entity.updatedAt },
       data: {
         status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW",
         serviceWindowId: entity.serviceWindowId ?? null,
@@ -343,6 +351,12 @@ export class PostgresTurnRepo implements ITurnRepo {
         noShowAt: entity.noShowAt ?? null,
       },
     });
+
+    if (count === 0) {
+      throw new TurnConflictError(entity.id);
+    }
+
+    const row = await prisma.turn.findUniqueOrThrow({ where: { id: entity.id } });
     return toTurn(row);
   }
 }
