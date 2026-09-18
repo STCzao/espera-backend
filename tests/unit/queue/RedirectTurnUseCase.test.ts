@@ -85,9 +85,12 @@ describe("RedirectTurnUseCase", () => {
     });
   });
 
-  it("allows redirecting to a window that already has another turn queued as redirected there", async () => {
-    // Redirect just queues the customer behind that window virtually; it does not
-    // start service immediately (unlike attend), so stacking is fine.
+  it("blocks redirecting to a window that already has another turn queued as redirected there", async () => {
+    // A redirected turn already claims the window (same exclusivity as
+    // attending — enforced at the DB by the partial unique index covering
+    // both ATTENDING and REDIRECTED, see migration
+    // 20260820000000_unique_active_turn_per_service_window), so a second
+    // redirect into it must be rejected the same way a second attend would.
     const turnRepo = new InMemoryTurnRepo([
       buildTurn({ id: TURN_ID, queueId: QUEUE_ID, status: "attending", serviceWindowId: WINDOW_A_ID }),
       buildTurn({ id: "other-turn", queueId: QUEUE_ID, status: "redirected", serviceWindowId: WINDOW_B_ID }),
@@ -96,7 +99,7 @@ describe("RedirectTurnUseCase", () => {
 
     await expect(
       useCase.execute({ turnId: TURN_ID, requestingUserId: OWNER_ID, targetServiceWindowId: WINDOW_B_ID }),
-    ).resolves.toMatchObject({ status: "redirected" });
+    ).rejects.toMatchObject({ statusCode: 409, code: "SERVICE_WINDOW_OCCUPIED" });
   });
 
   describe("errores", () => {

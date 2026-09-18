@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { CallNextUseCase } from "../../../src/modules/queue/application/CallNextUseCase";
+import type { Turn } from "../../../src/modules/queue/domain/Turn";
 import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
@@ -9,6 +10,30 @@ import {
   buildQueue,
   buildTurn,
 } from "../../helpers/queueFakes";
+
+// Returns fixed snapshots from the two "is it safe to call next" reads,
+// regardless of what's actually stored — simulating a request that read the
+// queue's state right before a concurrent request's write landed. Only
+// save() sees the live, mutable store, which is exactly the guard being
+// tested: two requests can read the identical pre-race state, but only one
+// of their writes should ever land.
+class FrozenReadsTurnRepo extends InMemoryTurnRepo {
+  public constructor(
+    initialTurns: Turn[],
+    private readonly frozenCalledTurn: Turn | null,
+    private readonly frozenNextTurn: Turn | null,
+  ) {
+    super(initialTurns);
+  }
+
+  public async findCalledTurnByQueue(): Promise<Turn | null> {
+    return this.frozenCalledTurn;
+  }
+
+  public async findNextWaitingTurn(): Promise<Turn | null> {
+    return this.frozenNextTurn;
+  }
+}
 
 const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
 const BUSINESS_ID = "business-1"; // matches buildQueue()/buildTurn() default
@@ -174,6 +199,23 @@ describe("CallNextUseCase", () => {
     await expect(
       useCase.execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("throws TURN_CONFLICT instead of double-calling the same turn when two call-next requests race", async () => {
+    const t1 = buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "waiting" });
+    const turnRepo = new FrozenReadsTurnRepo([t1], null, t1);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const first = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+    expect(first.turnId).toBe("t-1");
+
+    // Replays the exact same (now stale) reads a real concurrent request
+    // would have made before the first one wrote.
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_CONFLICT" });
+
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
   });
 });
 

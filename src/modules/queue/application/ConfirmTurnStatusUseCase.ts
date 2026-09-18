@@ -6,6 +6,7 @@ import type { TurnPriority } from "../domain/Turn";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
+import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 export type ConfirmAction = "in_transit" | "arrived";
 
@@ -54,7 +55,7 @@ export class ConfirmTurnStatusUseCase
       );
     }
 
-    const updated = await this.turnRepo.save({ ...turn, priority: to });
+    const updated = await saveTurnOrThrowConflict(this.turnRepo, { ...turn, priority: to });
 
     this.emitter?.emitQueueUpdate(queueId, {
       updatedTurnId: updated.id,

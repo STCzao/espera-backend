@@ -8,6 +8,7 @@ import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
+import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 const schema = z.object({
   queueId: z.string().uuid("Invalid queue id."),
@@ -70,7 +71,10 @@ export class CallNextUseCase implements UseCase<CallNextInput, CallNextOutput> {
       throw AppError.conflict("The queue is empty.", "QUEUE_EMPTY");
     }
 
-    const called = await this.turnRepo.save({
+    // If another concurrent call-next already claimed this exact turn
+    // between the read above and here, saveTurnOrThrowConflict throws a 409
+    // instead of silently double-calling the same turn.
+    const called = await saveTurnOrThrowConflict(this.turnRepo, {
       ...next,
       status: "called",
       calledAt: new Date(),

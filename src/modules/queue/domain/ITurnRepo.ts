@@ -1,6 +1,20 @@
 import type { Repository } from "../../../shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "./Turn";
 
+/**
+ * Thrown by ITurnRepo.save() when the row's `updatedAt` no longer matches
+ * what the caller read — someone else already wrote this turn in between
+ * (e.g. two employees calling next / attending / marking no-show on the same
+ * turn at once). Callers translate this into a user-facing conflict; see
+ * saveTurnOrThrowConflict.ts.
+ */
+export class TurnConflictError extends Error {
+  public constructor(turnId: string) {
+    super(`Turn ${turnId} was modified concurrently.`);
+    this.name = "TurnConflictError";
+  }
+}
+
 export interface TurnDayRaw {
   completedTurns: Array<{ startedAttentionAt: Date; attendedAt: Date }>;
   cancelledCount: number;
@@ -69,6 +83,8 @@ export interface BusinessTurnCount {
   turnCount: number;
 }
 
+// save() (from Repository<Turn>) does optimistic concurrency on `updatedAt`
+// and can reject with TurnConflictError — see that class's doc comment.
 export interface ITurnRepo extends Repository<Turn> {
   createWithNextNumber(data: CreateTurnData): Promise<Turn>;
   findNextWaitingTurn(queueId: string): Promise<Turn | null>;

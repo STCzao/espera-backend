@@ -6,6 +6,7 @@ import { EnsureBusinessMembershipUseCase } from "@modules/business/public-api";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
+import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 const schema = z.object({
   turnId: z.string().uuid("Invalid turn id."),
@@ -44,7 +45,7 @@ export class CancelTurnByEmployeeUseCase
       throw AppError.conflict("This turn cannot be cancelled.", "TURN_NOT_CANCELLABLE");
     }
 
-    const cancelled = await this.turnRepo.save({
+    const cancelled = await saveTurnOrThrowConflict(this.turnRepo, {
       ...turn,
       status: "cancelled",
       cancelledAt: new Date(),
