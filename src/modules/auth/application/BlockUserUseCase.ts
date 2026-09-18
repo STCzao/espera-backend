@@ -4,7 +4,6 @@ import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
-import type { User } from "../domain/User";
 import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
 import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 
@@ -16,19 +15,32 @@ const schema = z.object({
 
 export type BlockUserInput = z.infer<typeof schema>;
 
+export interface BlockUserOutput {
+  userId: string;
+  isBlocked: true;
+  blockedByUserId: string;
+  blockedAt: Date;
+  blockReason: string;
+}
+
 /**
  * Blocks a User account (used when suspending a reported user, HU-8.6):
  * prevents login and invalidates every active session immediately. Mirrors
  * SuspendBusinessUseCase's audit pattern, without a Business's queue/employee
  * cascade since a User account has none of that state.
+ *
+ * Returns a narrow DTO rather than the full User entity — same reason as
+ * UnblockUserUseCase: User carries passwordHash and other tokens that must
+ * never reach an HTTP response, even a future one that wires this use case
+ * directly to a controller.
  */
-export class BlockUserUseCase implements UseCase<BlockUserInput, User> {
+export class BlockUserUseCase implements UseCase<BlockUserInput, BlockUserOutput> {
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
   ) {}
 
-  public async execute(input: BlockUserInput): Promise<User> {
+  public async execute(input: BlockUserInput): Promise<BlockUserOutput> {
     const parsed = schema.safeParse(input);
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
@@ -51,6 +63,12 @@ export class BlockUserUseCase implements UseCase<BlockUserInput, User> {
 
     await this.refreshSessionRepo.revokeAllByUserId(user.id);
 
-    return updated;
+    return {
+      userId: updated.id,
+      isBlocked: true,
+      blockedByUserId: parsed.data.blockedByUserId,
+      blockedAt: now,
+      blockReason: parsed.data.reason,
+    };
   }
 }

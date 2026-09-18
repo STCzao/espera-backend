@@ -21,10 +21,24 @@ describe("BlockUserUseCase", () => {
 
     const result = await useCase.execute({ userId: USER_ID, blockedByUserId: ADMIN_ID, reason: "Reportes reiterados" });
 
+    expect(result.userId).toBe(USER_ID);
     expect(result.isBlocked).toBe(true);
     expect(result.blockedByUserId).toBe(ADMIN_ID);
     expect(result.blockReason).toBe("Reportes reiterados");
     expect(result.blockedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns a narrow DTO, never the full User (no passwordHash or tokens)", async () => {
+    const { useCase } = buildUseCase();
+
+    const result = await useCase.execute({ userId: USER_ID, blockedByUserId: ADMIN_ID, reason: "x" });
+
+    expect(result).not.toHaveProperty("passwordHash");
+    expect(result).not.toHaveProperty("emailVerificationToken");
+    expect(result).not.toHaveProperty("passwordResetToken");
+    expect(Object.keys(result).sort()).toEqual(
+      ["blockReason", "blockedAt", "blockedByUserId", "isBlocked", "userId"].sort(),
+    );
   });
 
   it("revokes all active sessions", async () => {
