@@ -90,8 +90,13 @@ No existe registro público para `super_admin` (por diseño — "credenciales
 creadas internamente por el equipo"). Se crea con un script one-off:
 
 ```
-npm run create:super-admin -- <email> <password> <firstName> <lastName>
+npm run create:super-admin -- <email> <firstName> <lastName>
 ```
+
+La contraseña nunca va como argumento (quedaría en el historial de la shell
+y visible vía `ps`) — el script la pide por prompt interactivo con el input
+oculto, o la lee de `SUPER_ADMIN_PASSWORD` si está seteada (uso
+scripteado/CI).
 
 `src/scripts/create-super-admin.ts` — idempotente: si el email ya existe,
 promueve ese usuario a `super_admin` en vez de fallar (mismo patrón que
