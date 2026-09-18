@@ -223,7 +223,11 @@ export class AuthController {
     const result = await this.loginUseCase.execute(request.body);
     setRefreshTokenCookie(response, result.refreshToken);
     logger.info({ email: request.body.email }, "User logged in");
-    response.status(200).json(result);
+    // The refresh token only ever goes out via the httpOnly cookie above —
+    // putting it in the JSON body too would let any XSS or careless client
+    // code (console.log, localStorage) exfiltrate a 30-day-lived token that
+    // the cookie's httpOnly flag was specifically meant to keep out of JS.
+    response.status(200).json({ accessToken: result.accessToken });
   };
 
   /**
@@ -238,7 +242,7 @@ export class AuthController {
     const result = await this.loginWithGoogleUseCase.execute(request.body);
     setRefreshTokenCookie(response, result.refreshToken);
     logger.info("User logged in with Google");
-    response.status(200).json(result);
+    response.status(200).json({ accessToken: result.accessToken });
   };
 
   /**
@@ -254,7 +258,7 @@ export class AuthController {
       refreshToken: token ?? "",
     });
     setRefreshTokenCookie(response, result.refreshToken);
-    response.status(200).json(result);
+    response.status(200).json({ accessToken: result.accessToken });
   };
 
   /**

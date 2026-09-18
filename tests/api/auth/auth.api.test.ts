@@ -174,10 +174,9 @@ describe("auth API", () => {
       .send({ email: "cliente@example.com", password: "Password1" });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      accessToken: "access-token",
-      refreshToken: "refresh-token",
-    });
+    // The refresh token must only travel via the httpOnly cookie, never in
+    // the JSON body (see AuthController.login).
+    expect(response.body).toEqual({ accessToken: "access-token" });
     expect(response.headers["set-cookie"]?.[0]).toContain("refreshToken=refresh-token");
     expect(response.headers["set-cookie"]?.[0]).toContain("HttpOnly");
   });
@@ -200,6 +199,8 @@ describe("auth API", () => {
     expect(response.headers["set-cookie"]?.[0]).toContain(
       "refreshToken=new-refresh-token",
     );
+    // Same rule as login: the rotated refresh token only travels via the cookie.
+    expect(response.body).toEqual({ accessToken: "new-access-token" });
   });
 
   it("clears refresh token cookie on logout", async () => {
