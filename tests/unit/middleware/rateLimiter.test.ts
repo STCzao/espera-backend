@@ -9,11 +9,23 @@ const redisMocks = vi.hoisted(() => ({
   expire: vi.fn(),
 }));
 
+const loggerMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  info: vi.fn(),
+}));
+
 vi.mock("../../../src/shared/infrastructure/redis", () => ({
   ensureRedisConnection: redisMocks.ensureRedisConnection,
   redis: {
     incr: redisMocks.incr,
     expire: redisMocks.expire,
+  },
+}));
+
+vi.mock("../../../src/shared/infrastructure/logger", () => ({
+  logger: {
+    error: loggerMocks.error,
+    info: loggerMocks.info,
   },
 }));
 
@@ -33,6 +45,8 @@ describe("rateLimiter", () => {
     redisMocks.ensureRedisConnection.mockResolvedValue(undefined);
     redisMocks.incr.mockResolvedValue(1);
     redisMocks.expire.mockResolvedValue(1);
+    loggerMocks.error.mockReset();
+    loggerMocks.info.mockReset();
   });
 
   it("skips requests without a matching policy", async () => {
@@ -145,5 +159,40 @@ describe("rateLimiter", () => {
         code: "RATE_LIMIT_EXCEEDED",
       }),
     );
+  });
+
+  it("logs the degradation once, not on every request, while Redis stays down", async () => {
+    // Fresh module instance: isDegradedToMemory is internal state that
+    // persists across calls within the same module, so a clean import keeps
+    // this test independent of whichever degraded/recovered state other
+    // tests in this file left behind.
+    vi.resetModules();
+    redisMocks.ensureRedisConnection.mockRejectedValue(new Error("redis down"));
+    const { rateLimiter: freshRateLimiter } = await import("../../../src/middleware/rateLimiter");
+
+    await freshRateLimiter(buildRequest({ ip: "degraded-1" }), {} as Response, buildNext());
+    await freshRateLimiter(buildRequest({ ip: "degraded-2" }), {} as Response, buildNext());
+    await freshRateLimiter(buildRequest({ ip: "degraded-3" }), {} as Response, buildNext());
+
+    expect(loggerMocks.error).toHaveBeenCalledTimes(1);
+    expect(loggerMocks.error).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.any(Error) }),
+      expect.stringContaining("Redis unavailable"),
+    );
+  });
+
+  it("logs a recovery message once Redis is reachable again after a degradation", async () => {
+    vi.resetModules();
+    redisMocks.ensureRedisConnection.mockRejectedValueOnce(new Error("redis down"));
+    const { rateLimiter: freshRateLimiter } = await import("../../../src/middleware/rateLimiter");
+
+    await freshRateLimiter(buildRequest({ ip: "recovery-1" }), {} as Response, buildNext());
+    expect(loggerMocks.error).toHaveBeenCalledTimes(1);
+    expect(loggerMocks.info).not.toHaveBeenCalled();
+
+    redisMocks.ensureRedisConnection.mockResolvedValue(undefined);
+    await freshRateLimiter(buildRequest({ ip: "recovery-1" }), {} as Response, buildNext());
+
+    expect(loggerMocks.info).toHaveBeenCalledWith("Rate limiter recovered: back to Redis.");
   });
 });
