@@ -38,12 +38,28 @@ const rolePermissions: Record<
  * Business ownership and employee membership are intentionally checked inside
  * use cases, because permissions alone cannot prove access to a specific
  * business instance.
+ *
+ * A business_admin whose account isn't approved yet is deliberately allowed
+ * to log in (POST /business and GET /business/me bypass this middleware
+ * entirely) so they can see their review status in the panel — but every
+ * permission gated here is a real business/queue/employee action, so it must
+ * wait for approval.
  */
 export const authorize =
   (...requiredPermissions: Permission[]) =>
   (request: Request, _response: Response, next: NextFunction): void => {
     if (!request.user) {
       next(AppError.unauthorized("Authentication is required."));
+      return;
+    }
+
+    if (request.user.role === "business_admin" && request.user.approvalStatus !== "approved") {
+      next(
+        AppError.forbidden(
+          "Your business account is pending approval.",
+          "ACCOUNT_PENDING_APPROVAL",
+        ),
+      );
       return;
     }
 
