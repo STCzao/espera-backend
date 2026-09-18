@@ -4,14 +4,17 @@ import type { NextFunction, Request, Response } from "express";
 import { authorize } from "../../../src/middleware/authorize";
 import type { UserRole } from "../../../src/shared/types/express";
 
-const buildRequest = (role?: UserRole): Request =>
+const buildRequest = (
+  role?: UserRole,
+  approvalStatus: "pending" | "approved" | "rejected" = "approved",
+): Request =>
   ({
     user: role
       ? {
           id: "user-1",
           email: "user@example.com",
           role,
-          approvalStatus: "approved",
+          approvalStatus,
         }
       : undefined,
   }) as Request;
@@ -49,5 +52,51 @@ describe("authorize", () => {
         statusCode: 401,
       }),
     );
+  });
+
+  it("blocks a pending business admin from a privileged action (HU-1.x approval gate)", () => {
+    const next = buildNext();
+
+    authorize("business:edit")(
+      buildRequest("business_admin", "pending"),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 403,
+        code: "ACCOUNT_PENDING_APPROVAL",
+      }),
+    );
+  });
+
+  it("blocks a rejected business admin from a privileged action", () => {
+    const next = buildNext();
+
+    authorize("employee:manage")(
+      buildRequest("business_admin", "rejected"),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 403,
+        code: "ACCOUNT_PENDING_APPROVAL",
+      }),
+    );
+  });
+
+  it("allows an approved business admin to perform privileged actions", () => {
+    const next = buildNext();
+
+    authorize("business:edit")(
+      buildRequest("business_admin", "approved"),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith();
   });
 });
