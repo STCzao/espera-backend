@@ -343,6 +343,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       where: { id: entity.id, updatedAt: entity.updatedAt },
       data: {
         status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW",
+        priority: toPriorityEnum(entity.priority),
         serviceWindowId: entity.serviceWindowId ?? null,
         calledAt: entity.calledAt ?? null,
         startedAttentionAt: entity.startedAttentionAt ?? null,

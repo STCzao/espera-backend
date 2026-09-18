@@ -137,6 +137,17 @@ describe("PostgresTurnRepo (real Postgres)", () => {
       expect(saved.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
     });
 
+    it("persists a priority change (regression test: save()'s data object used to omit priority entirely)", async () => {
+      const created = await repo.createWithNextNumber(buildTurnData({ priority: "registered" }));
+      createdTurnIds.push(created.id);
+
+      const saved = await repo.save({ ...created, priority: "in_transit" });
+      expect(saved.priority).toBe("in_transit");
+
+      const reloaded = await repo.findById(created.id);
+      expect(reloaded?.priority).toBe("in_transit");
+    });
+
     it("rejects a save whose updatedAt is stale (real Postgres CAS, not just the in-memory fake)", async () => {
       const created = await repo.createWithNextNumber(buildTurnData());
       createdTurnIds.push(created.id);

@@ -41,9 +41,9 @@ const rolePermissions: Record<
  *
  * A business_admin whose account isn't approved yet is deliberately allowed
  * to log in (POST /business and GET /business/me bypass this middleware
- * entirely) so they can see their review status in the panel — but every
- * permission gated here is a real business/queue/employee action, so it must
- * wait for approval.
+ * entirely, and GET /auth/me only requires "auth:read_self") so they can see
+ * their review status in the panel — but every other permission gated here
+ * is a real business/queue/employee action, so it must wait for approval.
  */
 export const authorize =
   (...requiredPermissions: Permission[]) =>
@@ -53,7 +53,13 @@ export const authorize =
       return;
     }
 
-    if (request.user.role === "business_admin" && request.user.approvalStatus !== "approved") {
+    const isSelfReadOnly = requiredPermissions.every((permission) => permission === "auth:read_self");
+
+    if (
+      !isSelfReadOnly &&
+      request.user.role === "business_admin" &&
+      request.user.approvalStatus !== "approved"
+    ) {
       next(
         AppError.forbidden(
           "Your business account is pending approval.",

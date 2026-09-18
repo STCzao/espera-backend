@@ -5,7 +5,7 @@ import type { UseCase } from "@shared/kernel/UseCase";
 import type { IRefreshSessionRepo } from "@modules/auth/public-api";
 import { PostgresRefreshSessionRepo } from "@modules/auth/public-api";
 import type { IQueueRepo, ITurnRepo } from "@modules/queue/public-api";
-import { PostgresQueueRepo, PostgresTurnRepo, SocketIOEmitter } from "@modules/queue/public-api";
+import { PostgresQueueRepo, PostgresTurnRepo, saveTurnOrThrowConflict, SocketIOEmitter } from "@modules/queue/public-api";
 import type { Business } from "../domain/Business";
 import type { IBusinessEmployeeRepo } from "../domain/IBusinessEmployeeRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
@@ -70,7 +70,7 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
         const turn = await this.turnRepo.findById(summary.turnId);
         if (!turn) continue;
 
-        const cancelled = await this.turnRepo.save({ ...turn, status: "cancelled", cancelledAt: now });
+        const cancelled = await saveTurnOrThrowConflict(this.turnRepo, { ...turn, status: "cancelled", cancelledAt: now });
         this.emitter?.emitQueueUpdate(queue.id, {
           cancelledTurnId: cancelled.id,
           cancelledDisplayNumber: cancelled.displayNumber,

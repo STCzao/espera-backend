@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { AppError } from "@shared/kernel/AppError";
 import { TurnConflictError } from "../domain/ITurnRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
@@ -21,6 +23,28 @@ export const saveTurnOrThrowConflict = async (
         "This turn was just updated by someone else. Please refresh and try again.",
         "TURN_CONFLICT",
       );
+    }
+    throw error;
+  }
+};
+
+/**
+ * Same as saveTurnOrThrowConflict, plus the P2002 translation AttendTurnUseCase
+ * and RedirectTurnUseCase both need: their in-app "is this window free"
+ * check has a read-then-write race the DB's partial unique index (one
+ * ATTENDING/REDIRECTED turn per serviceWindowId — see migration
+ * 20260820000000_unique_active_turn_per_service_window) closes, and both use
+ * cases must report that exact race the same way as the check itself.
+ */
+export const saveTurnClaimingServiceWindowOrThrowConflict = async (
+  turnRepo: Pick<ITurnRepo, "save">,
+  entity: Turn,
+): Promise<Turn> => {
+  try {
+    return await saveTurnOrThrowConflict(turnRepo, entity);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw AppError.conflict("This service window is already attending another turn.", "SERVICE_WINDOW_OCCUPIED");
     }
     throw error;
   }
