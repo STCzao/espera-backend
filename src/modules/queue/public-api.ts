@@ -23,3 +23,5 @@ export type {
   EnforceQueueLimitsForOrganizationInput,
   EnforceQueueLimitsForOrganizationOutput,
 } from "./application/EnforceQueueLimitsForOrganizationUseCase";
+
+export { saveTurnOrThrowConflict } from "./application/saveTurnOrThrowConflict";

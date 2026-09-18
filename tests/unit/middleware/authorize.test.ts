@@ -99,4 +99,16 @@ describe("authorize", () => {
 
     expect(next).toHaveBeenCalledWith();
   });
+
+  it("still allows a pending business admin to read their own auth profile (GET /auth/me)", () => {
+    const next = buildNext();
+
+    authorize("auth:read_self")(
+      buildRequest("business_admin", "pending"),
+      {} as Response,
+      next,
+    );
+
+    expect(next).toHaveBeenCalledWith();
+  });
 });

@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
@@ -9,7 +8,7 @@ import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresServiceWindowRepo } from "../infrastructure/PostgresServiceWindowRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
 import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
-import { saveTurnOrThrowConflict } from "./saveTurnOrThrowConflict";
+import { saveTurnClaimingServiceWindowOrThrowConflict } from "./saveTurnOrThrowConflict";
 
 const schema = z.object({
   turnId:                z.string().uuid("Invalid turn id."),
@@ -63,25 +62,14 @@ export class RedirectTurnUseCase implements UseCase<RedirectTurnInput, RedirectT
       throw AppError.conflict("This service window is already attending another turn.", "SERVICE_WINDOW_OCCUPIED");
     }
 
-    let updated;
-    try {
-      updated = await saveTurnOrThrowConflict(this.turnRepo, {
-        ...turn,
-        status: "redirected",
-        serviceWindowId: targetWindow.id,
-      });
-    } catch (error) {
-      // Safety net for the race the check above can't fully close: two
-      // concurrent redirects to the same window can both read "free" before
-      // either writes. The DB's partial unique index (one ATTENDING/
-      // REDIRECTED turn per serviceWindowId) rejects the second write —
-      // surface it as the same conflict the in-app check already reports
-      // (same pattern AttendTurnUseCase uses).
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-        throw AppError.conflict("This service window is already attending another turn.", "SERVICE_WINDOW_OCCUPIED");
-      }
-      throw error;
-    }
+    // Safety net for the race the check above can't fully close: two
+    // concurrent redirects to the same window can both read "free" before
+    // either writes.
+    const updated = await saveTurnClaimingServiceWindowOrThrowConflict(this.turnRepo, {
+      ...turn,
+      status: "redirected",
+      serviceWindowId: targetWindow.id,
+    });
 
     this.emitter?.emitQueueUpdate(updated.queueId, {
       redirectedTurnId: updated.id,

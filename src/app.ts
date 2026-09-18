@@ -111,18 +111,28 @@ export const createServer = () => {
 
     socket.on(
       "queue:join",
-      async ({ queueId, turnId }: { queueId: string; turnId?: string }) => {
-        const allowed = await authorizeQueueJoin({ queueId, turnId }, turnRepo);
-        if (!allowed) {
-          logger.warn(
-            { socketId: socket.id, queueId, turnId },
-            "Rejected queue:join",
-          );
-          return;
-        }
+      // Guarded end to end: a malformed/missing payload (e.g. a client
+      // emitting "queue:join" with no args at all) must not become an
+      // unhandled rejection — Node terminates the whole process on those by
+      // default, which would take down every connected client's realtime
+      // connection over one bad event from a single socket.
+      async (payload: { queueId?: string; turnId?: string } | undefined) => {
+        try {
+          const { queueId, turnId } = payload ?? {};
+          const allowed = await authorizeQueueJoin({ queueId, turnId }, turnRepo);
+          if (!allowed) {
+            logger.warn(
+              { socketId: socket.id, queueId, turnId },
+              "Rejected queue:join",
+            );
+            return;
+          }
 
-        void socket.join(`queue:${queueId}`);
-        logger.info({ socketId: socket.id, queueId, turnId }, "Socket joined queue room");
+          void socket.join(`queue:${queueId}`);
+          logger.info({ socketId: socket.id, queueId, turnId }, "Socket joined queue room");
+        } catch (error) {
+          logger.warn({ socketId: socket.id, error }, "queue:join handler failed");
+        }
       },
     );
 
