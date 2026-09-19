@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { GetPlatformMetricsUseCase } from "../../../src/modules/business/application/GetPlatformMetricsUseCase";
+// The real todayUTC(), not a local reimplementation — a copy here would
+// silently drift from the app's actual day boundary (see its own doc
+// comment: Argentina's calendar day, not pure UTC) and make these fixtures
+// flaky depending on what time of day the suite happens to run.
+import { todayUTC } from "../../../src/shared/utils/date";
 import { InMemoryBusinessCategoryRepo, InMemoryBusinessRepo, InMemoryUserRepo, buildBusiness, buildBusinessCategory, buildUser } from "../../helpers/authFakes";
 import { InMemoryTurnRepo, buildTurn } from "../../helpers/queueFakes";
 
@@ -8,11 +13,6 @@ const CATEGORY_CAFE = "11111111-1111-4111-8111-111111111111";
 const CATEGORY_SALON = "22222222-2222-4222-8222-222222222222";
 const BUSINESS_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const BUSINESS_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-
-const todayUTC = (): Date => {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-};
 
 const daysAgo = (n: number): Date => new Date(todayUTC().getTime() - n * 24 * 60 * 60 * 1000);
 

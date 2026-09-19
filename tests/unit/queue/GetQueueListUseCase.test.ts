@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { GetQueueListUseCase } from "../../../src/modules/queue/application/GetQueueListUseCase";
+import { todayUTC } from "../../../src/shared/utils/date";
 import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import { InMemoryQueueRepo, InMemoryServiceWindowRepo, InMemoryTurnRepo, buildQueue, buildServiceWindow, buildTurn } from "../../helpers/queueFakes";
 
@@ -207,6 +208,10 @@ describe("GetQueueListUseCase — lista de turnos", () => {
 });
 
 describe("GetQueueListUseCase — estimatedWaitMinutes", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("assigns estimate based on position for each waiting turn", async () => {
     // 1 window, avg=5 min (default) → pos 1 = 1 batch = 5 min, pos 2 = 2 batches = 10 min
     const base = TODAY.getTime();
@@ -240,18 +245,22 @@ describe("GetQueueListUseCase — estimatedWaitMinutes", () => {
   });
 
   it("uses averageServiceMinutes from completed turns when available", async () => {
-    // turnDate must match todayUTC() so getAverageServiceMinutes picks them up
-    const now = new Date();
-    const realToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const t0 = realToday.getTime();
+    // Freezes "now" instead of reading the real clock, so turnDate: todayUTC()
+    // always lands on the same side of the app's actual (Argentina-aware)
+    // day boundary as the use case's own todayUTC() call — regardless of
+    // what real time this suite happens to run at.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T18:00:00.000Z"));
+    const today = todayUTC();
+    const t0 = today.getTime();
 
     // 2 completed turns with 10 min service each → avg=10 min, pos 1 → 10 min
     const turnRepo = new InMemoryTurnRepo([
-      buildTurn({ id: "c-1", queueId: QUEUE_ID, status: "completed", turnDate: realToday,
+      buildTurn({ id: "c-1", queueId: QUEUE_ID, status: "completed", turnDate: today,
         startedAttentionAt: new Date(t0 + 0 * 60_000), attendedAt: new Date(t0 + 10 * 60_000) }),
-      buildTurn({ id: "c-2", queueId: QUEUE_ID, status: "completed", turnDate: realToday,
+      buildTurn({ id: "c-2", queueId: QUEUE_ID, status: "completed", turnDate: today,
         startedAttentionAt: new Date(t0 + 10 * 60_000), attendedAt: new Date(t0 + 20 * 60_000) }),
-      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",   turnDate: realToday }),
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting",   turnDate: today }),
     ]);
     const { useCase } = buildUseCase({ turnRepo });
 
