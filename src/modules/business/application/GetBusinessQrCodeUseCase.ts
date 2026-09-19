@@ -1,8 +1,10 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { BusinessQrCode } from "../domain/BusinessQrCode";
 import type { IBusinessQrCodeRepo } from "../domain/IBusinessQrCodeRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessQrCodeRepo } from "../infrastructure/PostgresBusinessQrCodeRepo";
@@ -64,16 +66,7 @@ export class GetBusinessQrCodeUseCase
     const existingQrCode = await this.businessQrCodeRepo.findActiveByBusinessId(
       business.id,
     );
-    const qrCode =
-      existingQrCode ??
-      (await this.businessQrCodeRepo.save({
-        id: randomUUID(),
-        businessId: business.id,
-        token: generateQrToken(),
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
+    const qrCode = existingQrCode ?? (await this.createQrCode(business.id));
 
     return {
       businessId: business.id,
@@ -82,5 +75,34 @@ export class GetBusinessQrCodeUseCase
       downloadUrl: buildBusinessQrDownloadUrl(business.id),
       status: "active",
     };
+  }
+
+  /**
+   * The occupancy check above (findActiveByBusinessId, then a separate
+   * save) has a read-then-write race: two concurrent first-time requests
+   * can both read "no active QR" before either writes. The DB's partial
+   * unique index (one ACTIVE QR per businessId — see migration
+   * 20260918000000_unique_active_qr_per_business) rejects the second
+   * insert with P2002; since this is a "get or create" operation, the
+   * right response to losing that race isn't an error — it's returning the
+   * QR the other request just created.
+   */
+  private async createQrCode(businessId: string): Promise<BusinessQrCode> {
+    try {
+      return await this.businessQrCodeRepo.save({
+        id: randomUUID(),
+        businessId,
+        token: generateQrToken(),
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const winner = await this.businessQrCodeRepo.findActiveByBusinessId(businessId);
+        if (winner) return winner;
+      }
+      throw error;
+    }
   }
 }

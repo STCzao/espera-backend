@@ -365,6 +365,11 @@ model BusinessQrCode {
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId, status])
+  // Also enforced by a partial unique index Prisma's schema DSL can't
+  // express (no WHERE clause support): one ACTIVE QR per businessId. See
+  // migration 20260918000000_unique_active_qr_per_business. RETIRING QR
+  // codes are excluded on purpose — several can coexist during a
+  // regeneration's transition window (RegenerateBusinessQrCodeUseCase).
   @@map("business_qr_codes")
 }
 
