@@ -17,6 +17,7 @@ import {
   buildMembership,
   buildSubscription,
 } from "../../helpers/organizationFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const CATEGORY_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -49,6 +50,7 @@ const buildUseCases = (options: {
       organizationRepo,
       membershipRepo,
       subscriptionRepo,
+      new InMemoryUnitOfWork(),
     ),
     ensureBusinessCreationAllowedUseCase: new EnsureBusinessCreationAllowedUseCase(
       subscriptionRepo,
@@ -73,6 +75,7 @@ const buildUseCase = (options: {
       createOrganizationForOwnerUseCase,
       ensureBusinessCreationAllowedUseCase,
       new InMemoryBusinessCategoryRepo(),
+      new InMemoryUnitOfWork(),
     ),
     businessRepo: options.businessRepo ?? new InMemoryBusinessRepo(),
   };
@@ -142,9 +145,10 @@ describe("RegisterBusinessUseCase", () => {
       businessRepo,
       userRepo,
       geocodingService,
-      new CreateOrganizationForOwnerUseCase(organizationRepo, membershipRepo, subscriptionRepo),
+      new CreateOrganizationForOwnerUseCase(organizationRepo, membershipRepo, subscriptionRepo, new InMemoryUnitOfWork()),
       new EnsureBusinessCreationAllowedUseCase(subscriptionRepo),
       new InMemoryBusinessCategoryRepo(),
+      new InMemoryUnitOfWork(),
     );
 
     await useCase.execute({ ...validInput, legalId: "30-12345678-1" });
@@ -211,6 +215,7 @@ describe("RegisterBusinessUseCase", () => {
       createOrganizationForOwnerUseCase,
       ensureBusinessCreationAllowedUseCase,
       new InMemoryBusinessCategoryRepo(),
+      new InMemoryUnitOfWork(),
     );
 
     await useCase.execute(validInput);
