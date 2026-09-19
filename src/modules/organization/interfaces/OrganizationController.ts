@@ -4,11 +4,10 @@ import { logger } from "@shared/infrastructure/logger";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
 import type { IQueueRepo, IServiceWindowRepo } from "@modules/queue/public-api";
-import { EnforceQueueLimitsForOrganizationUseCase, PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
+import { PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
 import { ActivateOrganizationSubscriptionUseCase } from "../application/ActivateOrganizationSubscriptionUseCase";
 import { ApproveOrganizationUseCase } from "../application/ApproveOrganizationUseCase";
-import { CancelOrganizationSubscriptionUseCase } from "../application/CancelOrganizationSubscriptionUseCase";
-import { PLAN_LIMITS } from "../domain/PlanLimits";
+import { CancelOrganizationSubscriptionAndEnforceLimitsUseCase } from "../application/CancelOrganizationSubscriptionAndEnforceLimitsUseCase";
 import { GetOrganizationSubscriptionUseCase } from "../application/GetOrganizationSubscriptionUseCase";
 import { ListPendingOrganizationsUseCase } from "../application/ListPendingOrganizationsUseCase";
 import { RejectOrganizationUseCase } from "../application/RejectOrganizationUseCase";
@@ -23,12 +22,11 @@ export class OrganizationController {
     private readonly updateOrganizationUseCase = new UpdateOrganizationUseCase(),
     private readonly getOrganizationSubscriptionUseCase = new GetOrganizationSubscriptionUseCase(),
     private readonly activateOrganizationSubscriptionUseCase = new ActivateOrganizationSubscriptionUseCase(),
-    private readonly cancelOrganizationSubscriptionUseCase = new CancelOrganizationSubscriptionUseCase(),
+    private readonly cancelOrganizationSubscriptionAndEnforceLimitsUseCase = new CancelOrganizationSubscriptionAndEnforceLimitsUseCase(),
     private readonly updateOrganizationSubscriptionUseCase = new UpdateOrganizationSubscriptionUseCase(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
-    private readonly enforceQueueLimitsForOrganizationUseCase = new EnforceQueueLimitsForOrganizationUseCase(),
   ) {}
 
   public listPending = async (_request: Request, response: Response): Promise<void> => {
@@ -85,31 +83,30 @@ export class OrganizationController {
 
   public cancelSubscription = async (request: Request, response: Response): Promise<void> => {
     const organizationId = String(request.params.organizationId);
-    const result = await this.cancelOrganizationSubscriptionUseCase.execute({
-      organizationId,
-      cancelledByUserId: request.user?.id ?? "",
-      reason:            String(request.body.reason),
-    });
 
     // A cancelled account no longer has a paid plan — restrict it to what
     // Basic allows instead of leaving Pro/Premium-level queues/windows
     // running indefinitely for free. Deactivates in excess, doesn't delete;
     // the owner picks what comes back (via the existing toggles) if they
-    // renew — see EnforceQueueLimitsForOrganizationUseCase.
-    const enforced = await this.enforceQueueLimitsForOrganizationUseCase.execute({
-      organizationId,
-      limit: PLAN_LIMITS.basic,
-    });
+    // renew. See CancelOrganizationSubscriptionAndEnforceLimitsUseCase for
+    // why cancelling and enforcing are one retry-safe use case instead of
+    // two independent calls made here.
+    const { subscription, deactivatedQueueIds, deactivatedServiceWindowIds } =
+      await this.cancelOrganizationSubscriptionAndEnforceLimitsUseCase.execute({
+        organizationId,
+        cancelledByUserId: request.user?.id ?? "",
+        reason:            String(request.body.reason),
+      });
 
     logger.info(
       {
-        organizationId: result.organizationId,
-        deactivatedQueues: enforced.deactivatedQueueIds.length,
-        deactivatedServiceWindows: enforced.deactivatedServiceWindowIds.length,
+        organizationId: subscription.organizationId,
+        deactivatedQueues: deactivatedQueueIds.length,
+        deactivatedServiceWindows: deactivatedServiceWindowIds.length,
       },
       "Subscription cancelled",
     );
-    response.status(200).json(result);
+    response.status(200).json(subscription);
   };
 
   public changeSubscriptionPlan = async (request: Request, response: Response): Promise<void> => {
