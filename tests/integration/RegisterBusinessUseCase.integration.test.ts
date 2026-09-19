@@ -27,6 +27,7 @@ describe("RegisterBusinessUseCase (real Postgres transaction)", () => {
   const businessRepo = new PostgresBusinessRepo();
   const userRepo = new PostgresUserRepo();
   const createdBusinessNames: string[] = [];
+  const extraOwnerIds: string[] = [];
 
   const buildUseCase = (deps: { userRepo?: PostgresUserRepo } = {}) =>
     new RegisterBusinessUseCase(
@@ -52,10 +53,11 @@ describe("RegisterBusinessUseCase (real Postgres transaction)", () => {
   });
 
   afterAll(async () => {
-    await prisma.membership.deleteMany({ where: { userId: ownerId } });
-    await prisma.subscription.deleteMany({ where: { organization: { memberships: { some: { userId: ownerId } } } } });
-    await prisma.organization.deleteMany({ where: { memberships: { some: { userId: ownerId } } } });
-    await prisma.user.deleteMany({ where: { id: ownerId } });
+    const allOwnerIds = [ownerId, ...extraOwnerIds];
+    await prisma.membership.deleteMany({ where: { userId: { in: allOwnerIds } } });
+    await prisma.subscription.deleteMany({ where: { organization: { memberships: { some: { userId: { in: allOwnerIds } } } } } });
+    await prisma.organization.deleteMany({ where: { memberships: { some: { userId: { in: allOwnerIds } } } } });
+    await prisma.user.deleteMany({ where: { id: { in: allOwnerIds } } });
     await prisma.businessCategory.deleteMany({ where: { id: categoryId } });
     await prisma.$disconnect();
   });
@@ -114,5 +116,27 @@ describe("RegisterBusinessUseCase (real Postgres transaction)", () => {
 
     expect(orphanedBusinesses).toHaveLength(0);
     expect(owner?.role).toBe("user");
+  });
+
+  it("gives two truly concurrent registrations with the same name different slugs instead of a 500", async () => {
+    const ownerA = randomUUID();
+    const ownerB = randomUUID();
+    extraOwnerIds.push(ownerA, ownerB);
+    await prisma.user.createMany({
+      data: [
+        { id: ownerA, email: `integration-slug-owner-a-${ownerA}@example.com`, firstName: "A", lastName: "Test", role: "USER" },
+        { id: ownerB, email: `integration-slug-owner-b-${ownerB}@example.com`, firstName: "B", lastName: "Test", role: "USER" },
+      ],
+    });
+
+    const sharedName = `Integration Slug Race ${randomUUID().slice(0, 8)}`;
+    createdBusinessNames.push(sharedName);
+
+    const [resultA, resultB] = await Promise.all([
+      buildUseCase().execute({ name: sharedName, categoryId, address: "Av. Test 123", ownerUserId: ownerA, legalId: "20-12345678-6" }),
+      buildUseCase().execute({ name: sharedName, categoryId, address: "Av. Test 123", ownerUserId: ownerB, legalId: "20-12345678-6" }),
+    ]);
+
+    expect(resultA.businessSlug).not.toBe(resultB.businessSlug);
   });
 });
