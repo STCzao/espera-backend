@@ -9,6 +9,7 @@ import {
   buildBusinessEmployee,
 } from "../../helpers/authFakes";
 import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue, buildTurn } from "../../helpers/queueFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const BUSINESS_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ADMIN_ID    = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -35,7 +36,10 @@ const buildUseCase = (options: {
   const emitter = options.emitter === undefined ? null : options.emitter;
   return {
     businessRepo, employeeRepo, refreshSessionRepo, queueRepo, turnRepo,
-    useCase: new SuspendBusinessUseCase(businessRepo, employeeRepo, refreshSessionRepo, queueRepo, turnRepo, emitter as never),
+    useCase: new SuspendBusinessUseCase(
+      businessRepo, employeeRepo, refreshSessionRepo, queueRepo, turnRepo, emitter as never,
+      new InMemoryUnitOfWork(),
+    ),
   };
 };
 

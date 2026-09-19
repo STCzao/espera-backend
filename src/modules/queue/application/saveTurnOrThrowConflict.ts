@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 import { AppError } from "@shared/kernel/AppError";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import { TurnConflictError } from "../domain/ITurnRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import type { Turn } from "../domain/Turn";
@@ -14,9 +15,10 @@ import type { Turn } from "../domain/Turn";
 export const saveTurnOrThrowConflict = async (
   turnRepo: Pick<ITurnRepo, "save">,
   entity: Turn,
+  tx?: TransactionHandle,
 ): Promise<Turn> => {
   try {
-    return await turnRepo.save(entity);
+    return await turnRepo.save(entity, tx);
   } catch (error) {
     if (error instanceof TurnConflictError) {
       throw AppError.conflict(
@@ -39,9 +41,10 @@ export const saveTurnOrThrowConflict = async (
 export const saveTurnClaimingServiceWindowOrThrowConflict = async (
   turnRepo: Pick<ITurnRepo, "save">,
   entity: Turn,
+  tx?: TransactionHandle,
 ): Promise<Turn> => {
   try {
-    return await saveTurnOrThrowConflict(turnRepo, entity);
+    return await saveTurnOrThrowConflict(turnRepo, entity, tx);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw AppError.conflict("This service window is already attending another turn.", "SERVICE_WINDOW_OCCUPIED");

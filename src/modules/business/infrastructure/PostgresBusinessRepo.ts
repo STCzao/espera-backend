@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { Business } from "../domain/Business";
 import type { FindManyBusinessesFilters, FindPendingBusinessesFilters, IBusinessRepo } from "../domain/IBusinessRepo";
 
@@ -129,7 +130,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
     });
   }
 
-  public async save(entity: Business): Promise<Business> {
+  public async save(entity: Business, tx?: TransactionHandle): Promise<Business> {
     const data = {
       name: entity.name,
       slug: entity.slug,
@@ -156,7 +157,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
       organizationId: entity.organizationId,
     };
 
-    const row = await prisma.business.upsert({
+    const row = await resolvePrismaClient(tx).business.upsert({
       where: { id: entity.id },
       create: { id: entity.id, ...data },
       update: data,

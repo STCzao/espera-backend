@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 
 import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { RefreshSession } from "../domain/RefreshSession";
@@ -41,8 +42,8 @@ export class PostgresRefreshSessionRepo implements IRefreshSessionRepo {
     });
   }
 
-  public async revokeAllByUserId(userId: string): Promise<void> {
-    await prisma.refreshSession.updateMany({
+  public async revokeAllByUserId(userId: string, tx?: TransactionHandle): Promise<void> {
+    await resolvePrismaClient(tx).refreshSession.updateMany({
       where: {
         userId,
         revokedAt: null,

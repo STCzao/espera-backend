@@ -2,9 +2,11 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IUnitOfWork } from "@shared/kernel/UnitOfWork";
+import { PrismaUnitOfWork } from "@shared/infrastructure/PrismaUnitOfWork";
 import type { IRefreshSessionRepo } from "@modules/auth/public-api";
 import { PostgresRefreshSessionRepo } from "@modules/auth/public-api";
-import type { IQueueRepo, ITurnRepo } from "@modules/queue/public-api";
+import type { IQueueRepo, ITurnRepo, Turn } from "@modules/queue/public-api";
 import { PostgresQueueRepo, PostgresTurnRepo, saveTurnOrThrowConflict, SocketIOEmitter } from "@modules/queue/public-api";
 import type { Business } from "../domain/Business";
 import type { IBusinessEmployeeRepo } from "../domain/IBusinessEmployeeRepo";
@@ -33,6 +35,7 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly emitter: SocketIOEmitter | null = null,
+    private readonly unitOfWork: IUnitOfWork = new PrismaUnitOfWork(),
   ) {}
 
   public async execute(input: SuspendBusinessInput): Promise<Business> {
@@ -47,35 +50,61 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
     }
 
     const now = new Date();
-    const updated = await this.businessRepo.save({
-      ...business,
-      status: "suspended",
-      suspendedByUserId: parsed.data.suspendedByUserId,
-      suspendedAt: now,
-      suspensionReason: parsed.data.reason,
-      updatedAt: now,
-    });
 
     const employees = await this.employeeRepo.findByBusinessId(business.id);
     const activeUserIds = [
       business.ownerUserId,
       ...employees.filter((e) => e.status === "active").map((e) => e.userId),
     ];
-    await Promise.all(activeUserIds.map((userId) => this.refreshSessionRepo.revokeAllByUserId(userId)));
 
+    // Reads happen up front — what to cancel doesn't need to be inside the
+    // transaction, only the writes below do. Each cancel still goes through
+    // saveTurnOrThrowConflict's optimistic-concurrency guard, so a turn that
+    // changed between this read and the write below is caught there, same
+    // as everywhere else that pattern is used.
     const queues = await this.queueRepo.findByBusinessId(business.id);
+    const turnsToCancel: Array<{ queueId: string; turn: Turn }> = [];
     for (const queue of queues) {
       const activeTurns = await this.turnRepo.findActiveByQueue(queue.id);
       for (const summary of activeTurns) {
         const turn = await this.turnRepo.findById(summary.turnId);
-        if (!turn) continue;
-
-        const cancelled = await saveTurnOrThrowConflict(this.turnRepo, { ...turn, status: "cancelled", cancelledAt: now });
-        this.emitter?.emitQueueUpdate(queue.id, {
-          cancelledTurnId: cancelled.id,
-          cancelledDisplayNumber: cancelled.displayNumber,
-        });
+        if (turn) turnsToCancel.push({ queueId: queue.id, turn });
       }
+    }
+
+    // The status flip, every session revocation and every turn cancellation
+    // commit together or not at all — a partial failure used to leave the
+    // business marked "suspended" while some sessions/turns it's supposed
+    // to have cut off stayed live.
+    const updated = await this.unitOfWork.run(async (tx) => {
+      const updatedBusiness = await this.businessRepo.save({
+        ...business,
+        status: "suspended",
+        suspendedByUserId: parsed.data.suspendedByUserId,
+        suspendedAt: now,
+        suspensionReason: parsed.data.reason,
+        updatedAt: now,
+      }, tx);
+
+      await Promise.all(
+        activeUserIds.map((userId) => this.refreshSessionRepo.revokeAllByUserId(userId, tx)),
+      );
+
+      for (const { turn } of turnsToCancel) {
+        await saveTurnOrThrowConflict(this.turnRepo, { ...turn, status: "cancelled", cancelledAt: now }, tx);
+      }
+
+      return updatedBusiness;
+    });
+
+    // Broadcast only after the transaction actually commits — emitting
+    // before that would tell clients about a cancellation that could still
+    // be rolled back.
+    for (const { queueId, turn } of turnsToCancel) {
+      this.emitter?.emitQueueUpdate(queueId, {
+        cancelledTurnId: turn.id,
+        cancelledDisplayNumber: turn.displayNumber,
+      });
     }
 
     return updated;
