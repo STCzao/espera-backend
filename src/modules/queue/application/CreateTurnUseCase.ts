@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
@@ -78,17 +79,38 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
       }
     }
 
-    const turn = await this.turnRepo.createWithNextNumber({
-      queueId: parsed.data.queueId,
-      businessId: queue.businessId,
-      customerId: parsed.data.customerId,
-      guestName: parsed.data.guestName,
-      priority: "registered",
-      source: parsed.data.customerId ? "app" : "web",
-      turnDate: todayUTC(),
-      prefix: queue.prefix,
-      queueJoinedAt: new Date(),
-    });
+    let turn;
+    try {
+      turn = await this.turnRepo.createWithNextNumber({
+        queueId: parsed.data.queueId,
+        businessId: queue.businessId,
+        customerId: parsed.data.customerId,
+        guestName: parsed.data.guestName,
+        priority: "registered",
+        source: parsed.data.customerId ? "app" : "web",
+        turnDate: todayUTC(),
+        prefix: queue.prefix,
+        queueJoinedAt: new Date(),
+      });
+    } catch (error) {
+      // Safety net for the race the check above can't fully close: two
+      // concurrent requests for the same customer (double-tap, two devices)
+      // can both read "no active turn" before either writes. The DB's
+      // partial unique index (one active turn per customerId, system-wide)
+      // rejects the second insert — surface it as the same conflict the
+      // in-app check already reports.
+      if (
+        parsed.data.customerId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw AppError.conflict(
+          "You already have an active turn at another business. Cancel it before taking a new one.",
+          "CUSTOMER_HAS_ACTIVE_TURN",
+        );
+      }
+      throw error;
+    }
 
     return {
       turnId: turn.id,

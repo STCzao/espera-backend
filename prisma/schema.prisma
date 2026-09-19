@@ -484,5 +484,10 @@ model Turn {
   // index already covers findAttendingByServiceWindow's exact filter
   // (serviceWindowId + status IN (ATTENDING, REDIRECTED)) — no separate
   // @@index needed for that lookup.
+  //
+  // Same DSL limitation for a second partial unique index: one active
+  // (WAITING/CALLED/ATTENDING/REDIRECTED) turn per customerId, system-wide
+  // (not per business, confirmed 2026-09-18). See migration
+  // 20260918010000_unique_active_turn_per_customer.
   @@map("turns")
 }
