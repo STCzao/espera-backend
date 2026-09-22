@@ -1,19 +1,16 @@
 import type { Response } from "express";
 
-const refreshTokenCookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
-  maxAge: 30 * 24 * 60 * 60 * 1000,
-  path: "/",
-  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-};
+import { buildBaseCookieOptions, withoutMaxAge } from "./cookieOptions";
+
+const REFRESH_TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const setRefreshTokenCookie = (response: Response, token: string): void => {
-  response.cookie("refreshToken", token, refreshTokenCookieOptions);
+  response.cookie("refreshToken", token, buildBaseCookieOptions("strict", REFRESH_TOKEN_MAX_AGE_MS));
 };
 
 export const clearRefreshTokenCookie = (response: Response): void => {
-  const { maxAge: _maxAge, ...clearCookieOptions } = refreshTokenCookieOptions;
-  response.clearCookie("refreshToken", clearCookieOptions);
+  response.clearCookie(
+    "refreshToken",
+    withoutMaxAge(buildBaseCookieOptions("strict", REFRESH_TOKEN_MAX_AGE_MS)),
+  );
 };
