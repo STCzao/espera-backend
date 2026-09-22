@@ -36,18 +36,24 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs = 2_000): Promise<T
   ]);
 };
 
+// Shared by the HTTP API's cors() middleware and Socket.IO's own cors option
+// below — both accept requests from the same origins, and a future
+// tightening of APP_ORIGIN's allowlist logic (e.g. to a parsed multi-origin
+// list) applied to only one of the two would leave the other transport
+// accepting/reflecting any origin with credentials after the API was locked
+// down.
+const corsOptions = {
+  origin: env.APP_ORIGIN ?? true,
+  credentials: true,
+};
+
 export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): express.Express => {
   const app = express();
 
   app.set("trust proxy", getTrustProxySetting());
 
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.APP_ORIGIN ?? true,
-      credentials: true
-    })
-  );
+  app.use(cors(corsOptions));
   app.use(cookieParser(env.COOKIE_SECRET));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
@@ -93,10 +99,7 @@ export const createServer = () => {
   const server = http.createServer();
 
   const io = new SocketIOServer(server, {
-    cors: {
-      origin: env.APP_ORIGIN ?? true,
-      credentials: true
-    }
+    cors: corsOptions,
   });
 
   const emitter = new SocketIOEmitter(io);
