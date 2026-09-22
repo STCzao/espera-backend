@@ -40,6 +40,12 @@ export type {
   UpdateOrganizationSubscriptionOutput,
 } from "./application/UpdateOrganizationSubscriptionUseCase";
 
+export { ChangeOrganizationSubscriptionPlanUseCase } from "./application/ChangeOrganizationSubscriptionPlanUseCase";
+export type {
+  ChangeOrganizationSubscriptionPlanInput,
+  ChangeOrganizationSubscriptionPlanOutput,
+} from "./application/ChangeOrganizationSubscriptionPlanUseCase";
+
 export { ApproveOrganizationUseCase } from "./application/ApproveOrganizationUseCase";
 export type { ApproveOrganizationInput } from "./application/ApproveOrganizationUseCase";
 
