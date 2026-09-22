@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { asQueryString } from "@shared/utils/queryParams";
 import { CreateReportUseCase } from "../application/CreateReportUseCase";
 import { DismissReportUseCase } from "../application/DismissReportUseCase";
 import type { ListReportsInput } from "../application/ListReportsUseCase";
@@ -28,8 +29,8 @@ export class ReportController {
 
   public list = async (request: Request, response: Response): Promise<void> => {
     const result = await this.listReportsUseCase.execute({
-      status:       typeof request.query.status === "string" ? request.query.status : undefined,
-      reportedType: typeof request.query.reportedType === "string" ? request.query.reportedType : undefined,
+      status:       asQueryString(request.query.status),
+      reportedType: asQueryString(request.query.reportedType),
     } as ListReportsInput);
     response.status(200).json(result);
   };
