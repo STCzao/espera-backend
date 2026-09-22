@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
-import { generateUniqueSlug } from "@shared/utils/slug";
+import { withUniqueSlug } from "@shared/infrastructure/withUniqueSlug";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
@@ -56,11 +56,6 @@ export class RegisterBusinessWithGoogleUseCase
 
     const { code, businessName, categoryId, address } = parsed.data;
 
-    const slug = await generateUniqueSlug(
-      businessName,
-      (s) => this.businessRepo.findBySlug(s),
-    );
-
     const profile = await this.googleOAuthService.exchangeCodeForProfile(code);
 
     if (!profile.emailVerified) {
@@ -103,20 +98,24 @@ export class RegisterBusinessWithGoogleUseCase
         organizationName: businessName,
       });
 
-      const business = await this.businessRepo.save({
-        id: randomUUID(),
-        name: businessName,
-        slug,
-        categoryId,
-        status: "pending",
-        address,
-        listingStatus: "draft",
-        operationalStatus: "normal",
-        ownerUserId: user.id,
-        organizationId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      const business = await withUniqueSlug(
+        businessName,
+        (s) => this.businessRepo.findBySlug(s),
+        (slug) => this.businessRepo.save({
+          id: randomUUID(),
+          name: businessName,
+          slug,
+          categoryId,
+          status: "pending",
+          address,
+          listingStatus: "draft",
+          operationalStatus: "normal",
+          ownerUserId: user.id,
+          organizationId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
 
       return {
         status: "pending_approval",

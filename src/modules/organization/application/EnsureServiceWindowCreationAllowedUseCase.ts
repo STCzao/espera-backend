@@ -4,7 +4,7 @@ import type { UseCase } from "../../../shared/kernel/UseCase";
 import { PLAN_LIMITS } from "../domain/PlanLimits";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
 import { PostgresSubscriptionRepo } from "../infrastructure/PostgresSubscriptionRepo";
-import { ResolveEffectiveSubscriptionStatusUseCase } from "./ResolveEffectiveSubscriptionStatusUseCase";
+import { resolveActivePlanOrEnforceLapsed } from "./resolveActivePlanOrEnforceLapsed";
 
 export interface EnsureServiceWindowCreationAllowedInput {
   organizationId: string;
@@ -26,26 +26,11 @@ export class EnsureServiceWindowCreationAllowedUseCase
   ) {}
 
   public async execute(input: EnsureServiceWindowCreationAllowedInput): Promise<void> {
-    const subscription = await new ResolveEffectiveSubscriptionStatusUseCase(this.subscriptionRepo)
-      .execute({ organizationId: input.organizationId });
-
-    if (subscription && (subscription.status === "cancelled" || subscription.status === "expired")) {
-      // Same reasoning as EnsureQueueCreationAllowedUseCase: a lapsed trial
-      // never goes through OrganizationController.cancelSubscription, so
-      // this is the first reliable place to notice it and run the same
-      // Basic-level cleanup an explicit cancellation already gets.
-      await this.enforceQueueLimitsForOrganizationUseCase.execute({
-        organizationId: input.organizationId,
-        limit: PLAN_LIMITS.basic,
-      });
-
-      throw AppError.forbidden(
-        "Your organization's subscription is not active.",
-        "SUBSCRIPTION_INACTIVE",
-      );
-    }
-
-    const plan = subscription?.plan ?? "basic";
+    const plan = await resolveActivePlanOrEnforceLapsed(
+      input.organizationId,
+      this.subscriptionRepo,
+      this.enforceQueueLimitsForOrganizationUseCase,
+    );
     const limit = PLAN_LIMITS[plan];
 
     if (input.currentServiceWindowCountForQueue >= limit.maxServiceWindowsPerQueue) {

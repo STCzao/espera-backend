@@ -11,12 +11,14 @@ import {
   InMemoryOrganizationRepo,
   InMemorySubscriptionRepo,
 } from "../../helpers/organizationFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const buildCreateOrganizationForOwnerUseCase = () =>
   new CreateOrganizationForOwnerUseCase(
     new InMemoryOrganizationRepo(),
     new InMemoryMembershipRepo(),
     new InMemorySubscriptionRepo(),
+    new InMemoryUnitOfWork(),
   );
 
 const emailMocks = vi.hoisted(() => ({

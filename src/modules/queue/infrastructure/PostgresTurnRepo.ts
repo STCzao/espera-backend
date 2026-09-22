@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
 import { TURN_PRIORITY_ORDER, turnPriorityRank } from "../domain/turnPriority";
 import { TurnConflictError } from "../domain/ITurnRepo";
@@ -338,8 +339,9 @@ export class PostgresTurnRepo implements ITurnRepo {
   // Postgres wins and bumps `updatedAt` (Prisma's `@updatedAt`), so the
   // second one's WHERE no longer matches any row and updateMany reports
   // count 0 instead of silently overwriting the first write.
-  public async save(entity: Turn): Promise<Turn> {
-    const { count } = await prisma.turn.updateMany({
+  public async save(entity: Turn, tx?: TransactionHandle): Promise<Turn> {
+    const client = resolvePrismaClient(tx);
+    const { count } = await client.turn.updateMany({
       where: { id: entity.id, updatedAt: entity.updatedAt },
       data: {
         status: entity.status.toUpperCase() as "WAITING" | "CALLED" | "ATTENDING" | "REDIRECTED" | "CANCELLED" | "COMPLETED" | "NO_SHOW",
@@ -357,7 +359,7 @@ export class PostgresTurnRepo implements ITurnRepo {
       throw new TurnConflictError(entity.id);
     }
 
-    const row = await prisma.turn.findUniqueOrThrow({ where: { id: entity.id } });
+    const row = await client.turn.findUniqueOrThrow({ where: { id: entity.id } });
     return toTurn(row);
   }
 }

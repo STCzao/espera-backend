@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import type { UseCase } from "../../../shared/kernel/UseCase";
+import type { IUnitOfWork } from "../../../shared/kernel/UnitOfWork";
+import { PrismaUnitOfWork } from "../../../shared/infrastructure/PrismaUnitOfWork";
 import type { IMembershipRepo } from "../domain/IMembershipRepo";
 import type { IOrganizationRepo } from "../domain/IOrganizationRepo";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
@@ -40,6 +42,7 @@ export class CreateOrganizationForOwnerUseCase
     private readonly organizationRepo: IOrganizationRepo = new PostgresOrganizationRepo(),
     private readonly membershipRepo: IMembershipRepo = new PostgresMembershipRepo(),
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
+    private readonly unitOfWork: IUnitOfWork = new PrismaUnitOfWork(),
   ) {}
 
   public async execute(
@@ -55,37 +58,46 @@ export class CreateOrganizationForOwnerUseCase
     }
 
     const now = new Date();
-    const organization = await this.organizationRepo.save({
-      id: randomUUID(),
-      name: input.organizationName,
-      legalId: input.legalId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
 
-    await this.subscriptionRepo.save({
-      id: randomUUID(),
-      organizationId: organization.id,
-      plan: "basic",
-      status: "pending",
-      trialEndsAt: null,
-      activatedByUserId: null,
-      activatedAt: null,
-      cancelledByUserId: null,
-      cancellationReason: null,
-      cancelledAt: null,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // All three writes commit together or not at all — a partial failure
+    // used to leave an orphaned Organization+Subscription with no Membership
+    // pointing at them, and the owner's next attempt would create a second,
+    // duplicate set instead of noticing the first one.
+    const organization = await this.unitOfWork.run(async (tx) => {
+      const organization = await this.organizationRepo.save({
+        id: randomUUID(),
+        name: input.organizationName,
+        legalId: input.legalId,
+        status: "pending",
+        createdAt: now,
+        updatedAt: now,
+      }, tx);
 
-    await this.membershipRepo.save({
-      id: randomUUID(),
-      userId: input.ownerUserId,
-      organizationId: organization.id,
-      role: "admin",
-      createdAt: now,
-      updatedAt: now,
+      await this.subscriptionRepo.save({
+        id: randomUUID(),
+        organizationId: organization.id,
+        plan: "basic",
+        status: "pending",
+        trialEndsAt: null,
+        activatedByUserId: null,
+        activatedAt: null,
+        cancelledByUserId: null,
+        cancellationReason: null,
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }, tx);
+
+      await this.membershipRepo.save({
+        id: randomUUID(),
+        userId: input.ownerUserId,
+        organizationId: organization.id,
+        role: "admin",
+        createdAt: now,
+        updatedAt: now,
+      }, tx);
+
+      return organization;
     });
 
     return { organizationId: organization.id };

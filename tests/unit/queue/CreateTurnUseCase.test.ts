@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { CreateTurnUseCase } from "../../../src/modules/queue/application/CreateTurnUseCase";
@@ -197,6 +198,52 @@ describe("CreateTurnUseCase", () => {
     await expect(
       useCase.execute({ queueId: "not-a-uuid" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("CreateTurnUseCase — carrera entre dos solicitudes concurrentes del mismo cliente (red de seguridad de la DB)", () => {
+  it("translates a P2002 unique-constraint violation on createWithNextNumber into CUSTOMER_HAS_ACTIVE_TURN", async () => {
+    // Simulates the in-app "no active turn yet" check having raced and
+    // lost — both requests saw no active turn, and the DB's partial unique
+    // index (one active turn per customerId, system-wide) rejects the
+    // second insert.
+    const turnRepo = new InMemoryTurnRepo();
+    turnRepo.createWithNextNumber = async () => {
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "6.19.3",
+      });
+    };
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "CUSTOMER_HAS_ACTIVE_TURN" });
+  });
+
+  it("does not translate a P2002 for a guest turn (no customerId to attribute the conflict to)", async () => {
+    const turnRepo = new InMemoryTurnRepo();
+    const conflict = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "6.19.3",
+    });
+    turnRepo.createWithNextNumber = async () => { throw conflict; };
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
+    ).rejects.toBe(conflict);
+  });
+
+  it("rethrows an unrelated error from createWithNextNumber unchanged", async () => {
+    const turnRepo = new InMemoryTurnRepo();
+    const boom = new Error("boom");
+    turnRepo.createWithNextNumber = async () => { throw boom; };
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID }),
+    ).rejects.toBe(boom);
   });
 });
 

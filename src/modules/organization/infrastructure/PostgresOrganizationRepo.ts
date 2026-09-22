@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { IOrganizationRepo } from "../domain/IOrganizationRepo";
 import type { Organization, OrganizationStatus } from "../domain/Organization";
 
@@ -45,7 +46,7 @@ export class PostgresOrganizationRepo implements IOrganizationRepo {
     return rows.map(toOrganization);
   }
 
-  public async save(entity: Organization): Promise<Organization> {
+  public async save(entity: Organization, tx?: TransactionHandle): Promise<Organization> {
     const data = {
       name:             entity.name,
       legalId:          entity.legalId ?? null,
@@ -57,7 +58,7 @@ export class PostgresOrganizationRepo implements IOrganizationRepo {
       rejectedAt:       entity.rejectedAt ?? null,
     };
 
-    const row = await prisma.organization.upsert({
+    const row = await resolvePrismaClient(tx).organization.upsert({
       where: { id: entity.id },
       create: { id: entity.id, ...data },
       update: data,

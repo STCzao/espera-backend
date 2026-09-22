@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 
 import { AppError } from "@shared/kernel/AppError";
 import { logger } from "@shared/infrastructure/logger";
+import { asQueryString } from "@shared/utils/queryParams";
 import {
   clearRefreshTokenCookie,
   setRefreshTokenCookie,
@@ -168,11 +169,8 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<void> => {
-    const token =
-      typeof request.query.token === "string" ? request.query.token : "";
-
     const result = await this.verifyEmailUseCase.execute({
-      token,
+      token: asQueryString(request.query.token) ?? "",
     });
     response.status(200).json(result);
   };

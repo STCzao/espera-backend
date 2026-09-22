@@ -7,6 +7,7 @@ import {
   InMemorySubscriptionRepo,
   buildMembership,
 } from "../../helpers/organizationFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 describe("CreateOrganizationForOwnerUseCase", () => {
   it("creates an Organization, a BASIC Subscription and an ADMIN Membership for a new owner", async () => {
@@ -17,6 +18,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
       organizationRepo,
       membershipRepo,
       subscriptionRepo,
+      new InMemoryUnitOfWork(),
     );
 
     const result = await useCase.execute({
@@ -40,6 +42,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
       organizationRepo,
       new InMemoryMembershipRepo(),
       new InMemorySubscriptionRepo(),
+      new InMemoryUnitOfWork(),
     );
 
     await useCase.execute({
@@ -57,6 +60,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
       organizationRepo,
       new InMemoryMembershipRepo(),
       new InMemorySubscriptionRepo(),
+      new InMemoryUnitOfWork(),
     );
 
     await useCase.execute({ ownerUserId: "user-1", organizationName: "Cafe Espera" });
@@ -74,6 +78,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
       organizationRepo,
       membershipRepo,
       subscriptionRepo,
+      new InMemoryUnitOfWork(),
     );
 
     const result = await useCase.execute({
@@ -94,6 +99,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
       organizationRepo,
       membershipRepo,
       new InMemorySubscriptionRepo(),
+      new InMemoryUnitOfWork(),
     );
 
     await useCase.execute({
@@ -103,5 +109,24 @@ describe("CreateOrganizationForOwnerUseCase", () => {
     });
 
     expect(organizationRepo.all()).toHaveLength(0);
+  });
+
+  it("propagates a failure from the last write instead of returning a fake success", async () => {
+    const organizationRepo = new InMemoryOrganizationRepo();
+    const subscriptionRepo = new InMemorySubscriptionRepo();
+    const failingMembershipRepo: InMemoryMembershipRepo = Object.assign(
+      new InMemoryMembershipRepo(),
+      { save: async () => { throw new Error("boom"); } },
+    );
+    const useCase = new CreateOrganizationForOwnerUseCase(
+      organizationRepo,
+      failingMembershipRepo,
+      subscriptionRepo,
+      new InMemoryUnitOfWork(),
+    );
+
+    await expect(
+      useCase.execute({ ownerUserId: "user-1", organizationName: "Cafe Espera" }),
+    ).rejects.toThrow("boom");
   });
 });

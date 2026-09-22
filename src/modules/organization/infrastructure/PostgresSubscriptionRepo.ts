@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { ISubscriptionRepo } from "../domain/ISubscriptionRepo";
 import type { Subscription, SubscriptionPlan, SubscriptionStatus } from "../domain/Subscription";
 
@@ -47,7 +48,7 @@ export class PostgresSubscriptionRepo implements ISubscriptionRepo {
     return row ? toSubscription(row) : null;
   }
 
-  public async save(entity: Subscription): Promise<Subscription> {
+  public async save(entity: Subscription, tx?: TransactionHandle): Promise<Subscription> {
     const data = {
       plan: toPlanEnum(entity.plan),
       status: toStatusEnum(entity.status),
@@ -59,7 +60,7 @@ export class PostgresSubscriptionRepo implements ISubscriptionRepo {
       cancelledAt: entity.cancelledAt,
     };
 
-    const row = await prisma.subscription.upsert({
+    const row = await resolvePrismaClient(tx).subscription.upsert({
       where: { id: entity.id },
       create: { id: entity.id, organizationId: entity.organizationId, ...data },
       update: data,

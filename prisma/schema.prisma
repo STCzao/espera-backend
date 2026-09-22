@@ -365,6 +365,11 @@ model BusinessQrCode {
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId, status])
+  // Also enforced by a partial unique index Prisma's schema DSL can't
+  // express (no WHERE clause support): one ACTIVE QR per businessId. See
+  // migration 20260918000000_unique_active_qr_per_business. RETIRING QR
+  // codes are excluded on purpose — several can coexist during a
+  // regeneration's transition window (RegenerateBusinessQrCodeUseCase).
   @@map("business_qr_codes")
 }
 
@@ -479,5 +484,10 @@ model Turn {
   // index already covers findAttendingByServiceWindow's exact filter
   // (serviceWindowId + status IN (ATTENDING, REDIRECTED)) — no separate
   // @@index needed for that lookup.
+  //
+  // Same DSL limitation for a second partial unique index: one active
+  // (WAITING/CALLED/ATTENDING/REDIRECTED) turn per customerId, system-wide
+  // (not per business, confirmed 2026-09-18). See migration
+  // 20260918010000_unique_active_turn_per_customer.
   @@map("turns")
 }

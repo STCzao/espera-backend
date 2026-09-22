@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { asQueryNumber, asQueryString } from "@shared/utils/queryParams";
 import type { SocketIOEmitter } from "@modules/queue/public-api";
 import { ApproveBusinessUseCase } from "../application/ApproveBusinessUseCase";
 import { GetBusinessReviewDetailUseCase } from "../application/GetBusinessReviewDetailUseCase";
@@ -35,10 +36,10 @@ export class BusinessAdminController {
     response: Response
   ): Promise<void> => {
     const result = await this.listPendingBusinessesUseCase.execute({
-      organizationId: typeof request.query.organizationId === "string" ? request.query.organizationId : undefined,
-      categoryId:     typeof request.query.categoryId === "string" ? request.query.categoryId : undefined,
-      fromDate:       typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
-      toDate:         typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+      organizationId: asQueryString(request.query.organizationId),
+      categoryId:     asQueryString(request.query.categoryId),
+      fromDate:       asQueryString(request.query.fromDate),
+      toDate:         asQueryString(request.query.toDate),
     });
     response.status(200).json(result);
   };
@@ -109,27 +110,25 @@ export class BusinessAdminController {
     response: Response
   ): Promise<void> => {
     const result = await this.getPlatformMetricsUseCase.execute({
-      fromDate: typeof request.query.fromDate === "string" ? request.query.fromDate : undefined,
-      toDate:   typeof request.query.toDate === "string" ? request.query.toDate : undefined,
+      fromDate: asQueryString(request.query.fromDate),
+      toDate:   asQueryString(request.query.toDate),
     });
     response.status(200).json(result);
   };
 
   public listAll = async (request: Request, response: Response): Promise<void> => {
     const query = request.query;
-    const asString = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
-    const asNumber = (value: unknown): number | undefined => typeof value === "string" ? Number(value) : undefined;
 
     const result = await this.listAllBusinessesUseCase.execute({
-      organizationId:     asString(query.organizationId),
-      categoryId:         asString(query.categoryId),
-      status:             asString(query.status) as never,
-      subscriptionPlan:   asString(query.subscriptionPlan) as never,
-      subscriptionStatus: asString(query.subscriptionStatus) as never,
-      sortBy:             asString(query.sortBy) as never,
-      sortDir:            asString(query.sortDir) as never,
-      page:               asNumber(query.page),
-      pageSize:           asNumber(query.pageSize),
+      organizationId:     asQueryString(query.organizationId),
+      categoryId:         asQueryString(query.categoryId),
+      status:             asQueryString(query.status) as never,
+      subscriptionPlan:   asQueryString(query.subscriptionPlan) as never,
+      subscriptionStatus: asQueryString(query.subscriptionStatus) as never,
+      sortBy:             asQueryString(query.sortBy) as never,
+      sortDir:            asQueryString(query.sortDir) as never,
+      page:               asQueryNumber(query.page),
+      pageSize:           asQueryNumber(query.pageSize),
     });
     response.status(200).json(result);
   };

@@ -13,6 +13,7 @@ import {
 } from "../../helpers/authFakes";
 import { InMemoryQueueRepo, InMemoryTurnRepo } from "../../helpers/queueFakes";
 import { InMemoryReportRepo, buildReport } from "../../helpers/reportFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const REPORT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ADMIN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -32,6 +33,7 @@ describe("SuspendReportedUseCase — reporte sobre un negocio", () => {
       new InMemoryQueueRepo(),
       new InMemoryTurnRepo(),
       null,
+      new InMemoryUnitOfWork(),
     );
     const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase());
 
@@ -53,14 +55,39 @@ describe("SuspendReportedUseCase — reporte sobre un negocio", () => {
       new InMemoryQueueRepo(),
       new InMemoryTurnRepo(),
       null,
+      new InMemoryUnitOfWork(),
     );
-    const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase());
+    const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase(), businessRepo);
 
     await expect(
       useCase.execute({ reportId: REPORT_ID, reviewedByUserId: ADMIN_ID }),
     ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_CANNOT_BE_SUSPENDED" });
 
     expect((await reportRepo.findById(REPORT_ID))?.status).toBe("pending");
+  });
+
+  it("closes the report on retry when a prior attempt already suspended the business (HU-8.6 stuck-report fix)", async () => {
+    // Simulates the exact bug this fixes: a first attempt suspended the
+    // business but crashed before the report was saved, leaving it
+    // "pending" with a business that's already "suspended".
+    const reportRepo = new InMemoryReportRepo([
+      buildReport({ id: REPORT_ID, reportedType: "business", reportedId: BUSINESS_ID, status: "pending" }),
+    ]);
+    const businessRepo = new InMemoryBusinessRepo([buildBusiness({ id: BUSINESS_ID, status: "suspended" })]);
+    const suspendBusinessUseCase = new SuspendBusinessUseCase(
+      businessRepo,
+      new InMemoryBusinessEmployeeRepo(),
+      new InMemoryRefreshSessionRepo(),
+      new InMemoryQueueRepo(),
+      new InMemoryTurnRepo(),
+      null,
+      new InMemoryUnitOfWork(),
+    );
+    const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase(), businessRepo);
+
+    const result = await useCase.execute({ reportId: REPORT_ID, reviewedByUserId: ADMIN_ID });
+
+    expect(result.status).toBe("suspended");
   });
 });
 
@@ -77,6 +104,19 @@ describe("SuspendReportedUseCase — reporte sobre un usuario", () => {
 
     expect(result.status).toBe("suspended");
     expect(userRepo.all()[0].isBlocked).toBe(true);
+  });
+
+  it("closes the report on retry when a prior attempt already blocked the user", async () => {
+    const reportRepo = new InMemoryReportRepo([
+      buildReport({ id: REPORT_ID, reportedType: "user", reportedId: REPORTED_USER_ID, status: "pending" }),
+    ]);
+    const userRepo = new InMemoryUserRepo([buildUser({ id: REPORTED_USER_ID, isBlocked: true })]);
+    const blockUserUseCase = new BlockUserUseCase(userRepo, new InMemoryRefreshSessionRepo());
+    const useCase = new SuspendReportedUseCase(reportRepo, new SuspendBusinessUseCase(), blockUserUseCase);
+
+    const result = await useCase.execute({ reportId: REPORT_ID, reviewedByUserId: ADMIN_ID });
+
+    expect(result.status).toBe("suspended");
   });
 });
 

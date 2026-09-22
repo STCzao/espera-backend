@@ -5,7 +5,8 @@ import {
   type User as PrismaUser,
 } from "@prisma/client";
 
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { IUserRepo } from "../domain/IUserRepo";
 import type { User } from "../domain/User";
 
@@ -59,10 +60,10 @@ export class PostgresUserRepo implements IUserRepo {
   /**
    * Creates or updates a user record and returns the normalized domain entity.
    */
-  public async save(user: User): Promise<User> {
+  public async save(user: User, tx?: TransactionHandle): Promise<User> {
     // This repository persists full user snapshots, so callers should load and merge
     // existing state before updating individual fields.
-    const saved = await prisma.user.upsert({
+    const saved = await resolvePrismaClient(tx).user.upsert({
       where: { id: user.id },
       create: {
         id: user.id,

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { GetQueueStatusUseCase } from "../../../src/modules/queue/application/GetQueueStatusUseCase";
+import { todayUTC } from "../../../src/shared/utils/date";
 import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
 import {
   InMemoryQueueRepo,
@@ -114,6 +115,10 @@ describe("GetQueueStatusUseCase — estado básico", () => {
 });
 
 describe("GetQueueStatusUseCase — tiempo estimado total", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns null when there are no active service windows", async () => {
     const windowRepo = new InMemoryServiceWindowRepo();
     const turnRepo = new InMemoryTurnRepo([
@@ -161,8 +166,12 @@ describe("GetQueueStatusUseCase — tiempo estimado total", () => {
   });
 
   it("uses real average service time from completed turns", async () => {
-    const now               = new Date();
-    const realToday         = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    // Freezes "now" instead of reading the real clock, so the completed
+    // turn's turnDate always lands on the app's actual (Argentina-aware)
+    // "today" — see the equivalent fix in GetQueueListUseCase.test.ts.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T18:00:00.000Z"));
+    const realToday          = todayUTC();
     const startedAttentionAt = new Date(realToday.getTime());
     const attendedAt         = new Date(realToday.getTime() + 10 * 60_000); // 10 min service
     const turnRepo = new InMemoryTurnRepo([

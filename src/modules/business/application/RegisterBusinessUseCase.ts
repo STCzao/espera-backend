@@ -2,14 +2,16 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
+import type { IUnitOfWork } from "@shared/kernel/UnitOfWork";
+import { PrismaUnitOfWork } from "@shared/infrastructure/PrismaUnitOfWork";
 import type { IUserRepo } from "@modules/auth/public-api";
 import { PostgresUserRepo } from "@modules/auth/public-api";
 import {
   CreateOrganizationForOwnerUseCase,
   EnsureBusinessCreationAllowedUseCase,
 } from "@modules/organization/public-api";
+import { withUniqueSlug } from "@shared/infrastructure/withUniqueSlug";
 import { isValidCuit } from "../../../shared/utils/cuit";
-import { generateUniqueSlug } from "../../../shared/utils/slug";
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IBusinessCategoryRepo } from "../domain/IBusinessCategoryRepo";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
@@ -53,6 +55,7 @@ export class RegisterBusinessUseCase
     private readonly createOrganizationForOwnerUseCase: CreateOrganizationForOwnerUseCase = new CreateOrganizationForOwnerUseCase(),
     private readonly ensureBusinessCreationAllowedUseCase: EnsureBusinessCreationAllowedUseCase = new EnsureBusinessCreationAllowedUseCase(),
     private readonly categoryRepo: IBusinessCategoryRepo = new PostgresBusinessCategoryRepo(),
+    private readonly unitOfWork: IUnitOfWork = new PrismaUnitOfWork(),
   ) {}
 
   public async execute(input: RegisterBusinessInput): Promise<RegisterBusinessOutput> {
@@ -65,11 +68,6 @@ export class RegisterBusinessUseCase
     if (!category) {
       throw AppError.badRequest("Invalid category id.", "INVALID_CATEGORY");
     }
-
-    const slug = await generateUniqueSlug(
-      parsed.data.name,
-      (s) => this.businessRepo.findBySlug(s),
-    );
 
     const user = await this.userRepo.findById(parsed.data.ownerUserId);
     if (!user) {
@@ -105,31 +103,47 @@ export class RegisterBusinessUseCase
       // but does not block the business profile from saving its textual address.
       const coordinates = await this.geocodingService.geocode(parsed.data.address);
 
-      const business = await this.businessRepo.save({
-        id: randomUUID(),
-        name: parsed.data.name,
-        slug,
-        categoryId: parsed.data.categoryId,
-        status: "pending",
-        phone: parsed.data.phone,
-        address: parsed.data.address,
-        latitude: coordinates?.latitude,
-        longitude: coordinates?.longitude,
-        listingStatus: "draft",
-        operationalStatus: "normal",
-        ownerUserId: parsed.data.ownerUserId,
-        organizationId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // The Business row and the owner's promotion to business_admin commit
+      // together — a failure between them used to leave a Business with its
+      // owner still role "user", and a retry created a second, duplicate
+      // Business instead of noticing the first one. Wrapped by
+      // withUniqueSlug (not just the save()) because a P2002 on `slug`
+      // aborts the whole Postgres transaction — retrying that specific
+      // insert inside the same transaction isn't possible, so each retry
+      // opens a fresh one with a newly regenerated candidate slug.
+      const business = await withUniqueSlug(
+        parsed.data.name,
+        (s) => this.businessRepo.findBySlug(s),
+        (slug) => this.unitOfWork.run(async (tx) => {
+          const business = await this.businessRepo.save({
+            id: randomUUID(),
+            name: parsed.data.name,
+            slug,
+            categoryId: parsed.data.categoryId,
+            status: "pending",
+            phone: parsed.data.phone,
+            address: parsed.data.address,
+            latitude: coordinates?.latitude,
+            longitude: coordinates?.longitude,
+            listingStatus: "draft",
+            operationalStatus: "normal",
+            ownerUserId: parsed.data.ownerUserId,
+            organizationId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }, tx);
 
-      if (requiresPromotion) {
-        await this.userRepo.save({
-          ...user,
-          role: "business_admin",
-          approvalStatus: "pending",
-        });
-      }
+          if (requiresPromotion) {
+            await this.userRepo.save({
+              ...user,
+              role: "business_admin",
+              approvalStatus: "pending",
+            }, tx);
+          }
+
+          return business;
+        }),
+      );
 
       return {
         businessId: business.id,

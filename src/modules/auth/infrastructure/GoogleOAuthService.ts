@@ -1,4 +1,5 @@
 import { getGoogleOAuthConfig } from "@shared/infrastructure/env";
+import { AppError } from "@shared/kernel/AppError";
 
 export interface GoogleProfile {
   googleId: string;
@@ -55,7 +56,14 @@ export class GoogleOAuthService {
     });
 
     if (!tokenResponse.ok) {
-      throw new Error("Failed to exchange Google authorization code.");
+      // AppError, not a raw Error, like every other failure in this module
+      // — an uncaught raw Error reaches errorHandler.ts as a non-AppError,
+      // logged as an unexpected bug instead of an expected upstream
+      // failure, and returns no `.code` for the frontend to branch on.
+      throw AppError.internal(
+        "Failed to exchange Google authorization code.",
+        "GOOGLE_TOKEN_EXCHANGE_FAILED",
+      );
     }
 
     const tokenData = (await tokenResponse.json()) as GoogleTokenResponse;
@@ -70,7 +78,10 @@ export class GoogleOAuthService {
     );
 
     if (!userInfoResponse.ok) {
-      throw new Error("Failed to fetch Google user profile.");
+      throw AppError.internal(
+        "Failed to fetch Google user profile.",
+        "GOOGLE_PROFILE_FETCH_FAILED",
+      );
     }
 
     const userInfo = (await userInfoResponse.json()) as GoogleUserInfoResponse;
