@@ -13,6 +13,7 @@ import {
 } from "../../helpers/authFakes";
 import { InMemoryQueueRepo, InMemoryTurnRepo } from "../../helpers/queueFakes";
 import { InMemoryReportRepo, buildReport } from "../../helpers/reportFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const REPORT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ADMIN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -32,6 +33,7 @@ describe("SuspendReportedUseCase — reporte sobre un negocio", () => {
       new InMemoryQueueRepo(),
       new InMemoryTurnRepo(),
       null,
+      new InMemoryUnitOfWork(),
     );
     const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase());
 
@@ -53,6 +55,7 @@ describe("SuspendReportedUseCase — reporte sobre un negocio", () => {
       new InMemoryQueueRepo(),
       new InMemoryTurnRepo(),
       null,
+      new InMemoryUnitOfWork(),
     );
     const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase(), businessRepo);
 
@@ -78,6 +81,7 @@ describe("SuspendReportedUseCase — reporte sobre un negocio", () => {
       new InMemoryQueueRepo(),
       new InMemoryTurnRepo(),
       null,
+      new InMemoryUnitOfWork(),
     );
     const useCase = new SuspendReportedUseCase(reportRepo, suspendBusinessUseCase, new BlockUserUseCase(), businessRepo);
 
