@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
 import type { IBusinessRepo } from "@modules/business/public-api";
 import { PostgresBusinessRepo } from "@modules/business/public-api";
@@ -50,9 +51,10 @@ export class EnforceQueueLimitsForOrganizationUseCase
   public async execute(
     input: EnforceQueueLimitsForOrganizationInput,
   ): Promise<EnforceQueueLimitsForOrganizationOutput> {
-    const parsed = schema.parse({ organizationId: input.organizationId });
+    const parsed = schema.safeParse({ organizationId: input.organizationId });
+    if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
-    const businesses = await this.businessRepo.findByOrganizationId(parsed.organizationId);
+    const businesses = await this.businessRepo.findByOrganizationId(parsed.data.organizationId);
 
     const deactivatedQueueIds: string[] = [];
     const deactivatedServiceWindowIds: string[] = [];

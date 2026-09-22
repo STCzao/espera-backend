@@ -117,4 +117,12 @@ describe("EnforceQueueLimitsForOrganizationUseCase", () => {
     expect(result.deactivatedQueueIds).toEqual([]);
     expect(result.deactivatedServiceWindowIds).toEqual([]);
   });
+
+  it("throws BAD_REQUEST instead of a raw ZodError for an invalid organizationId", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ organizationId: "not-a-uuid", limit: PLAN_LIMITS.basic }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
 });
