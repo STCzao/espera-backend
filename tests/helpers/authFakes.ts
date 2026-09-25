@@ -267,13 +267,50 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
     ).length;
   }
 
+  /**
+   * Subscriptions the fake resolves the `subscription` filter against, keyed
+   * by organizationId — the real repo reads them through the Organization
+   * relation, which an in-memory business map has no equivalent of. Tests
+   * that exercise that filter set this; everything else can ignore it.
+   */
+  public readonly subscriptionsByOrgId = new Map<
+    string,
+    {
+      plan: "basic" | "pro" | "premium";
+      status: "pending" | "trial" | "active" | "expired" | "cancelled";
+      trialEndsAt?: Date | null;
+    }
+  >();
+
+  private matchesFilters(business: Business, filters: FindManyBusinessesFilters): boolean {
+    if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
+    if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
+    if (filters.status && business.status !== filters.status) return false;
+    if (!filters.subscription) return true;
+
+    const subscription = this.subscriptionsByOrgId.get(business.organizationId);
+    if (!subscription) return false;
+    if (filters.subscription.plan && subscription.plan !== filters.subscription.plan) return false;
+
+    const { effectiveStatus } = filters.subscription;
+    if (!effectiveStatus) return true;
+
+    // Mirrors PostgresBusinessRepo: a lapsed trial counts as expired even
+    // while it is still stored as "trial".
+    const lapsedTrial =
+      subscription.status === "trial" &&
+      subscription.trialEndsAt != null &&
+      subscription.trialEndsAt.getTime() <= Date.now();
+
+    if (effectiveStatus === "trial") return subscription.status === "trial" && !lapsedTrial;
+    if (effectiveStatus === "expired") return subscription.status === "expired" || lapsedTrial;
+    return subscription.status === effectiveStatus;
+  }
+
   public async findMany(filters: FindManyBusinessesFilters = {}): Promise<Business[]> {
-    const matches = [...this.businesses.values()].filter((business) => {
-      if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
-      if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
-      if (filters.status && business.status !== filters.status) return false;
-      return true;
-    });
+    const matches = [...this.businesses.values()].filter((business) =>
+      this.matchesFilters(business, filters),
+    );
 
     const sortDir = filters.sortDir === "asc" ? 1 : -1;
     matches.sort((a, b) => {
@@ -289,12 +326,9 @@ export class InMemoryBusinessRepo implements IBusinessRepo {
   }
 
   public async countMany(filters: FindManyBusinessesFilters = {}): Promise<number> {
-    return [...this.businesses.values()].filter((business) => {
-      if (filters.organizationId && business.organizationId !== filters.organizationId) return false;
-      if (filters.categoryId && business.categoryId !== filters.categoryId) return false;
-      if (filters.status && business.status !== filters.status) return false;
-      return true;
-    }).length;
+    return [...this.businesses.values()].filter((business) =>
+      this.matchesFilters(business, filters),
+    ).length;
   }
 
   public async findByOrganizationId(organizationId: string): Promise<Business[]> {

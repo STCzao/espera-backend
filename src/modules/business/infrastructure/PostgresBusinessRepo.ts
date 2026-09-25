@@ -1,10 +1,23 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
 import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { Business } from "../domain/Business";
-import type { FindManyBusinessesFilters, FindPendingBusinessesFilters, IBusinessRepo } from "../domain/IBusinessRepo";
+import type {
+  BusinessSubscriptionFilters,
+  FindManyBusinessesFilters,
+  FindPendingBusinessesFilters,
+  IBusinessRepo,
+} from "../domain/IBusinessRepo";
 
 const toStatusEnum = (status: Business["status"]) =>
   status.toUpperCase() as "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
+
+const toPlanEnum = (plan: NonNullable<BusinessSubscriptionFilters["plan"]>) =>
+  plan.toUpperCase() as "BASIC" | "PRO" | "PREMIUM";
+
+const toSubscriptionStatusEnum = (status: "pending" | "active" | "cancelled") =>
+  status.toUpperCase() as "PENDING" | "ACTIVE" | "CANCELLED";
 
 const toListingStatusEnum = (listingStatus: Business["listingStatus"]) =>
   listingStatus.toUpperCase() as "DRAFT" | "HIDDEN" | "PUBLISHED";
@@ -68,6 +81,43 @@ const toBusiness = (raw: {
   updatedAt: raw.updatedAt,
 });
 
+/**
+ * Expresses BusinessSubscriptionFilters as a condition on the related
+ * Subscription row. "trial" and "expired" are evaluated against trialEndsAt
+ * rather than the stored status, so a trial that lapsed but was never
+ * rewritten is still found under "expired" (and no longer under "trial") —
+ * matching ResolveEffectiveSubscriptionStatusUseCase.
+ */
+const toSubscriptionWhere = (
+  filters: BusinessSubscriptionFilters,
+  now: Date,
+): Prisma.SubscriptionWhereInput => {
+  const plan = filters.plan ? toPlanEnum(filters.plan) : undefined;
+
+  switch (filters.effectiveStatus) {
+    case undefined:
+      return { plan };
+    case "trial":
+      return { plan, status: "TRIAL", OR: [{ trialEndsAt: null }, { trialEndsAt: { gt: now } }] };
+    case "expired":
+      return { plan, OR: [{ status: "EXPIRED" }, { status: "TRIAL", trialEndsAt: { lte: now } }] };
+    default:
+      return { plan, status: toSubscriptionStatusEnum(filters.effectiveStatus) };
+  }
+};
+
+const toFindManyWhere = (filters: FindManyBusinessesFilters): Prisma.BusinessWhereInput => ({
+  organizationId: filters.organizationId,
+  categoryId: filters.categoryId,
+  status: filters.status ? toStatusEnum(filters.status) : undefined,
+  // An organization with no subscription row at all matches no subscription
+  // filter, the same way an unresolved subscription used to produce no
+  // plan/status to compare against.
+  organization: filters.subscription
+    ? { subscription: toSubscriptionWhere(filters.subscription, new Date()) }
+    : undefined,
+});
+
 export class PostgresBusinessRepo implements IBusinessRepo {
   public async findById(id: string): Promise<Business | null> {
     const row = await prisma.business.findUnique({ where: { id } });
@@ -106,11 +156,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
 
   public async findMany(filters: FindManyBusinessesFilters = {}): Promise<Business[]> {
     const rows = await prisma.business.findMany({
-      where: {
-        organizationId: filters.organizationId,
-        categoryId: filters.categoryId,
-        status: filters.status ? toStatusEnum(filters.status) : undefined,
-      },
+      where: toFindManyWhere(filters),
       orderBy: filters.sortBy === "businessName"
         ? { name: filters.sortDir ?? "desc" }
         : { createdAt: filters.sortDir ?? "desc" },
@@ -121,13 +167,7 @@ export class PostgresBusinessRepo implements IBusinessRepo {
   }
 
   public async countMany(filters: FindManyBusinessesFilters = {}): Promise<number> {
-    return prisma.business.count({
-      where: {
-        organizationId: filters.organizationId,
-        categoryId: filters.categoryId,
-        status: filters.status ? toStatusEnum(filters.status) : undefined,
-      },
-    });
+    return prisma.business.count({ where: toFindManyWhere(filters) });
   }
 
   public async save(entity: Business, tx?: TransactionHandle): Promise<Business> {

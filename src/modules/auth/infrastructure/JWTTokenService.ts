@@ -7,6 +7,11 @@ import type { User } from "../domain/User";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Stated on both sides (here and in authenticate's jwt.verify) instead of
+// relying on the library default: a verifier that accepts whatever the
+// token's own header declares is the classic JWT algorithm-confusion bug.
+export const ACCESS_TOKEN_ALGORITHM = "HS256" as const;
+
 export class JWTTokenService {
   /**
    * Creates a signed JWT access token for an authenticated user.
@@ -24,6 +29,7 @@ export class JWTTokenService {
       },
       getAccessTokenSecret(),
       {
+        algorithm: ACCESS_TOKEN_ALGORITHM,
         subject: user.id,
         expiresIn
       }

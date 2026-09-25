@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 
 import { getAccessTokenSecret } from "@shared/infrastructure/env";
+import { ACCESS_TOKEN_ALGORITHM } from "@modules/auth/public-api";
 import { AppError } from "@shared/kernel/AppError";
 import { loadAuthenticatedUser } from "./loadAuthenticatedUser";
 
@@ -42,7 +43,7 @@ export const authenticate = async (
 
   let decoded: AccessTokenPayload;
   try {
-    decoded = jwt.verify(token, secret) as AccessTokenPayload;
+    decoded = jwt.verify(token, secret, { algorithms: [ACCESS_TOKEN_ALGORITHM] }) as AccessTokenPayload;
   } catch {
     next(AppError.unauthorized("Invalid or expired access token."));
     return;

@@ -5,7 +5,7 @@ import type { UseCase } from "@shared/kernel/UseCase";
 import type { CommercialState, ISubscriptionRepo, SubscriptionPlan, SubscriptionStatus } from "@modules/organization/public-api";
 import { PostgresSubscriptionRepo, ResolveEffectiveSubscriptionStatusUseCase, computeCommercialState } from "@modules/organization/public-api";
 import type { BusinessStatus } from "../domain/Business";
-import type { IBusinessRepo } from "../domain/IBusinessRepo";
+import type { BusinessSubscriptionFilters, IBusinessRepo } from "../domain/IBusinessRepo";
 import { PostgresBusinessRepo } from "../infrastructure/PostgresBusinessRepo";
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -64,6 +64,44 @@ export interface ListAllBusinessesOutput {
 }
 
 /**
+ * Collapses the three subscription-shaped query params into the single
+ * plan + effective-status pair the repo can push into SQL.
+ *
+ * `commercialState` is just those two fields pre-combined for operators
+ * (see computeCommercialState), so it decomposes back into them exactly;
+ * when it is combined with the individual params, every condition applies,
+ * which is what an operator ticking both boxes means. A contradictory
+ * combination (e.g. commercialState "paying_pro" with plan "basic") simply
+ * matches nothing, same as before.
+ */
+const toSubscriptionFilters = (input: {
+  subscriptionPlan?: SubscriptionPlan;
+  subscriptionStatus?: SubscriptionStatus;
+  commercialState?: CommercialState;
+}): BusinessSubscriptionFilters | undefined => {
+  const fromCommercialState = COMMERCIAL_STATE_FILTERS[input.commercialState ?? "none"];
+
+  const plan = input.subscriptionPlan ?? fromCommercialState?.plan;
+  const effectiveStatus = input.subscriptionStatus ?? fromCommercialState?.effectiveStatus;
+  if (!plan && !effectiveStatus) return undefined;
+
+  return { plan, effectiveStatus };
+};
+
+const COMMERCIAL_STATE_FILTERS: Record<CommercialState | "none", BusinessSubscriptionFilters | undefined> = {
+  none:              undefined,
+  pending_approval:  { effectiveStatus: "pending" },
+  trialing_basic:    { effectiveStatus: "trial",  plan: "basic" },
+  trialing_pro:      { effectiveStatus: "trial",  plan: "pro" },
+  trialing_premium:  { effectiveStatus: "trial",  plan: "premium" },
+  paying_basic:      { effectiveStatus: "active", plan: "basic" },
+  paying_pro:        { effectiveStatus: "active", plan: "pro" },
+  paying_premium:    { effectiveStatus: "active", plan: "premium" },
+  expired:           { effectiveStatus: "expired" },
+  cancelled:         { effectiveStatus: "cancelled" },
+};
+
+/**
  * Admin-facing business directory for the Backoffice "Negocios" screen —
  * deliberately independent from Turn/date-range data (unlike
  * GetPlatformMetricsUseCase's topBusinesses). A business with zero turns in
@@ -83,61 +121,35 @@ export class ListAllBusinessesUseCase
     if (!parsed.success) throw AppError.badRequest(parsed.error.errors[0].message);
 
     const { organizationId, categoryId, status, sortBy, sortDir, page, pageSize } = parsed.data;
-    const baseFilters = { organizationId, categoryId, status };
+    const baseFilters = {
+      organizationId,
+      categoryId,
+      status,
+      subscription: toSubscriptionFilters(parsed.data),
+    };
     // Scoped to this call, not the instance — this use case is constructed
     // once and reused across requests, so caching on `this` would leak one
     // request's subscription data into every later request for that org.
     const subscriptionByOrgId = new Map<string, { plan: SubscriptionPlan; status: SubscriptionStatus } | null>();
 
-    // subscriptionPlan/subscriptionStatus/commercialState are *derived* —
-    // ResolveEffectiveSubscriptionStatusUseCase lazily reconciles them from
-    // Subscription, they aren't queryable Business columns — so they can't
-    // be pushed into the same WHERE as the rest. Without them,
-    // pagination/sorting/count all go straight to Postgres and only the
-    // current page's businesses ever get a Subscription lookup.
-    if (!parsed.data.subscriptionPlan && !parsed.data.subscriptionStatus && !parsed.data.commercialState) {
-      const [businesses, total] = await Promise.all([
-        this.businessRepo.findMany({
-          ...baseFilters, sortBy, sortDir, skip: (page - 1) * pageSize, take: pageSize,
-        }),
-        this.businessRepo.countMany(baseFilters),
-      ]);
+    // Filtering, ordering, pagination and the total all happen in Postgres,
+    // including the subscription-derived filters: the repo resolves those
+    // against the related Subscription row (see BusinessSubscriptionFilters),
+    // so only the current page's businesses are ever loaded. Reading every
+    // matching business to filter and slice in memory, as this used to do,
+    // grew with the whole table.
+    const [businesses, total] = await Promise.all([
+      this.businessRepo.findMany({
+        ...baseFilters, sortBy, sortDir, skip: (page - 1) * pageSize, take: pageSize,
+      }),
+      this.businessRepo.countMany(baseFilters),
+    ]);
 
-      const items = await Promise.all(
-        businesses.map((business) => this.toListItem(business, subscriptionByOrgId)),
-      );
-
-      return { items, page, pageSize, total };
-    }
-
-    // With a subscription filter, every matching business needs its
-    // Subscription resolved before we know if it belongs on the page —
-    // this is the one path that still reads the full filtered set and
-    // paginates in memory.
-    const businesses = await this.businessRepo.findMany(baseFilters);
     const items = await Promise.all(
       businesses.map((business) => this.toListItem(business, subscriptionByOrgId)),
     );
 
-    const filtered = items.filter((item) => {
-      if (parsed.data.subscriptionPlan && item.subscriptionPlan !== parsed.data.subscriptionPlan) return false;
-      if (parsed.data.subscriptionStatus && item.subscriptionStatus !== parsed.data.subscriptionStatus) return false;
-      if (parsed.data.commercialState && item.commercialState !== parsed.data.commercialState) return false;
-      return true;
-    });
-
-    const dirMultiplier = sortDir === "asc" ? 1 : -1;
-    filtered.sort((a, b) => {
-      const cmp = sortBy === "businessName"
-        ? a.businessName.localeCompare(b.businessName)
-        : a.createdAt.localeCompare(b.createdAt);
-      return cmp * dirMultiplier;
-    });
-
-    const total = filtered.length;
-    const pageItems = filtered.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
-
-    return { items: pageItems, page, pageSize, total };
+    return { items, page, pageSize, total };
   }
 
   private async toListItem(
