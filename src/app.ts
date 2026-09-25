@@ -72,11 +72,28 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
         .catch(() => false)
     ]);
 
-    // While draining, report unhealthy so the load balancer stops sending new
-    // traffic to this instance before it exits.
-    const status = isShuttingDown() ? "shutting_down" : db && cache ? "ok" : "degraded";
+    // The status code answers one question only: should this instance be
+    // sent traffic? Platform health checks (Render's healthCheckPath, the
+    // Dockerfile's HEALTHCHECK) act on it, so it must not report failure for
+    // something the app is built to survive.
+    //
+    // Redis down is exactly that: the rate limiter and the login attempt
+    // tracker both fall back to a per-process memory store and say so in the
+    // logs, and every other request path keeps working. Taking the instance
+    // out of rotation over it would turn a documented degradation into an
+    // outage. Postgres down is different — practically every route needs it —
+    // and so is draining, where the point is to stop receiving new traffic.
+    const status = isShuttingDown()
+      ? "shutting_down"
+      : !db
+        ? "unavailable"
+        : cache
+          ? "ok"
+          : "degraded";
 
-    response.status(status === "ok" ? 200 : 503).json({
+    const canServeTraffic = status === "ok" || status === "degraded";
+
+    response.status(canServeTraffic ? 200 : 503).json({
       status,
       db,
       cache,
