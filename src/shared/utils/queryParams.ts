@@ -11,8 +11,10 @@ export const asQueryString = (value: unknown): string | undefined =>
 
 export const asQueryNumber = (value: unknown): number | undefined => {
   const raw = asQueryString(value);
-  if (raw === undefined) return undefined;
+  // Number("") and Number("  ") are 0, not NaN — an empty param must read as
+  // "absent", not as the number zero.
+  if (raw === undefined || raw.trim() === "") return undefined;
 
   const parsed = Number(raw);
-  return Number.isNaN(parsed) ? undefined : parsed;
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
