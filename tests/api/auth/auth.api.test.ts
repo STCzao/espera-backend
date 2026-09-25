@@ -28,15 +28,13 @@ const authMocks = vi.hoisted(() => ({
 // keeps that real client out of an unrelated suite's way.
 const redisMocks = vi.hoisted(() => ({
   ensureRedisConnection: vi.fn(),
-  incr: vi.fn(),
-  expire: vi.fn(),
+  eval: vi.fn(),
 }));
 
 vi.mock("../../../src/shared/infrastructure/redis", () => ({
   ensureRedisConnection: redisMocks.ensureRedisConnection,
   redis: {
-    incr: redisMocks.incr,
-    expire: redisMocks.expire,
+    eval: redisMocks.eval,
   },
 }));
 
@@ -147,9 +145,8 @@ describe("auth API", () => {
     authMocks.verifyEmailExecute.mockReset();
 
     redisMocks.ensureRedisConnection.mockReset().mockResolvedValue(undefined);
-    redisMocks.incr.mockReset().mockResolvedValue(1);
-    redisMocks.expire.mockReset().mockResolvedValue(1);
-  });
+    redisMocks.eval.mockReset().mockResolvedValue(1);
+    });
 
   it("registers a local user and returns 201", async () => {
     authMocks.registerExecute.mockResolvedValue({ userId: "user-1" });

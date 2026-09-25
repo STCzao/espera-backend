@@ -12,15 +12,13 @@ import { reportRouter } from "../../../src/modules/report/interfaces/report.rout
 
 const redisMocks = vi.hoisted(() => ({
   ensureRedisConnection: vi.fn(),
-  incr: vi.fn(),
-  expire: vi.fn(),
+  eval: vi.fn(),
 }));
 
 vi.mock("../../../src/shared/infrastructure/redis", () => ({
   ensureRedisConnection: redisMocks.ensureRedisConnection,
   redis: {
-    incr: redisMocks.incr,
-    expire: redisMocks.expire,
+    eval: redisMocks.eval,
   },
 }));
 
@@ -59,9 +57,8 @@ const buildNext = () => vi.fn() as unknown as NextFunction;
 describe("rate limiter coverage — every route wiring the middleware has a matching policy", () => {
   beforeEach(() => {
     redisMocks.ensureRedisConnection.mockReset().mockResolvedValue(undefined);
-    redisMocks.incr.mockReset().mockResolvedValue(1);
-    redisMocks.expire.mockReset().mockResolvedValue(1);
-  });
+    redisMocks.eval.mockReset().mockResolvedValue(1);
+    });
 
   const routers: Array<[string, Router]> = [
     ["auth", authRouter],
@@ -93,7 +90,7 @@ describe("rate limiter coverage — every route wiring the middleware has a matc
           // getPolicy() isn't exported — the middleware only ever touches
           // Redis when a policy actually matched, so this is the
           // observable proxy for "this route is really being limited".
-          expect(redisMocks.incr).toHaveBeenCalled();
+          expect(redisMocks.eval).toHaveBeenCalled();
         });
       }
     });

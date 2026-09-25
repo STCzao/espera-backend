@@ -1,4 +1,5 @@
 import { ensureRedisConnection, redis } from "./redis";
+import { incrementWithExpiry } from "./redisCounter";
 
 interface MemoryAttemptState {
   failedAttempts: number;
@@ -73,10 +74,7 @@ export const recordFailedLoginAttempt = async (
   try {
     await ensureRedisConnection();
 
-    const failedAttempts = await redis.incr(attemptsKey(identity));
-    if (failedAttempts === 1) {
-      await redis.expire(attemptsKey(identity), ATTEMPT_WINDOW_SECONDS);
-    }
+    const failedAttempts = await incrementWithExpiry(attemptsKey(identity), ATTEMPT_WINDOW_SECONDS);
 
     let blockedUntil: Date | undefined;
     if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
