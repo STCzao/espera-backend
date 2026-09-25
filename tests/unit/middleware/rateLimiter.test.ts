@@ -5,8 +5,7 @@ import { rateLimiter } from "../../../src/middleware/rateLimiter";
 
 const redisMocks = vi.hoisted(() => ({
   ensureRedisConnection: vi.fn(),
-  incr: vi.fn(),
-  expire: vi.fn(),
+  eval: vi.fn(),
 }));
 
 const loggerMocks = vi.hoisted(() => ({
@@ -17,8 +16,7 @@ const loggerMocks = vi.hoisted(() => ({
 vi.mock("../../../src/shared/infrastructure/redis", () => ({
   ensureRedisConnection: redisMocks.ensureRedisConnection,
   redis: {
-    incr: redisMocks.incr,
-    expire: redisMocks.expire,
+    eval: redisMocks.eval,
   },
 }));
 
@@ -38,13 +36,15 @@ const buildRequest = (overrides: Partial<Request> = {}): Request =>
     ...overrides,
   }) as Request;
 
+// redisCounter runs INCR+EXPIRE as one Lua script: eval(script, numKeys, key, windowSeconds).
+const evalKeys = (): string[] => redisMocks.eval.mock.calls.map((call) => call[2] as string);
+
 const buildNext = () => vi.fn() as unknown as NextFunction;
 
 describe("rateLimiter", () => {
   beforeEach(() => {
     redisMocks.ensureRedisConnection.mockResolvedValue(undefined);
-    redisMocks.incr.mockResolvedValue(1);
-    redisMocks.expire.mockResolvedValue(1);
+    redisMocks.eval.mockResolvedValue(1);
     loggerMocks.error.mockReset();
     loggerMocks.info.mockReset();
   });
@@ -59,17 +59,20 @@ describe("rateLimiter", () => {
     );
 
     expect(next).toHaveBeenCalledWith();
-    expect(redisMocks.incr).not.toHaveBeenCalled();
+    expect(redisMocks.eval).not.toHaveBeenCalled();
   });
 
-  it("uses Redis and sets expiry on first request in a window", async () => {
+  it("uses Redis with an atomic increment-and-expire on each request", async () => {
     const next = buildNext();
 
     await rateLimiter(buildRequest(), {} as Response, next);
 
     expect(redisMocks.ensureRedisConnection).toHaveBeenCalled();
-    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:login:127.0.0.1");
-    expect(redisMocks.expire).toHaveBeenCalledWith(
+    expect(evalKeys()).toContain("rate-limit:login:127.0.0.1");
+    // Key + window go to the atomic INCR/EXPIRE script in one call.
+    expect(redisMocks.eval).toHaveBeenCalledWith(
+      expect.stringContaining("EXPIRE"),
+      1,
       "rate-limit:login:127.0.0.1",
       600,
     );
@@ -77,7 +80,7 @@ describe("rateLimiter", () => {
   });
 
   it("returns 429 after exceeding the configured limit", async () => {
-    redisMocks.incr.mockResolvedValue(6);
+    redisMocks.eval.mockResolvedValue(6);
     const next = buildNext();
 
     await rateLimiter(buildRequest(), {} as Response, next);
@@ -103,7 +106,7 @@ describe("rateLimiter", () => {
       next,
     );
 
-    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:127.0.0.1");
+    expect(evalKeys()).toContain("rate-limit:qr-resolve:127.0.0.1");
     expect(next).toHaveBeenCalledWith();
   });
 
@@ -117,7 +120,7 @@ describe("rateLimiter", () => {
     );
 
     expect(next).toHaveBeenCalledWith();
-    expect(redisMocks.incr).not.toHaveBeenCalled();
+    expect(redisMocks.eval).not.toHaveBeenCalled();
   });
 
   it("ignores a spoofed X-Forwarded-For header — buckets by request.ip only", async () => {
@@ -129,7 +132,7 @@ describe("rateLimiter", () => {
       next,
     );
 
-    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:login:127.0.0.1");
+    expect(evalKeys()).toContain("rate-limit:login:127.0.0.1");
   });
 
   it("falls back to memory when Redis is unavailable", async () => {
@@ -203,13 +206,13 @@ describe("rateLimiter", () => {
 
     // The Redis mock answers by key, so each bucket can be driven independently.
     const countsByKey = (counts: Record<string, number>) =>
-      redisMocks.incr.mockImplementation(async (key: string) => counts[key] ?? 1);
+      redisMocks.eval.mockImplementation(async (_script: string, _numKeys: number, key: string) => counts[key] ?? 1);
 
     it("counts both a coarse per-IP bucket and a tighter per-IP-per-business bucket", async () => {
       await rateLimiter(guestRequest({ businessId: BUSINESS }), {} as Response, buildNext());
 
-      expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:guest-turns:127.0.0.1");
-      expect(redisMocks.incr).toHaveBeenCalledWith(`rate-limit:guest-turns:scoped:127.0.0.1:${BUSINESS}`);
+      expect(evalKeys()).toContain("rate-limit:guest-turns:127.0.0.1");
+      expect(evalKeys()).toContain(`rate-limit:guest-turns:scoped:127.0.0.1:${BUSINESS}`);
     });
 
     it("lets the 6th customer through — the old flat per-IP limit was 5", async () => {
@@ -241,12 +244,12 @@ describe("rateLimiter", () => {
 
     it("ignores a missing or non-UUID businessId and falls back to the per-IP bucket only", async () => {
       for (const body of [undefined, {}, { businessId: 42 }, { businessId: "not-a-uuid" }]) {
-        redisMocks.incr.mockClear();
+        redisMocks.eval.mockClear();
 
         await rateLimiter(guestRequest(body), {} as Response, buildNext());
 
-        expect(redisMocks.incr).toHaveBeenCalledTimes(1);
-        expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:guest-turns:127.0.0.1");
+        expect(redisMocks.eval).toHaveBeenCalledTimes(1);
+        expect(evalKeys()).toContain("rate-limit:guest-turns:127.0.0.1");
       }
     });
   });
@@ -263,7 +266,7 @@ describe("rateLimiter", () => {
       buildNext(),
     );
 
-    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:127.0.0.1");
-    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:scoped:127.0.0.1:abc123");
+    expect(evalKeys()).toContain("rate-limit:qr-resolve:127.0.0.1");
+    expect(evalKeys()).toContain("rate-limit:qr-resolve:scoped:127.0.0.1:abc123");
   });
 });

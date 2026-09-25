@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
-import { ensureRedisConnection, redis } from "@shared/infrastructure/redis";
+import { ensureRedisConnection } from "@shared/infrastructure/redis";
+import { incrementWithExpiry } from "@shared/infrastructure/redisCounter";
 import { logger } from "@shared/infrastructure/logger";
 import { AppError } from "@shared/kernel/AppError";
 
@@ -115,13 +116,7 @@ const consumeFromRedis = async (
   windowSeconds: number,
 ): Promise<number> => {
   await ensureRedisConnection();
-  const count = await redis.incr(key);
-
-  if (count === 1) {
-    await redis.expire(key, windowSeconds);
-  }
-
-  return count;
+  return incrementWithExpiry(key, windowSeconds);
 };
 
 const consume = async (check: RateLimitCheck): Promise<number> => {
