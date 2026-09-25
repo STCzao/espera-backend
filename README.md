@@ -85,7 +85,7 @@ Documentacion adicional:
 
 ## Requisitos
 
-- Node.js 20+
+- Node.js 22+
 - npm 10+
 - PostgreSQL
 - Redis
@@ -103,8 +103,9 @@ Variables principales:
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_ACCESS_SECRET`
-- `JWT_REFRESH_SECRET`
 - `COOKIE_SECRET`
+- `TRUST_PROXY` (obligatoria detrás de un proxy: el rate limit y el bloqueo
+  de login agrupan por `request.ip`)
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_CALLBACK_URL`
@@ -149,7 +150,33 @@ npm run dev
 - `npm run lint`: corre ESLint
 - `npm run typecheck`: chequeo de tipos sin emitir archivos
 - `npm run typecheck:test`: chequeo de tipos incluyendo tests y config de Vitest
-- `npm run test:run`: corre la suite automatizada una vez
+- `npm run test:run`: corre la suite automatizada una vez (sin base de datos)
+- `npm run test:integration:setup`: aplica las migraciones a `espera_test`
+- `npm run test:integration`: corre los tests contra Postgres y Redis reales
+
+## Integración continua
+
+`.github/workflows/ci.yml` corre en cada push y pull request a `develop`/`main`:
+tipos (src y tests), lint, suite unitaria/API, build, tests de integración
+contra Postgres y Redis reales, `npm audit` y el build de la imagen Docker.
+
+## Imagen Docker
+
+```bash
+docker build -t espera-backend .
+docker run --rm -p 3000:3000 --env-file .env espera-backend
+```
+
+Imagen multi-etapa: compila con las dependencias completas y publica solo
+`dist` más las de producción, como usuario `node`. Antes de arrancar una
+versión nueva hay que aplicar las migraciones:
+
+```bash
+npx prisma migrate deploy
+```
+
+El proceso maneja `SIGTERM`/`SIGINT`: deja de aceptar conexiones, cierra
+Socket.IO, Redis y Prisma, y responde `503` en `/health` mientras drena.
 
 ## Endpoints principales
 
