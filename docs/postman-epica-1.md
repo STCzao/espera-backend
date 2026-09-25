@@ -397,7 +397,7 @@ Resultado esperado:
 - `businessSlug`: identificador publico para navegacion
 - `status`: `pending`
 
-Inmediatamente despues llamar refresh-token para obtener JWT con role: business_admin:
+El nuevo rol ya aplica sin renovar el token (authenticate lo lee de la base en cada request); `GET {{baseUrl}}/auth/me` lo confirma. Renovar el token sigue siendo valido para extender la sesion:
 
 ```text
 POST {{baseUrl}}/auth/refresh-token

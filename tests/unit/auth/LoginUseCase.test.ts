@@ -269,4 +269,50 @@ describe("LoginUseCase", () => {
       ).rejects.toMatchObject({ statusCode: 429, code: "LOGIN_TEMPORARILY_BLOCKED" });
     });
   });
+
+  describe("enumeración de usuarios", () => {
+    const rejectLogin = async (email: string) => {
+      const passwordHash = await bcrypt.hash("Password1", 12);
+      const useCase = new LoginUseCase(
+        new InMemoryUserRepo([buildUser({ email: "user@example.com", passwordHash })]),
+        new InMemoryRefreshSessionRepo(),
+        tokenService,
+      );
+
+      const compare = vi.spyOn(bcrypt, "compare");
+      compare.mockClear();
+      await expect(useCase.execute({ email, password: "WrongPassword1" })).rejects.toMatchObject({
+        statusCode: 401,
+      });
+      const calls = compare.mock.calls.length;
+      compare.mockRestore();
+      return calls;
+    };
+
+    it("runs bcrypt for an unknown email too, so the answer takes the same time as a wrong password", async () => {
+      // Asserted through the bcrypt call rather than the clock: bcrypt at cost
+      // 12 dominates the response, and skipping it for an unknown address (as
+      // this used to) is what leaked which emails have an account. A timing
+      // assertion would say the same thing but flake under CI load.
+      expect(await rejectLogin("nobody@example.com")).toBe(1);
+      expect(await rejectLogin("user@example.com")).toBe(1);
+    });
+
+    it("gives the same message for an unknown email and a wrong password", async () => {
+      const useCase = new LoginUseCase(
+        new InMemoryUserRepo([buildUser({ email: "user@example.com", passwordHash: await bcrypt.hash("Password1", 12) })]),
+        new InMemoryRefreshSessionRepo(),
+        tokenService,
+      );
+
+      await expect(useCase.execute({ email: "nobody@example.com", password: "x" })).rejects.toMatchObject({
+        statusCode: 401,
+        message: "Invalid credentials.",
+      });
+      await expect(useCase.execute({ email: "user@example.com", password: "x" })).rejects.toMatchObject({
+        statusCode: 401,
+        message: "Invalid credentials.",
+      });
+    });
+  });
 });

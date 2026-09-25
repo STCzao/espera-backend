@@ -277,7 +277,7 @@ cuenta durante la espera.
 3. POST /api/auth/login             → tokens (JWT role: user)
 4. POST /api/business               → crea negocio; promueve usuario a business_admin + pending
                                       devuelve { businessId, businessSlug, status: "pending" }
-5. POST /api/auth/refresh-token     → llamar inmediatamente; nuevo JWT refleja role: business_admin
+5. (el nuevo rol ya aplica: authenticate lo lee de la base en cada request)
 ```
 
 ### Contrato Backend

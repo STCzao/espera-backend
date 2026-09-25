@@ -8,6 +8,25 @@ export interface FindPendingBusinessesFilters {
   toDate?: Date;
 }
 
+/**
+ * Subscription-derived filters, resolved against the Business's Organization.
+ *
+ * `effectiveStatus` is the *reconciled* status, the same one
+ * ResolveEffectiveSubscriptionStatusUseCase computes: a subscription still
+ * stored as "trial" whose trialEndsAt has passed counts as "expired" here,
+ * so filtering never depends on whether anything has gotten around to
+ * persisting that transition yet.
+ *
+ * The literal unions mirror the organization module's SubscriptionPlan and
+ * SubscriptionStatus; they're repeated instead of imported because the
+ * business domain layer may only depend on `shared` (see .eslintrc.json's
+ * boundaries rules).
+ */
+export interface BusinessSubscriptionFilters {
+  plan?: "basic" | "pro" | "premium";
+  effectiveStatus?: "pending" | "trial" | "active" | "expired" | "cancelled";
+}
+
 export interface FindManyBusinessesFilters {
   organizationId?: string;
   categoryId?: string;
@@ -16,6 +35,8 @@ export interface FindManyBusinessesFilters {
   sortDir?: "asc" | "desc";
   skip?: number;
   take?: number;
+  /** Matches only businesses whose Organization has a subscription like this. */
+  subscription?: BusinessSubscriptionFilters;
 }
 
 export interface IBusinessRepo extends Repository<Business> {
@@ -27,10 +48,7 @@ export interface IBusinessRepo extends Repository<Business> {
    * Unfiltered by date/Turn activity — every Business matching the given
    * filters, regardless of status. `sortBy`/`sortDir`/`skip`/`take` push
    * ordering and pagination down to the database when provided; omit them
-   * to get every matching row (a caller that also needs to filter by a
-   * *derived* field — like effective subscription plan/status, which
-   * isn't a queryable column — has to paginate in memory after resolving
-   * that field itself, see ListAllBusinessesUseCase).
+   * to get every matching row.
    */
   findMany(filters?: FindManyBusinessesFilters): Promise<Business[]>;
   /** Same filters as findMany (sortBy/sortDir/skip/take ignored), total count only. */

@@ -7,9 +7,21 @@ import type { User } from "../domain/User";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Stated on both sides (here and in authenticate's jwt.verify) instead of
+// relying on the library default: a verifier that accepts whatever the
+// token's own header declares is the classic JWT algorithm-confusion bug.
+export const ACCESS_TOKEN_ALGORITHM = "HS256" as const;
+
 export class JWTTokenService {
   /**
    * Creates a signed JWT access token for an authenticated user.
+   *
+   * Carries identity only. `role` and `approvalStatus` used to travel here
+   * too, but nothing reads them any more: `authenticate` re-reads both from
+   * the database on every request, so a token issued before a demotion,
+   * approval or block would have kept asserting the old values for up to
+   * JWT_ACCESS_EXPIRES_IN. Clients that need them ask GET /auth/me, which
+   * answers from the same authoritative read.
    */
   public generateAccessToken(user: User): string {
     const expiresIn = env.JWT_ACCESS_EXPIRES_IN as SignOptions["expiresIn"];
@@ -17,13 +29,12 @@ export class JWTTokenService {
     return jwt.sign(
       {
         email: user.email,
-        role: user.role,
         firstName: user.firstName,
         lastName: user.lastName,
-        approvalStatus: user.approvalStatus,
       },
       getAccessTokenSecret(),
       {
+        algorithm: ACCESS_TOKEN_ALGORITHM,
         subject: user.id,
         expiresIn
       }

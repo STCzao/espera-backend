@@ -35,6 +35,13 @@ const loginSchema = z.object({
 //    guesser who rotates IPs, without being cheap to abuse.
 const ACCOUNT_WIDE_MAX_FAILED_ATTEMPTS = 30;
 
+// A bcrypt hash of a value nothing can match, compared against when no user
+// (or no local password) is found. Without it an unknown email answers in
+// microseconds while a known one pays for a full bcrypt comparison, and that
+// gap alone reveals which addresses have an account here. Generated once at
+// module load, with the same cost factor as a real password hash.
+const ABSENT_USER_PASSWORD_HASH = bcrypt.hashSync(randomUUID(), 12);
+
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export interface LoginOutput {
@@ -89,15 +96,19 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
     }
 
     const user = await this.userRepo.findByEmail(email);
+
+    // Always one bcrypt comparison, against the real hash or the decoy, so
+    // "no such account" and "wrong password" take the same time to answer.
+    const passwordMatches = await bcrypt.compare(
+      parsed.data.password,
+      user?.passwordHash ?? ABSENT_USER_PASSWORD_HASH,
+    );
+
     if (!user?.passwordHash) {
       await this.recordFailure(clientIdentity, accountIdentity);
       throw AppError.unauthorized("Invalid credentials.");
     }
 
-    const passwordMatches = await bcrypt.compare(
-      parsed.data.password,
-      user.passwordHash,
-    );
     if (!passwordMatches) {
       const blockDurationSeconds = user.role === "super_admin"
         ? SUPER_ADMIN_BLOCK_DURATION_SECONDS

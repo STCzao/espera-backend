@@ -79,4 +79,29 @@ describe("authenticate", () => {
 
     expect(next).toHaveBeenCalledWith(boom);
   });
+
+  it("rejects a token signed with 'none', whatever its header claims", async () => {
+    loaderMocks.loadAuthenticatedUser.mockResolvedValue({
+      id: USER_ID, email: "a@b.c", role: "user", approvalStatus: "approved", isBlocked: false,
+    });
+    // jsonwebtoken only emits alg:none when explicitly asked, which is exactly
+    // the token an attacker forges to skip the signature altogether.
+    const unsigned = jwt.sign({ email: "a@b.c" }, "", { algorithm: "none", subject: USER_ID });
+
+    const { next } = await run(unsigned);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 401 }));
+    expect(loaderMocks.loadAuthenticatedUser).not.toHaveBeenCalled();
+  });
+
+  it("accepts only HS256, the algorithm the tokens are issued with", async () => {
+    loaderMocks.loadAuthenticatedUser.mockResolvedValue({
+      id: USER_ID, email: "a@b.c", role: "user", approvalStatus: "approved", isBlocked: false,
+    });
+    const hs512 = jwt.sign({ email: "a@b.c" }, secret, { algorithm: "HS512", subject: USER_ID });
+
+    const { next } = await run(hs512);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 401 }));
+  });
 });

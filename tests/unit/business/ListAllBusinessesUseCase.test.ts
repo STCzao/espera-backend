@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ListAllBusinessesUseCase } from "../../../src/modules/business/application/ListAllBusinessesUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
@@ -28,10 +28,22 @@ const buildFilterFixture = () => {
       createdAt: new Date("2026-02-01T00:00:00.000Z"),
     }),
   ]);
-  const subscriptionRepo = new InMemorySubscriptionRepo([
+  const subscriptions = [
     buildSubscription({ id: "sub-a", organizationId: ORG_A, plan: "pro", status: "active" }),
     buildSubscription({ id: "sub-b", organizationId: ORG_B, plan: "basic", status: "expired" }),
-  ]);
+  ];
+  const subscriptionRepo = new InMemorySubscriptionRepo(subscriptions);
+  // The subscription-shaped filters are resolved by the business repo now
+  // (through the Organization relation in Postgres), so the fake needs the
+  // same data the subscription repo holds — seeded from one list so the two
+  // can't drift apart.
+  for (const subscription of subscriptions) {
+    businessRepo.subscriptionsByOrgId.set(subscription.organizationId, {
+      plan: subscription.plan,
+      status: subscription.status,
+      trialEndsAt: subscription.trialEndsAt,
+    });
+  }
   return { businessRepo, subscriptionRepo };
 };
 
@@ -203,5 +215,109 @@ describe("ListAllBusinessesUseCase — errores", () => {
     await expect(
       buildUseCase().execute({ organizationId: "not-a-uuid" }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe("ListAllBusinessesUseCase — el filtro de suscripción se resuelve en la base", () => {
+  const seed = (subscription: { plan: "basic" | "pro" | "premium"; status: "pending" | "trial" | "active" | "expired" | "cancelled"; trialEndsAt?: Date | null }, count: number) => {
+    const businessRepo = new InMemoryBusinessRepo(
+      Array.from({ length: count }, (_, i) =>
+        buildBusiness({
+          id: `business-${i}`,
+          name: `Business ${String(i).padStart(2, "0")}`,
+          organizationId: ORG_A,
+          createdAt: new Date(2026, 0, i + 1),
+        }),
+      ),
+    );
+    businessRepo.subscriptionsByOrgId.set(ORG_A, subscription);
+    const subscriptionRepo = new InMemorySubscriptionRepo([
+      buildSubscription({ id: "sub-a", organizationId: ORG_A, ...subscription }),
+    ]);
+    return { businessRepo, subscriptionRepo };
+  };
+
+  it("asks the repo for one page only, instead of reading every match to slice in memory", async () => {
+    const { businessRepo, subscriptionRepo } = seed({ plan: "pro", status: "active" }, 30);
+    const findMany = vi.spyOn(businessRepo, "findMany");
+
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({
+      commercialState: "paying_pro",
+      page: 2,
+      pageSize: 10,
+    });
+
+    expect(result.items).toHaveLength(10);
+    expect(result.total).toBe(30);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 10,
+        take: 10,
+        subscription: { plan: "pro", effectiveStatus: "active" },
+      }),
+    );
+  });
+
+  it("decomposes every commercialState into a plan + effective status the repo can query", async () => {
+    const { businessRepo, subscriptionRepo } = seed({ plan: "basic", status: "active" }, 1);
+    const findMany = vi.spyOn(businessRepo, "findMany");
+    const useCase = buildUseCase(businessRepo, subscriptionRepo);
+
+    const cases = [
+      ["pending_approval", { plan: undefined, effectiveStatus: "pending" }],
+      ["trialing_premium", { plan: "premium", effectiveStatus: "trial" }],
+      ["paying_basic", { plan: "basic", effectiveStatus: "active" }],
+      ["cancelled", { plan: undefined, effectiveStatus: "cancelled" }],
+    ] as const;
+
+    for (const [commercialState, expected] of cases) {
+      findMany.mockClear();
+      await useCase.execute({ commercialState });
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ subscription: expected }));
+    }
+  });
+
+  it("does not filter on subscription at all when no subscription param is given", async () => {
+    const { businessRepo, subscriptionRepo } = seed({ plan: "pro", status: "active" }, 1);
+    const findMany = vi.spyOn(businessRepo, "findMany");
+
+    await buildUseCase(businessRepo, subscriptionRepo).execute({ status: "approved" });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ subscription: undefined }));
+  });
+
+  it("counts a lapsed trial as expired, without waiting for anything to rewrite its status", async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const { businessRepo, subscriptionRepo } = seed(
+      { plan: "pro", status: "trial", trialEndsAt: yesterday },
+      1,
+    );
+    const useCase = buildUseCase(businessRepo, subscriptionRepo);
+
+    await expect(useCase.execute({ commercialState: "expired" })).resolves.toMatchObject({ total: 1 });
+    await expect(useCase.execute({ commercialState: "trialing_pro" })).resolves.toMatchObject({ total: 0 });
+  });
+
+  it("still finds a trial that has not lapsed yet", async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const { businessRepo, subscriptionRepo } = seed(
+      { plan: "pro", status: "trial", trialEndsAt: tomorrow },
+      1,
+    );
+    const useCase = buildUseCase(businessRepo, subscriptionRepo);
+
+    await expect(useCase.execute({ commercialState: "trialing_pro" })).resolves.toMatchObject({ total: 1 });
+    await expect(useCase.execute({ commercialState: "expired" })).resolves.toMatchObject({ total: 0 });
+  });
+
+  it("matches nothing when commercialState and the individual params contradict each other", async () => {
+    const { businessRepo, subscriptionRepo } = seed({ plan: "pro", status: "active" }, 1);
+
+    const result = await buildUseCase(businessRepo, subscriptionRepo).execute({
+      commercialState: "paying_pro",
+      subscriptionPlan: "basic",
+    });
+
+    expect(result.total).toBe(0);
   });
 });
