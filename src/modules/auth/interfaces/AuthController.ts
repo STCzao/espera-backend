@@ -218,7 +218,10 @@ export class AuthController {
     request: Request,
     response: Response,
   ): Promise<void> => {
-    const result = await this.loginUseCase.execute(request.body);
+    const result = await this.loginUseCase.execute({
+      ...request.body,
+      ipAddress: request.ip,
+    });
     setRefreshTokenCookie(response, result.refreshToken);
     logger.info({ email: request.body.email }, "User logged in");
     // The refresh token only ever goes out via the httpOnly cookie above —

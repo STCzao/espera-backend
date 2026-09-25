@@ -21,7 +21,19 @@ import { PostgresUserRepo } from "../infrastructure/PostgresUserRepo";
 const loginSchema = z.object({
   email: z.string().email("Invalid email."),
   password: z.string().min(1, "Password is required."),
+  // Caller's network address (request.ip). Optional so callers without one
+  // (scripts, tests) still work; they all share the "unknown" client bucket.
+  ipAddress: z.string().max(64).optional(),
 });
+
+// Failed logins are counted twice, on purpose:
+//  - per (email, IP): 5 strikes lock *that client* out of that account. A
+//    third party who types someone's email wrong only locks themselves out;
+//    if the lock were per email alone, anyone could keep a victim (or the
+//    super admin) permanently locked out just by failing on purpose.
+//  - per email across all IPs, with a much higher ceiling: still stops a
+//    guesser who rotates IPs, without being cheap to abuse.
+const ACCOUNT_WIDE_MAX_FAILED_ATTEMPTS = 30;
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
@@ -37,6 +49,17 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
     private readonly tokenService = new JWTTokenService(),
   ) {}
 
+  private async recordFailure(
+    clientIdentity: string,
+    accountIdentity: string,
+    blockDurationSeconds?: number,
+  ): Promise<void> {
+    await Promise.all([
+      recordFailedLoginAttempt(clientIdentity, blockDurationSeconds),
+      recordFailedLoginAttempt(accountIdentity, blockDurationSeconds, ACCOUNT_WIDE_MAX_FAILED_ATTEMPTS),
+    ]);
+  }
+
   /**
    * Authenticates a user and issues a new access token plus refresh token.
    * Persists only the refresh token hash, never the plaintext token.
@@ -48,11 +71,17 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
     }
 
     const email = parsed.data.email.trim().toLowerCase();
-    const loginAttemptStatus = await getLoginAttemptStatus(email);
-    if (
-      loginAttemptStatus.blockedUntil &&
-      loginAttemptStatus.blockedUntil.getTime() > Date.now()
-    ) {
+    const clientIdentity = `${email}|${parsed.data.ipAddress ?? "unknown"}`;
+    const accountIdentity = `account:${email}`;
+
+    const [clientStatus, accountStatus] = await Promise.all([
+      getLoginAttemptStatus(clientIdentity),
+      getLoginAttemptStatus(accountIdentity),
+    ]);
+    const isBlocked = [clientStatus, accountStatus].some(
+      (status) => status.blockedUntil && status.blockedUntil.getTime() > Date.now(),
+    );
+    if (isBlocked) {
       throw AppError.tooManyRequests(
         "Too many failed login attempts. Please try again later.",
         "LOGIN_TEMPORARILY_BLOCKED",
@@ -61,7 +90,7 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
 
     const user = await this.userRepo.findByEmail(email);
     if (!user?.passwordHash) {
-      await recordFailedLoginAttempt(email);
+      await this.recordFailure(clientIdentity, accountIdentity);
       throw AppError.unauthorized("Invalid credentials.");
     }
 
@@ -73,7 +102,7 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       const blockDurationSeconds = user.role === "super_admin"
         ? SUPER_ADMIN_BLOCK_DURATION_SECONDS
         : undefined;
-      await recordFailedLoginAttempt(email, blockDurationSeconds);
+      await this.recordFailure(clientIdentity, accountIdentity, blockDurationSeconds);
       throw AppError.unauthorized("Invalid credentials.");
     }
 
@@ -95,7 +124,9 @@ export class LoginUseCase implements UseCase<LoginInput, LoginOutput> {
       );
     }
 
-    await resetLoginAttemptStatus(email);
+    // Only this client's strikes are cleared: the account-wide counter keeps
+    // running so a successful login can't be used to reset an IP-rotating guesser.
+    await resetLoginAttemptStatus(clientIdentity);
 
     const { token, hash } = this.tokenService.generateRefreshToken();
 
