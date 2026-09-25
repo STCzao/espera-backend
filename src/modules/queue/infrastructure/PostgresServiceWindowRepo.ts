@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { ServiceWindow, ServiceWindowType } from "../domain/ServiceWindow";
 import type { IServiceWindowRepo } from "../domain/IServiceWindowRepo";
 
@@ -37,14 +38,14 @@ export class PostgresServiceWindowRepo implements IServiceWindowRepo {
     return rows.map(toServiceWindow);
   }
 
-  public async save(entity: ServiceWindow): Promise<ServiceWindow> {
+  public async save(entity: ServiceWindow, tx?: TransactionHandle): Promise<ServiceWindow> {
     const data = {
       queueId:  entity.queueId,
       name:     entity.name,
       type:     toTypeEnum(entity.type),
       isActive: entity.isActive,
     };
-    const row = await prisma.serviceWindow.upsert({
+    const row = await resolvePrismaClient(tx).serviceWindow.upsert({
       where: { id: entity.id },
       create: { id: entity.id, ...data },
       update: { name: data.name, type: data.type, isActive: data.isActive },

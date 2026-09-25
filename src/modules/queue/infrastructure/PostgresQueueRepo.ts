@@ -1,4 +1,5 @@
-import { prisma } from "@shared/infrastructure/prisma";
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { Queue } from "../domain/Queue";
 import type { IQueueRepo } from "../domain/IQueueRepo";
 
@@ -39,14 +40,14 @@ export class PostgresQueueRepo implements IQueueRepo {
     return row ? toQueue(row) : null;
   }
 
-  public async save(entity: Queue): Promise<Queue> {
+  public async save(entity: Queue, tx?: TransactionHandle): Promise<Queue> {
     const data = {
       businessId: entity.businessId,
       name: entity.name,
       prefix: entity.prefix,
       isActive: entity.isActive,
     };
-    const row = await prisma.queue.upsert({
+    const row = await resolvePrismaClient(tx).queue.upsert({
       where: { id: entity.id },
       create: { id: entity.id, ...data },
       update: data,
