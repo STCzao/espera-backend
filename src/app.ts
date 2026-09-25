@@ -21,6 +21,7 @@ import { PostgresTurnRepo } from "./modules/queue/infrastructure/PostgresTurnRep
 import { authorizeQueueJoin } from "./modules/queue/infrastructure/realtime/authorizeQueueJoin";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env, getTrustProxySetting } from "./shared/infrastructure/env";
+import { createShutdownHandler, isShuttingDown } from "./shared/infrastructure/gracefulShutdown";
 import { logger } from "./shared/infrastructure/logger";
 import { prisma } from "./shared/infrastructure/prisma";
 import { ensureRedisConnection, redis } from "./shared/infrastructure/redis";
@@ -71,7 +72,9 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
         .catch(() => false)
     ]);
 
-    const status = db && cache ? "ok" : "degraded";
+    // While draining, report unhealthy so the load balancer stops sending new
+    // traffic to this instance before it exits.
+    const status = isShuttingDown() ? "shutting_down" : db && cache ? "ok" : "degraded";
 
     response.status(status === "ok" ? 200 : 503).json({
       status,
@@ -148,9 +151,38 @@ export const createServer = () => {
 };
 
 if (require.main === module) {
-  const { server } = createServer();
+  const { server, io } = createServer();
 
   server.listen(env.PORT, () => {
     logger.info({ port: env.PORT }, "HTTP server listening");
   });
+
+  const shutdown = createShutdownHandler({
+    logger,
+    targets: [
+      {
+        // io.close() also closes the HTTP server it is attached to: it stops
+        // accepting connections, disconnects sockets and resolves once
+        // in-flight requests finish. Idle keep-alive connections would keep
+        // it waiting, so they are dropped explicitly.
+        name: "http+socket.io",
+        close: () =>
+          new Promise<void>((resolve, reject) => {
+            void io.close((error) => (error ? reject(error) : resolve()));
+            server.closeIdleConnections();
+          }),
+      },
+      {
+        name: "redis",
+        close: async () => {
+          if (redis.status === "ready") await redis.quit();
+          else redis.disconnect();
+        },
+      },
+      { name: "prisma", close: () => prisma.$disconnect() },
+    ],
+  });
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
