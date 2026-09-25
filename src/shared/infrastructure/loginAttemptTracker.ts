@@ -12,7 +12,7 @@ interface LoginAttemptStatus {
   blockedUntil?: Date;
 }
 
-const MAX_FAILED_ATTEMPTS = 5;
+export const MAX_FAILED_ATTEMPTS = 5;
 const ATTEMPT_WINDOW_SECONDS = 15 * 60;
 const BLOCK_DURATION_SECONDS = 5 * 60;
 
@@ -70,6 +70,7 @@ export const getLoginAttemptStatus = async (
 export const recordFailedLoginAttempt = async (
   identity: string,
   blockDurationSeconds: number = BLOCK_DURATION_SECONDS,
+  maxFailedAttempts: number = MAX_FAILED_ATTEMPTS,
 ): Promise<LoginAttemptStatus> => {
   try {
     await ensureRedisConnection();
@@ -77,7 +78,7 @@ export const recordFailedLoginAttempt = async (
     const failedAttempts = await incrementWithExpiry(attemptsKey(identity), ATTEMPT_WINDOW_SECONDS);
 
     let blockedUntil: Date | undefined;
-    if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+    if (failedAttempts >= maxFailedAttempts) {
       blockedUntil = new Date(Date.now() + blockDurationSeconds * 1000);
       await redis.set(blockKey(identity), blockedUntil.getTime().toString(), "EX", blockDurationSeconds);
       await redis.del(attemptsKey(identity));
@@ -88,7 +89,7 @@ export const recordFailedLoginAttempt = async (
     const current = getMemoryStatus(identity);
     const failedAttempts = current.failedAttempts + 1;
     const blockedUntil =
-      failedAttempts >= MAX_FAILED_ATTEMPTS
+      failedAttempts >= maxFailedAttempts
         ? new Date(Date.now() + blockDurationSeconds * 1000)
         : undefined;
 

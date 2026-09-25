@@ -73,8 +73,10 @@ describe("LoginUseCase", () => {
       userId: user.id,
       tokenHash: "refresh-token-hash",
     });
+    // Only this client's strikes are cleared, never the account-wide counter.
+    expect(loginAttemptMocks.resetLoginAttemptStatus).toHaveBeenCalledTimes(1);
     expect(loginAttemptMocks.resetLoginAttemptStatus).toHaveBeenCalledWith(
-      "user@example.com",
+      "user@example.com|unknown",
     );
   });
 
@@ -98,8 +100,13 @@ describe("LoginUseCase", () => {
     });
 
     expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
-      "user@example.com",
+      "user@example.com|unknown",
       undefined,
+    );
+    expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
+      "account:user@example.com",
+      undefined,
+      30,
     );
   });
 
@@ -122,7 +129,7 @@ describe("LoginUseCase", () => {
     ).rejects.toMatchObject({ statusCode: 401 });
 
     expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
-      "user@example.com",
+      "user@example.com|unknown",
       15 * 60,
     );
   });
@@ -198,6 +205,68 @@ describe("LoginUseCase", () => {
     ).rejects.toMatchObject({
       statusCode: 403,
       code: "ACCOUNT_BLOCKED",
+    });
+  });
+
+  describe("lockout scope (a third party must not be able to lock a victim out)", () => {
+    const future = () => new Date(Date.now() + 5 * 60 * 1000);
+    const statusFor = (blocked: Record<string, Date>) =>
+      loginAttemptMocks.getLoginAttemptStatus.mockImplementation(async (identity: string) => ({
+        failedAttempts: 0,
+        blockedUntil: blocked[identity],
+      }));
+
+    const build = async () => {
+      const passwordHash = await bcrypt.hash("Password1", 12);
+      return new LoginUseCase(
+        new InMemoryUserRepo([buildUser({ passwordHash })]),
+        new InMemoryRefreshSessionRepo(),
+        tokenService,
+      );
+    };
+
+    it("counts strikes per (email, IP), using the caller's address", async () => {
+      const useCase = await build();
+
+      await expect(
+        useCase.execute({ email: "user@example.com", password: "Wrong1", ipAddress: "203.0.113.9" }),
+      ).rejects.toMatchObject({ statusCode: 401 });
+
+      expect(loginAttemptMocks.recordFailedLoginAttempt).toHaveBeenCalledWith(
+        "user@example.com|203.0.113.9",
+        undefined,
+      );
+    });
+
+    it("blocks a client that locked itself out of the account", async () => {
+      statusFor({ "user@example.com|203.0.113.9": future() });
+      const useCase = await build();
+
+      await expect(
+        useCase.execute({ email: "user@example.com", password: "Password1", ipAddress: "203.0.113.9" }),
+      ).rejects.toMatchObject({ statusCode: 429, code: "LOGIN_TEMPORARILY_BLOCKED" });
+    });
+
+    it("does NOT block the real owner, on another IP, because an attacker's IP got locked", async () => {
+      statusFor({ "user@example.com|198.51.100.7": future() });
+      const useCase = await build();
+
+      const result = await useCase.execute({
+        email: "user@example.com",
+        password: "Password1",
+        ipAddress: "203.0.113.9",
+      });
+
+      expect(result.accessToken).toBe("access-token");
+    });
+
+    it("blocks everyone once the account-wide ceiling is hit (IP-rotating guesser)", async () => {
+      statusFor({ "account:user@example.com": future() });
+      const useCase = await build();
+
+      await expect(
+        useCase.execute({ email: "user@example.com", password: "Password1", ipAddress: "203.0.113.9" }),
+      ).rejects.toMatchObject({ statusCode: 429, code: "LOGIN_TEMPORARILY_BLOCKED" });
     });
   });
 });
