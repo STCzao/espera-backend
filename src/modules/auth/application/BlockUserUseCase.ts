@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
+import type { IUnitOfWork } from "@shared/kernel/UnitOfWork";
+import { PrismaUnitOfWork } from "@shared/infrastructure/PrismaUnitOfWork";
 import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
 import type { IUserRepo } from "../domain/IUserRepo";
 import { PostgresRefreshSessionRepo } from "../infrastructure/PostgresRefreshSessionRepo";
@@ -38,6 +40,7 @@ export class BlockUserUseCase implements UseCase<BlockUserInput, BlockUserOutput
   public constructor(
     private readonly userRepo: IUserRepo = new PostgresUserRepo(),
     private readonly refreshSessionRepo: IRefreshSessionRepo = new PostgresRefreshSessionRepo(),
+    private readonly unitOfWork: IUnitOfWork = new PrismaUnitOfWork(),
   ) {}
 
   public async execute(input: BlockUserInput): Promise<BlockUserOutput> {
@@ -52,16 +55,25 @@ export class BlockUserUseCase implements UseCase<BlockUserInput, BlockUserOutput
     }
 
     const now = new Date();
-    const updated = await this.userRepo.save({
-      ...user,
-      isBlocked: true,
-      blockedByUserId: parsed.data.blockedByUserId,
-      blockedAt: now,
-      blockReason: parsed.data.reason,
-      updatedAt: now,
-    });
+    // The block flag and the session revocation commit together: if they
+    // were separate, a failed revocation after the flag was saved would leave
+    // the user blocked but with live sessions, and any retry would be turned
+    // away by USER_ALREADY_BLOCKED (SuspendReportedUseCase treats that as
+    // "already done"), so the sessions would never actually be cut off.
+    const updated = await this.unitOfWork.run(async (tx) => {
+      const saved = await this.userRepo.save({
+        ...user,
+        isBlocked: true,
+        blockedByUserId: parsed.data.blockedByUserId,
+        blockedAt: now,
+        blockReason: parsed.data.reason,
+        updatedAt: now,
+      }, tx);
 
-    await this.refreshSessionRepo.revokeAllByUserId(user.id);
+      await this.refreshSessionRepo.revokeAllByUserId(user.id, tx);
+
+      return saved;
+    });
 
     return {
       userId: updated.id,
