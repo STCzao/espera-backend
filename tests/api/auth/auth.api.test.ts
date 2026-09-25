@@ -118,6 +118,18 @@ vi.mock("../../../src/modules/auth/infrastructure/GoogleOAuthService", () => ({
   },
 }));
 
+// authenticate re-reads the user from the database on every request; these
+// suites have no database, so the loader answers with an approved business admin.
+vi.mock("../../../src/middleware/loadAuthenticatedUser", () => ({
+  loadAuthenticatedUser: async (id: string) => ({
+    id,
+    email: "owner@example.com",
+    role: "business_admin",
+    approvalStatus: "approved",
+    isBlocked: false,
+  }),
+}));
+
 describe("auth API", () => {
   beforeEach(() => {
     authMocks.approveBusinessAccountExecute.mockReset();
