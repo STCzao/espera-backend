@@ -20,6 +20,9 @@ const schema = z.object({
   reason:           z.string().trim().min(1, "Suspension reason is required.").max(500),
 });
 
+const MAX_CANCEL_ATTEMPTS = 3;
+const TERMINAL_STATUSES: Turn["status"][] = ["cancelled", "completed", "no_show"];
+
 export type SuspendBusinessInput = z.infer<typeof schema>;
 
 /**
@@ -76,7 +79,7 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
     // commit together or not at all — a partial failure used to leave the
     // business marked "suspended" while some sessions/turns it's supposed
     // to have cut off stayed live.
-    const updated = await this.unitOfWork.run(async (tx) => {
+    const { updatedBusiness: updated, cancelled } = await this.unitOfWork.run(async (tx) => {
       const updatedBusiness = await this.businessRepo.save({
         ...business,
         status: "suspended",
@@ -90,17 +93,18 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
         activeUserIds.map((userId) => this.refreshSessionRepo.revokeAllByUserId(userId, tx)),
       );
 
-      for (const { turn } of turnsToCancel) {
-        await saveTurnOrThrowConflict(this.turnRepo, { ...turn, status: "cancelled", cancelledAt: now }, tx);
+      const cancelled: Array<{ queueId: string; turn: Turn }> = [];
+      for (const { queueId, turn } of turnsToCancel) {
+        if (await this.cancelTurn(turn, now, tx)) cancelled.push({ queueId, turn });
       }
 
-      return updatedBusiness;
+      return { updatedBusiness, cancelled };
     });
 
     // Broadcast only after the transaction actually commits — emitting
     // before that would tell clients about a cancellation that could still
     // be rolled back.
-    for (const { queueId, turn } of turnsToCancel) {
+    for (const { queueId, turn } of cancelled) {
       this.emitter?.emitQueueUpdate(queueId, {
         cancelledTurnId: turn.id,
         cancelledDisplayNumber: turn.displayNumber,
@@ -108,5 +112,30 @@ export class SuspendBusinessUseCase implements UseCase<SuspendBusinessInput, Bus
     }
 
     return updated;
+  }
+
+  /**
+   * Cancels one turn, tolerating a concurrent write: a turn that moved on
+   * between the up-front read and this write (an employee just attended it,
+   * the customer left) must not abort the whole suspension, which is the one
+   * thing that has to succeed. The conflict is re-read and retried while the
+   * turn is still active; if it already reached a terminal state there is
+   * nothing left to cancel. Returns whether this call cancelled it.
+   */
+  private async cancelTurn(turn: Turn, now: Date, tx: unknown): Promise<boolean> {
+    let current: Turn | null = turn;
+    for (let attempt = 0; attempt < MAX_CANCEL_ATTEMPTS && current; attempt++) {
+      try {
+        await saveTurnOrThrowConflict(this.turnRepo, { ...current, status: "cancelled", cancelledAt: now }, tx);
+        return true;
+      } catch (error) {
+        const isConflict = error instanceof AppError && error.code === "TURN_CONFLICT";
+        if (!isConflict) throw error;
+        const fresh: Turn | null = await this.turnRepo.findById(current.id);
+        current = fresh && !TERMINAL_STATUSES.includes(fresh.status) ? fresh : null;
+      }
+    }
+    if (current) throw AppError.conflict("Could not cancel every active turn. Please retry.", "TURN_CONFLICT");
+    return false;
   }
 }
