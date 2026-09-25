@@ -198,6 +198,15 @@ export class InMemoryTurnRepo implements ITurnRepo {
     );
   }
 
+  public async countActiveGuestTurnsByQueue(queueId: string): Promise<number> {
+    return [...this.turns.values()].filter(
+      (t) =>
+        t.queueId === queueId &&
+        !t.customerId &&
+        (t.status === "waiting" || t.status === "called" || t.status === "attending" || t.status === "redirected"),
+    ).length;
+  }
+
   public async findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null> {
     return (
       [...this.turns.values()].find(

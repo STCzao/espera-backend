@@ -165,4 +165,17 @@ describe("PostgresTurnRepo (real Postgres)", () => {
       expect(reloaded?.status).toBe("called");
     });
   });
+
+  it("countActiveGuestTurnsByQueue counts only active turns without an account", async () => {
+    const guestWaiting = await repo.createWithNextNumber(buildTurnData());
+    const guestCalled = await repo.createWithNextNumber(buildTurnData());
+    const guestCancelled = await repo.createWithNextNumber(buildTurnData());
+    const accountTurn = await repo.createWithNextNumber(buildTurnData({ customerId: ownerId, guestName: undefined }));
+    createdTurnIds.push(guestWaiting.id, guestCalled.id, guestCancelled.id, accountTurn.id);
+
+    await repo.save({ ...guestCalled, status: "called", calledAt: new Date() });
+    await repo.save({ ...guestCancelled, status: "cancelled", cancelledAt: new Date() });
+
+    expect(await repo.countActiveGuestTurnsByQueue(queueId)).toBe(2);
+  });
 });

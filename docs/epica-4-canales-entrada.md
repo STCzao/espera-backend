@@ -134,6 +134,24 @@ mismo criterio que ya usa `activeQueueId` en `ListMyBusinessesUseCase`) y
 delega el resto — reglas de negocio, validaciones — a `CreateTurnUseCase`
 sin duplicarlas.
 
+**Tope por cola:** una cola acepta como máximo 50 turnos de invitado activos
+a la vez (`waiting`/`called`/`attending`/`redirected` sin `customerId`); el
+siguiente recibe `409 GUEST_TURN_LIMIT_REACHED` y debe pasar por el mostrador
+(el personal sigue pudiendo crear turnos manuales). Es la defensa contra quien
+llena una cola con invitados falsos rotando IPs.
+
+```text
+POST /api/queue/guest-turns/:turnId/cancel
+```
+
+Público: el `turnId` es la clave de acceso, igual que en el polling. Solo
+cancela turnos de invitado (uno con cuenta responde `403 TURN_NOT_GUEST`) y
+solo en `waiting` (`409 TURN_NOT_CANCELLABLE` en cualquier otro estado): los
+ids de turnos llamados/atendidos sí viajan en los eventos de la sala de la
+cola, que se puede escuchar sin credenciales, así que no deben servir para
+cancelar. Emite `queue:update` con `cancelledTurnId`. Respuestas: `200
+{ "cancelled": true, "turnId": "uuid" }`, `404 TURN_NOT_FOUND`.
+
 ```text
 GET /api/queue/guest-turns/:turnId
 ```

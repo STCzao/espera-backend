@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { CreateGuestTurnUseCase } from "../../../src/modules/queue/application/CreateGuestTurnUseCase";
+import { CreateGuestTurnUseCase, MAX_ACTIVE_GUEST_TURNS_PER_QUEUE } from "../../../src/modules/queue/application/CreateGuestTurnUseCase";
 import { CreateTurnUseCase } from "../../../src/modules/queue/application/CreateTurnUseCase";
 import { InMemoryBusinessHoursRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
-import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue } from "../../helpers/queueFakes";
+import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue, buildTurn } from "../../helpers/queueFakes";
 
 const BUSINESS_ID = "11111111-1111-4111-8111-111111111111";
 const QUEUE_ID = "22222222-2222-4222-8222-222222222222";
@@ -21,7 +21,7 @@ const buildUseCase = (options: {
   ]);
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
   const createTurnUseCase = new CreateTurnUseCase(queueRepo, turnRepo, businessRepo, new InMemoryBusinessHoursRepo());
-  return { useCase: new CreateGuestTurnUseCase(queueRepo, createTurnUseCase), turnRepo };
+  return { useCase: new CreateGuestTurnUseCase(queueRepo, createTurnUseCase, turnRepo), turnRepo };
 };
 
 describe("CreateGuestTurnUseCase", () => {
@@ -33,6 +33,44 @@ describe("CreateGuestTurnUseCase", () => {
     expect(result.queueId).toBe(QUEUE_ID);
     expect(result.displayNumber).toBe("A-001");
     expect(turnRepo.all()[0]).toMatchObject({ guestName: "Juan Pérez", source: "web" });
+  });
+
+  describe("tope de turnos de invitado activos por cola", () => {
+    const guestTurns = (count: number, overrides: Partial<ReturnType<typeof buildTurn>> = {}) =>
+      Array.from({ length: count }, (_, i) =>
+        buildTurn({ id: `guest-${i}-${overrides.status ?? "waiting"}`, queueId: QUEUE_ID, status: "waiting", ...overrides }),
+      );
+
+    it("rejects with 409 GUEST_TURN_LIMIT_REACHED once the queue holds the maximum", async () => {
+      const { useCase, turnRepo } = buildUseCase({
+        turnRepo: new InMemoryTurnRepo(guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE)),
+      });
+
+      await expect(
+        useCase.execute({ businessId: BUSINESS_ID, guestName: "Juan Pérez" }),
+      ).rejects.toMatchObject({ statusCode: 409, code: "GUEST_TURN_LIMIT_REACHED" });
+      expect(turnRepo.all()).toHaveLength(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE);
+    });
+
+    it("still accepts one below the maximum", async () => {
+      const { useCase } = buildUseCase({
+        turnRepo: new InMemoryTurnRepo(guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE - 1)),
+      });
+
+      await expect(useCase.execute({ businessId: BUSINESS_ID, guestName: "Juan Pérez" })).resolves.toBeDefined();
+    });
+
+    it("does not count finished turns, account turns or other queues' turns", async () => {
+      const noise = [
+        ...guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE, { status: "completed" }),
+        ...guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE, { status: "cancelled" }),
+        ...guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE, { customerId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }).map((t, i) => ({ ...t, id: `acct-${i}` })),
+        ...guestTurns(MAX_ACTIVE_GUEST_TURNS_PER_QUEUE, { queueId: "other-queue" }).map((t, i) => ({ ...t, id: `other-${i}` })),
+      ];
+      const { useCase } = buildUseCase({ turnRepo: new InMemoryTurnRepo(noise) });
+
+      await expect(useCase.execute({ businessId: BUSINESS_ID, guestName: "Juan Pérez" })).resolves.toBeDefined();
+    });
   });
 
   describe("errores", () => {

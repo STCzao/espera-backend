@@ -106,6 +106,9 @@ export interface ITurnRepo extends Repository<Turn> {
   hasPendingReservation(queueId: string): Promise<boolean>;
   findCalledTurnByQueue(queueId: string): Promise<Turn | null>;
   findActiveByCustomerInAnyBusiness(customerId: string): Promise<Turn | null>;
+  // Turns without an account (web ligera guests) still holding a place in the
+  // queue — used to cap how many anonymous turns one queue accepts at once.
+  countActiveGuestTurnsByQueue(queueId: string): Promise<number>;
   findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null>;
   // turnNumber is the tiebreaker for turns whose queueJoinedAt is exactly
   // equal (common when a delay isn't declared — several turns can share the

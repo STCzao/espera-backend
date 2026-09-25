@@ -5,6 +5,7 @@ import { authorize } from "../../../middleware/authorize";
 import { rateLimiter } from "../../../middleware/rateLimiter";
 import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
+import { CancelGuestTurnUseCase } from "../application/CancelGuestTurnUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
@@ -50,6 +51,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new MarkTurnNoShowUseCase(undefined, emitter),
     new CreateGuestTurnUseCase(),
     new GetGuestTurnStatusUseCase(),
+    new CancelGuestTurnUseCase(undefined, emitter),
   );
 
   const router = Router();
@@ -57,6 +59,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
   // Public — HU-4.2, no session (web ligera / QR sin app).
   router.post("/guest-turns", rateLimiter, controller.createGuestTurn);
   router.get("/guest-turns/:turnId", controller.getGuestTurnStatus);
+  router.post("/guest-turns/:turnId/cancel", controller.cancelGuestTurn);
 
   router.get("/:queueId/status", authenticate, authorize("queue:read"), controller.getQueueStatus);
   router.get("/:queueId/metrics", authenticate, authorize("queue:read"), controller.getQueueMetrics);
