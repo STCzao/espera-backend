@@ -181,7 +181,7 @@ Respuesta esperada de `POST /api/business`:
 }
 ```
 
-Usar `businessId` para llamadas subsiguientes a `/:businessId/*`. Usar `businessSlug` para navegación y display. Llamar `POST /api/auth/refresh-token` inmediatamente después para obtener un JWT con `role: business_admin`.
+Usar `businessId` para llamadas subsiguientes a `/:businessId/*`. Usar `businessSlug` para navegación y display. El nuevo rol aplica de inmediato sin renovar el token: `authenticate` lee rol y estado de aprobación de la base en cada request. Para reflejarlo en la UI, consultar `GET /api/auth/me`.
 
 Respuesta esperada de `PATCH /api/business/:businessId/profile`:
 
