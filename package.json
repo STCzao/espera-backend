@@ -5,7 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "tsx watch src/app.ts",
-    "build": "tsc",
+    "build": "tsc && tsc-alias -p tsconfig.json",
     "start": "node dist/app.js",
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
@@ -44,6 +44,7 @@
     "node-cron": "^4.0.7",
     "pino": "^9.7.0",
     "pino-http": "^10.4.0",
+    "prisma": "^6.8.2",
     "qrcode": "^1.5.4",
     "resend": "^6.12.3",
     "socket.io": "^4.8.1",
@@ -65,10 +66,13 @@
     "@typescript-eslint/parser": "^8.32.0",
     "eslint": "^8.57.0",
     "eslint-plugin-boundaries": "^5.0.1",
-    "prisma": "^6.8.2",
     "supertest": "^7.2.2",
+    "tsc-alias": "^1.9.5",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
