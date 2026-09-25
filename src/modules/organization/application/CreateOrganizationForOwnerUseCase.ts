@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
+
 import type { UseCase } from "../../../shared/kernel/UseCase";
 import type { IUnitOfWork } from "../../../shared/kernel/UnitOfWork";
 import { PrismaUnitOfWork } from "../../../shared/infrastructure/PrismaUnitOfWork";
@@ -48,14 +50,8 @@ export class CreateOrganizationForOwnerUseCase
   public async execute(
     input: CreateOrganizationForOwnerInput,
   ): Promise<CreateOrganizationForOwnerOutput> {
-    const existingMemberships = await this.membershipRepo.findByUser(input.ownerUserId);
-    const existingAdminMembership = existingMemberships.find(
-      (membership) => membership.role === "admin",
-    );
-
-    if (existingAdminMembership) {
-      return { organizationId: existingAdminMembership.organizationId };
-    }
+    const existing = await this.findAdminOrganizationId(input.ownerUserId);
+    if (existing) return { organizationId: existing };
 
     const now = new Date();
 
@@ -63,6 +59,30 @@ export class CreateOrganizationForOwnerUseCase
     // used to leave an orphaned Organization+Subscription with no Membership
     // pointing at them, and the owner's next attempt would create a second,
     // duplicate set instead of noticing the first one.
+    try {
+      return await this.createOrganization(input, now);
+    } catch (error) {
+      // A concurrent first registration for the same owner won the race: the
+      // partial unique index on ADMIN memberships (see migration
+      // 20260924000000_unique_admin_membership_per_user) rolled this whole
+      // transaction back, so reuse the organization the winner created.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const winner = await this.findAdminOrganizationId(input.ownerUserId);
+        if (winner) return { organizationId: winner };
+      }
+      throw error;
+    }
+  }
+
+  private async findAdminOrganizationId(ownerUserId: string): Promise<string | null> {
+    const memberships = await this.membershipRepo.findByUser(ownerUserId);
+    return memberships.find((membership) => membership.role === "admin")?.organizationId ?? null;
+  }
+
+  private async createOrganization(
+    input: CreateOrganizationForOwnerInput,
+    now: Date,
+  ): Promise<CreateOrganizationForOwnerOutput> {
     const organization = await this.unitOfWork.run(async (tx) => {
       const organization = await this.organizationRepo.save({
         id: randomUUID(),
