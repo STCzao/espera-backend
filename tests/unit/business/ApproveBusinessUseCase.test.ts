@@ -9,6 +9,7 @@ import {
   buildSubscription,
 } from "../../helpers/organizationFakes";
 import { InMemoryQueueRepo, InMemoryServiceWindowRepo } from "../../helpers/queueFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const emailMocks = vi.hoisted(() => ({
   sendBusinessApprovedEmail: vi.fn(),
@@ -44,7 +45,7 @@ const buildUseCase = (options: {
   const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
   return {
     businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo, windowRepo,
-    useCase: new ApproveBusinessUseCase(businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo, windowRepo),
+    useCase: new ApproveBusinessUseCase(businessRepo, organizationRepo, subscriptionRepo, userRepo, queueRepo, windowRepo, new InMemoryUnitOfWork()),
   };
 };
 
@@ -112,6 +113,24 @@ describe("ApproveBusinessUseCase", () => {
 
     expect(queueRepo.all()).toHaveLength(1);
     expect(await windowRepo.findByQueueId("q-1")).toHaveLength(0);
+  });
+
+  it("approves the owner's pending account so they are not locked out of their approved business", async () => {
+    const userRepo = new InMemoryUserRepo([buildUser({ id: "user-1", approvalStatus: "pending" })]);
+    const { useCase } = buildUseCase({ userRepo });
+
+    await useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID });
+
+    expect((await userRepo.findById("user-1"))?.approvalStatus).toBe("approved");
+  });
+
+  it("leaves a rejected owner account untouched", async () => {
+    const userRepo = new InMemoryUserRepo([buildUser({ id: "user-1", approvalStatus: "rejected" })]);
+    const { useCase } = buildUseCase({ userRepo });
+
+    await useCase.execute({ businessId: BUSINESS_ID, approvedByUserId: ADMIN_ID });
+
+    expect((await userRepo.findById("user-1"))?.approvalStatus).toBe("rejected");
   });
 
   it("sends the approval email to the business owner", async () => {

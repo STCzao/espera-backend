@@ -97,7 +97,7 @@ describe("SuspendReportedUseCase — reporte sobre un usuario", () => {
       buildReport({ id: REPORT_ID, reportedType: "user", reportedId: REPORTED_USER_ID, status: "pending" }),
     ]);
     const userRepo = new InMemoryUserRepo([buildUser({ id: REPORTED_USER_ID })]);
-    const blockUserUseCase = new BlockUserUseCase(userRepo, new InMemoryRefreshSessionRepo());
+    const blockUserUseCase = new BlockUserUseCase(userRepo, new InMemoryRefreshSessionRepo(), new InMemoryUnitOfWork());
     const useCase = new SuspendReportedUseCase(reportRepo, new SuspendBusinessUseCase(), blockUserUseCase);
 
     const result = await useCase.execute({ reportId: REPORT_ID, reviewedByUserId: ADMIN_ID });
@@ -111,7 +111,7 @@ describe("SuspendReportedUseCase — reporte sobre un usuario", () => {
       buildReport({ id: REPORT_ID, reportedType: "user", reportedId: REPORTED_USER_ID, status: "pending" }),
     ]);
     const userRepo = new InMemoryUserRepo([buildUser({ id: REPORTED_USER_ID, isBlocked: true })]);
-    const blockUserUseCase = new BlockUserUseCase(userRepo, new InMemoryRefreshSessionRepo());
+    const blockUserUseCase = new BlockUserUseCase(userRepo, new InMemoryRefreshSessionRepo(), new InMemoryUnitOfWork());
     const useCase = new SuspendReportedUseCase(reportRepo, new SuspendBusinessUseCase(), blockUserUseCase);
 
     const result = await useCase.execute({ reportId: REPORT_ID, reviewedByUserId: ADMIN_ID });

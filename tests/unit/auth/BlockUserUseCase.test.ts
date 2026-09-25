@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { BlockUserUseCase } from "../../../src/modules/auth/application/BlockUserUseCase";
 import { InMemoryRefreshSessionRepo, InMemoryUserRepo, buildUser } from "../../helpers/authFakes";
+import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
 const USER_ID  = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ADMIN_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -12,7 +13,7 @@ const buildUseCase = (options: {
 } = {}) => {
   const userRepo = options.userRepo ?? new InMemoryUserRepo([buildUser({ id: USER_ID })]);
   const refreshSessionRepo = options.refreshSessionRepo ?? new InMemoryRefreshSessionRepo();
-  return { userRepo, refreshSessionRepo, useCase: new BlockUserUseCase(userRepo, refreshSessionRepo) };
+  return { userRepo, refreshSessionRepo, useCase: new BlockUserUseCase(userRepo, refreshSessionRepo, new InMemoryUnitOfWork()) };
 };
 
 describe("BlockUserUseCase", () => {

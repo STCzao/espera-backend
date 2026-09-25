@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import { CreateOrganizationForOwnerUseCase } from "../../../src/modules/organization/application/CreateOrganizationForOwnerUseCase";
@@ -128,5 +129,28 @@ describe("CreateOrganizationForOwnerUseCase", () => {
     await expect(
       useCase.execute({ ownerUserId: "user-1", organizationName: "Cafe Espera" }),
     ).rejects.toThrow("boom");
+  });
+
+  it("reuses the winner's organization when a concurrent registration hits the unique ADMIN index (P2002)", async () => {
+    const membershipRepo = new InMemoryMembershipRepo();
+    const realSave = membershipRepo.save.bind(membershipRepo);
+    membershipRepo.save = async (entity, tx) => {
+      // The concurrent request commits its membership first, then ours collides.
+      await realSave(buildMembership({ userId: "user-1", organizationId: "org-winner", role: "admin" }));
+      throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "test",
+      });
+    };
+    const useCase = new CreateOrganizationForOwnerUseCase(
+      new InMemoryOrganizationRepo(),
+      membershipRepo,
+      new InMemorySubscriptionRepo(),
+      new InMemoryUnitOfWork(),
+    );
+
+    const result = await useCase.execute({ ownerUserId: "user-1", organizationName: "Cafe Espera" });
+
+    expect(result.organizationId).toBe("org-winner");
   });
 });

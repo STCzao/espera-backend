@@ -23,6 +23,13 @@ describe("asQueryNumber", () => {
     expect(asQueryNumber("not-a-number")).toBeUndefined();
   });
 
+  it("returns undefined for an empty/blank string and for Infinity (Number() doesn't make those NaN)", () => {
+    expect(asQueryNumber("")).toBeUndefined();
+    expect(asQueryNumber("   ")).toBeUndefined();
+    expect(asQueryNumber("Infinity")).toBeUndefined();
+    expect(asQueryNumber("-Infinity")).toBeUndefined();
+  });
+
   it("returns undefined for undefined or a non-string value", () => {
     expect(asQueryNumber(undefined)).toBeUndefined();
     expect(asQueryNumber(["1", "2"])).toBeUndefined();

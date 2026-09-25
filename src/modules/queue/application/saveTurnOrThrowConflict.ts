@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { TransactionHandle } from "@shared/kernel/Repository";
-import { TurnConflictError } from "../domain/ITurnRepo";
+import { TurnConflictError, TurnNotFoundError } from "../domain/ITurnRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import type { Turn } from "../domain/Turn";
 
@@ -25,6 +25,9 @@ export const saveTurnOrThrowConflict = async (
         "This turn was just updated by someone else. Please refresh and try again.",
         "TURN_CONFLICT",
       );
+    }
+    if (error instanceof TurnNotFoundError) {
+      throw AppError.notFound("Turn not found.", "TURN_NOT_FOUND");
     }
     throw error;
   }

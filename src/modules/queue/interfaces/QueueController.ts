@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import { logger } from "@shared/infrastructure/logger";
+import { asQueryString } from "@shared/utils/queryParams";
 import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
@@ -219,7 +220,7 @@ export class QueueController {
     const result = await this.getQueueMetricsUseCase.execute({
       queueId: String(request.params.queueId),
       requestingUserId: String(request.user?.id),
-      date:    request.query.date ? String(request.query.date) : undefined,
+      date:    asQueryString(request.query.date),
     });
     response.status(200).json(result);
   };
@@ -228,7 +229,7 @@ export class QueueController {
     const result = await this.getTurnHistoryUseCase.execute({
       queueId: String(request.params.queueId),
       requestingUserId: String(request.user?.id),
-      date:    request.query.date ? String(request.query.date) : undefined,
+      date:    asQueryString(request.query.date),
     });
     response.status(200).json(result);
   };

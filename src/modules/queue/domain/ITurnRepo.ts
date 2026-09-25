@@ -15,6 +15,18 @@ export class TurnConflictError extends Error {
   }
 }
 
+/**
+ * Thrown by ITurnRepo.save() when no row with that id exists at all — kept
+ * distinct from TurnConflictError so a missing turn surfaces as a 404 the
+ * client shouldn't retry, not as a "someone else just updated it" 409.
+ */
+export class TurnNotFoundError extends Error {
+  public constructor(turnId: string) {
+    super(`Turn ${turnId} does not exist.`);
+    this.name = "TurnNotFoundError";
+  }
+}
+
 export interface TurnDayRaw {
   completedTurns: Array<{ startedAttentionAt: Date; attendedAt: Date }>;
   cancelledCount: number;

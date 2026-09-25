@@ -4,7 +4,7 @@ import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
 import type { TransactionHandle } from "@shared/kernel/Repository";
 import type { Turn, TurnPriority, TurnSource, TurnStatus } from "../domain/Turn";
 import { TURN_PRIORITY_ORDER, turnPriorityRank } from "../domain/turnPriority";
-import { TurnConflictError } from "../domain/ITurnRepo";
+import { TurnConflictError, TurnNotFoundError } from "../domain/ITurnRepo";
 import type { ActiveTurnSummary, BusinessTurnCount, CreateTurnData, ITurnRepo, PlatformTurnCounts, RecentCallItem, TurnDayRaw, TurnHistoryItem } from "../domain/ITurnRepo";
 
 // Prisma's enum is upper snake_case ("IN_TRANSIT"); the domain type is
@@ -356,7 +356,9 @@ export class PostgresTurnRepo implements ITurnRepo {
     });
 
     if (count === 0) {
-      throw new TurnConflictError(entity.id);
+      // Only on this failure path, so the happy path pays no extra query.
+      const exists = await client.turn.count({ where: { id: entity.id } });
+      throw exists === 0 ? new TurnNotFoundError(entity.id) : new TurnConflictError(entity.id);
     }
 
     const row = await client.turn.findUniqueOrThrow({ where: { id: entity.id } });

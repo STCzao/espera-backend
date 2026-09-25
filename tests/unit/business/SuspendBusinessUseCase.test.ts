@@ -8,6 +8,7 @@ import {
   buildBusiness,
   buildBusinessEmployee,
 } from "../../helpers/authFakes";
+import { TurnConflictError } from "../../../src/modules/queue/domain/ITurnRepo";
 import { InMemoryQueueRepo, InMemoryTurnRepo, buildQueue, buildTurn } from "../../helpers/queueFakes";
 import { InMemoryUnitOfWork } from "../../helpers/unitOfWorkFakes";
 
@@ -109,6 +110,53 @@ describe("SuspendBusinessUseCase", () => {
     expect(emitQueueUpdate).toHaveBeenCalledWith("queue-1", {
       cancelledTurnId: "turn-1",
       cancelledDisplayNumber: "A-001",
+    });
+  });
+
+  describe("turno modificado concurrentemente", () => {
+    // Makes the first save of "turn-1" lose the optimistic-concurrency race,
+    // after the "someone else" write already landed (`concurrentWrite`).
+    const racingTurnRepo = (concurrentWrite: Partial<ReturnType<typeof buildTurn>>) => {
+      const turnRepo = new InMemoryTurnRepo([
+        buildTurn({ id: "turn-1", queueId: "queue-1", businessId: BUSINESS_ID, displayNumber: "A-001", status: "waiting" }),
+        buildTurn({ id: "turn-2", queueId: "queue-1", businessId: BUSINESS_ID, displayNumber: "A-002", status: "waiting" }),
+      ]);
+      const realSave = turnRepo.save.bind(turnRepo);
+      let raced = false;
+      turnRepo.save = async (entity, tx) => {
+        if (entity.id === "turn-1" && !raced) {
+          raced = true;
+          await realSave({ ...(await turnRepo.findById("turn-1"))!, ...concurrentWrite });
+          throw new TurnConflictError(entity.id);
+        }
+        return realSave(entity, tx);
+      };
+      return turnRepo;
+    };
+
+    it("retries against the fresh turn when it is still active, instead of aborting the suspension", async () => {
+      const queueRepo = new InMemoryQueueRepo([buildQueue({ id: "queue-1", businessId: BUSINESS_ID })]);
+      const turnRepo = racingTurnRepo({ status: "called" });
+      const { useCase, businessRepo } = buildUseCase({ queueRepo, turnRepo });
+
+      await useCase.execute({ businessId: BUSINESS_ID, suspendedByUserId: ADMIN_ID, reason: "x" });
+
+      expect(businessRepo.all()[0].status).toBe("suspended");
+      expect(turnRepo.all().map((t) => t.status)).toEqual(["cancelled", "cancelled"]);
+    });
+
+    it("skips (and does not announce) a turn that already reached a terminal state", async () => {
+      const emitQueueUpdate = vi.fn();
+      const queueRepo = new InMemoryQueueRepo([buildQueue({ id: "queue-1", businessId: BUSINESS_ID })]);
+      const turnRepo = racingTurnRepo({ status: "completed" });
+      const { useCase, businessRepo } = buildUseCase({ queueRepo, turnRepo, emitter: { emitQueueUpdate } });
+
+      await useCase.execute({ businessId: BUSINESS_ID, suspendedByUserId: ADMIN_ID, reason: "x" });
+
+      expect(businessRepo.all()[0].status).toBe("suspended");
+      expect(turnRepo.all().find((t) => t.id === "turn-1")?.status).toBe("completed");
+      expect(emitQueueUpdate).toHaveBeenCalledTimes(1);
+      expect(emitQueueUpdate).toHaveBeenCalledWith("queue-1", expect.objectContaining({ cancelledTurnId: "turn-2" }));
     });
   });
 
