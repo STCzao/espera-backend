@@ -4,6 +4,7 @@ import { logger } from "@shared/infrastructure/logger";
 import { asQueryString } from "@shared/utils/queryParams";
 import { AttendTurnUseCase } from "../application/AttendTurnUseCase";
 import { CallNextUseCase } from "../application/CallNextUseCase";
+import { CancelGuestTurnUseCase } from "../application/CancelGuestTurnUseCase";
 import { CancelTurnByEmployeeUseCase } from "../application/CancelTurnByEmployeeUseCase";
 import { CancelTurnUseCase } from "../application/CancelTurnUseCase";
 import { ConfirmTurnStatusUseCase } from "../application/ConfirmTurnStatusUseCase";
@@ -47,6 +48,7 @@ export class QueueController {
     private readonly markTurnNoShowUseCase = new MarkTurnNoShowUseCase(),
     private readonly createGuestTurnUseCase = new CreateGuestTurnUseCase(),
     private readonly getGuestTurnStatusUseCase = new GetGuestTurnStatusUseCase(),
+    private readonly cancelGuestTurnUseCase = new CancelGuestTurnUseCase(),
   ) {}
 
   public createTurn = async (request: Request, response: Response): Promise<void> => {
@@ -79,6 +81,14 @@ export class QueueController {
     const result = await this.getGuestTurnStatusUseCase.execute({
       turnId: String(request.params.turnId),
     });
+    response.status(200).json(result);
+  };
+
+  public cancelGuestTurn = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.cancelGuestTurnUseCase.execute({
+      turnId: String(request.params.turnId),
+    });
+    logger.info({ turnId: result.turnId }, "Guest turn cancelled by the guest");
     response.status(200).json(result);
   };
 

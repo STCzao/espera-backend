@@ -155,6 +155,16 @@ export class PostgresTurnRepo implements ITurnRepo {
     return row ? toTurn(row) : null;
   }
 
+  public async countActiveGuestTurnsByQueue(queueId: string): Promise<number> {
+    return prisma.turn.count({
+      where: {
+        queueId,
+        customerId: null,
+        status: { in: ["WAITING", "CALLED", "ATTENDING", "REDIRECTED"] },
+      },
+    });
+  }
+
   public async findActiveByCustomerInQueue(customerId: string, queueId: string): Promise<Turn | null> {
     const row = await prisma.turn.findFirst({
       where: {
