@@ -38,8 +38,10 @@ export const buildSession = (
   userId: "user-1",
   tokenHash: "old-hash",
   expiresAt: new Date(Date.now() + 60_000),
-  createdAt: new Date("2026-01-01T00:00:00.000Z"),
-  updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  // Recent on purpose: RefreshTokenUseCase caps a session's total life at
+  // 90 days from createdAt, so a fixed past date would silently age out.
+  createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+  updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
   ...overrides,
 });
 
@@ -163,6 +165,33 @@ export class InMemoryRefreshSessionRepo implements IRefreshSessionRepo {
         (session) => session.tokenHash === tokenHash,
       ) ?? null
     );
+  }
+
+  public async findByPreviousTokenHash(tokenHash: string): Promise<RefreshSession | null> {
+    return (
+      [...this.sessions.values()].find(
+        (session) => session.previousTokenHash === tokenHash,
+      ) ?? null
+    );
+  }
+
+  public async rotate(input: {
+    sessionId: string;
+    expectedTokenHash: string;
+    newTokenHash: string;
+    newExpiresAt: Date;
+    rotatedAt: Date;
+  }): Promise<boolean> {
+    const session = this.sessions.get(input.sessionId);
+    if (!session || session.revokedAt || session.tokenHash !== input.expectedTokenHash) return false;
+    this.sessions.set(session.id, {
+      ...session,
+      tokenHash: input.newTokenHash,
+      previousTokenHash: input.expectedTokenHash,
+      rotatedAt: input.rotatedAt,
+      expiresAt: input.newExpiresAt,
+    });
+    return true;
   }
 
   public async save(session: RefreshSession): Promise<RefreshSession> {
