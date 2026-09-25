@@ -191,6 +191,10 @@ model RefreshSession {
   id         String   @id @default(uuid())
   userId     String
   tokenHash  String   @unique
+  // Hash of the token this session held before its last rotation, kept only
+  // to tell a harmless multi-tab race apart from a replayed (stolen) token.
+  previousTokenHash String?
+  rotatedAt  DateTime?
   expiresAt  DateTime
   revokedAt  DateTime?
   createdAt  DateTime @default(now())
@@ -199,6 +203,7 @@ model RefreshSession {
   user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([previousTokenHash])
   @@map("refresh_sessions")
 }
 

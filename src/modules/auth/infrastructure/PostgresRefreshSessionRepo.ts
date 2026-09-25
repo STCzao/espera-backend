@@ -13,6 +13,34 @@ export class PostgresRefreshSessionRepo implements IRefreshSessionRepo {
     return session ? this.toDomain(session) : null;
   }
 
+  public async findByPreviousTokenHash(tokenHash: string): Promise<RefreshSession | null> {
+    const session = await prisma.refreshSession.findFirst({
+      where: { previousTokenHash: tokenHash },
+    });
+
+    return session ? this.toDomain(session) : null;
+  }
+
+  public async rotate(input: {
+    sessionId: string;
+    expectedTokenHash: string;
+    newTokenHash: string;
+    newExpiresAt: Date;
+    rotatedAt: Date;
+  }): Promise<boolean> {
+    const { count } = await prisma.refreshSession.updateMany({
+      where: { id: input.sessionId, tokenHash: input.expectedTokenHash, revokedAt: null },
+      data: {
+        tokenHash: input.newTokenHash,
+        previousTokenHash: input.expectedTokenHash,
+        rotatedAt: input.rotatedAt,
+        expiresAt: input.newExpiresAt,
+      },
+    });
+
+    return count === 1;
+  }
+
   public async save(session: RefreshSession): Promise<RefreshSession> {
     const saved = await prisma.refreshSession.upsert({
       where: { id: session.id },
@@ -69,6 +97,8 @@ export class PostgresRefreshSessionRepo implements IRefreshSessionRepo {
     id: string;
     userId: string;
     tokenHash: string;
+    previousTokenHash: string | null;
+    rotatedAt: Date | null;
     expiresAt: Date;
     revokedAt: Date | null;
     createdAt: Date;
@@ -78,6 +108,8 @@ export class PostgresRefreshSessionRepo implements IRefreshSessionRepo {
       id: raw.id,
       userId: raw.userId,
       tokenHash: raw.tokenHash,
+      previousTokenHash: raw.previousTokenHash ?? undefined,
+      rotatedAt: raw.rotatedAt ?? undefined,
       expiresAt: raw.expiresAt,
       revokedAt: raw.revokedAt ?? undefined,
       createdAt: raw.createdAt,

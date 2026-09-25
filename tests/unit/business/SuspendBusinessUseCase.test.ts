@@ -123,13 +123,13 @@ describe("SuspendBusinessUseCase", () => {
       ]);
       const realSave = turnRepo.save.bind(turnRepo);
       let raced = false;
-      turnRepo.save = async (entity, tx) => {
+      turnRepo.save = async (entity) => {
         if (entity.id === "turn-1" && !raced) {
           raced = true;
           await realSave({ ...(await turnRepo.findById("turn-1"))!, ...concurrentWrite });
           throw new TurnConflictError(entity.id);
         }
-        return realSave(entity, tx);
+        return realSave(entity);
       };
       return turnRepo;
     };

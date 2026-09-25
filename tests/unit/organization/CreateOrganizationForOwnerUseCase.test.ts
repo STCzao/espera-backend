@@ -134,7 +134,7 @@ describe("CreateOrganizationForOwnerUseCase", () => {
   it("reuses the winner's organization when a concurrent registration hits the unique ADMIN index (P2002)", async () => {
     const membershipRepo = new InMemoryMembershipRepo();
     const realSave = membershipRepo.save.bind(membershipRepo);
-    membershipRepo.save = async (entity, tx) => {
+    membershipRepo.save = async () => {
       // The concurrent request commits its membership first, then ours collides.
       await realSave(buildMembership({ userId: "user-1", organizationId: "org-winner", role: "admin" }));
       throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
