@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TurnConflictError } from "../../../src/modules/queue/domain/ITurnRepo";
+import { TurnConflictError, TurnNotFoundError } from "../../../src/modules/queue/domain/ITurnRepo";
 import { saveTurnOrThrowConflict } from "../../../src/modules/queue/application/saveTurnOrThrowConflict";
 import { buildTurn, InMemoryTurnRepo } from "../../helpers/queueFakes";
 
@@ -25,6 +25,20 @@ describe("saveTurnOrThrowConflict", () => {
     await expect(saveTurnOrThrowConflict(turnRepo, turn)).rejects.toMatchObject({
       statusCode: 409,
       code: "TURN_CONFLICT",
+    });
+  });
+
+  it("translates TurnNotFoundError into a 404 TURN_NOT_FOUND, not a retryable conflict", async () => {
+    const turn = buildTurn({ id: "t-1", status: "waiting" });
+    const turnRepo = {
+      save: async () => {
+        throw new TurnNotFoundError(turn.id);
+      },
+    };
+
+    await expect(saveTurnOrThrowConflict(turnRepo, turn)).rejects.toMatchObject({
+      statusCode: 404,
+      code: "TURN_NOT_FOUND",
     });
   });
 
