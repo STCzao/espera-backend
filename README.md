@@ -178,6 +178,50 @@ npx prisma migrate deploy
 El proceso maneja `SIGTERM`/`SIGINT`: deja de aceptar conexiones, cierra
 Socket.IO, Redis y Prisma, y responde `503` en `/health` mientras drena.
 
+## Despliegue en Render
+
+`render.yaml` declara el servicio web (a partir del `Dockerfile`), el Postgres
+y el Redis. Se crea todo con Blueprints → *New Blueprint Instance* apuntando al
+repo; los secretos marcados `sync: false` se cargan una vez en el dashboard.
+
+Variables que hay que setear a mano: `APP_ORIGIN` (el backend no arranca en
+producción sin ella), `JWT_ACCESS_SECRET`, `COOKIE_SECRET`, `APP_URL`,
+`RESEND_API_KEY`, `RESEND_FROM_EMAIL` y las tres de Google si se usa OAuth.
+
+### Migraciones
+
+`preDeployCommand` corre `npx prisma migrate deploy` en la imagen ya
+construida, antes de mandarle tráfico: si una migración falla, esa versión no
+llega a atender. Requiere un plan pago. En el plan free hay que sacar esa línea
+y aplicarlas a mano contra la base de Render:
+
+```bash
+DATABASE_URL='<external connection string>' npx prisma migrate deploy
+```
+
+### Health check
+
+`healthCheckPath: /health` decide si la instancia recibe tráfico. El código de
+respuesta distingue tres casos:
+
+| Situación | Código | `status` |
+| --- | --- | --- |
+| Postgres y Redis responden | 200 | `ok` |
+| Redis caído, Postgres arriba | 200 | `degraded` |
+| Postgres caído | 503 | `unavailable` |
+| Apagándose (`SIGTERM`) | 503 | `shutting_down` |
+
+Redis caído devuelve 200 a propósito: el rate limiter y el contador de intentos
+de login caen a memoria por proceso y lo registran en el log, así que sacar la
+instancia de rotación convertiría una degradación prevista en una caída.
+
+### `TRUST_PROXY`
+
+Render termina TLS en su proxy, así que `request.ip` sale de `X-Forwarded-For`.
+`render.yaml` lo fija en `1` (un solo salto). Si quedara sin setear, todos los
+clientes comparten el mismo bucket de rate limit y el mismo bloqueo de login;
+si fuera más alto, un cliente puede falsificar el header y elegir su bucket.
+
 ## Endpoints principales
 
 Base prefix: `API_PREFIX`, por defecto `/api`.

@@ -1,0 +1,84 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec).
+#
+# Creates the API plus its Postgres and Redis from this file, so the
+# environment is reviewed in pull requests like the rest of the code instead
+# of living only in the dashboard. Values marked `sync: false` are set once in
+# the dashboard and never committed.
+#
+# After the first deploy, check TRUST_PROXY below — it is the one setting that
+# silently breaks rate limiting if it is wrong.
+
+services:
+  - type: web
+    name: espera-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    branch: main
+    healthCheckPath: /health
+
+    # Runs in the deployed image before traffic is shifted, so a release whose
+    # migration fails never starts serving. Needs a paid instance type; on the
+    # free tier remove this line and apply migrations yourself (see README).
+    preDeployCommand: npx prisma migrate deploy
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render terminates TLS at its own proxy, so request.ip comes from
+      # X-Forwarded-For. Without this every client looks like the proxy and
+      # shares one rate-limit bucket (and one login lockout); with a value that
+      # is too high, a client can forge the header and pick its own bucket.
+      # "1" is the single Render hop.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: espera-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: espera-redis
+          property: connectionString
+      # Secrets and the frontend origin: set in the dashboard, not here.
+      # APP_ORIGIN is required in production (env.ts refuses to boot without
+      # it, which would otherwise let CORS reflect any origin).
+      - key: APP_ORIGIN
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: COOKIE_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+
+  - type: keyvalue
+    name: espera-redis
+    plan: starter
+    region: oregon
+    # Reachable only from services in this blueprint, never from the internet.
+    ipAllowList: []
+    # Everything stored here is a counter with a TTL (rate-limit windows,
+    # failed-login attempts), so evicting the least recently used key under
+    # memory pressure just grants someone a few extra attempts. Refusing
+    # writes instead would push the limiter onto its per-process fallback.
+    maxmemoryPolicy: allkeys-lru
+
+databases:
+  - name: espera-postgres
+    databaseName: espera
+    user: espera
+    plan: basic-256mb
+    region: oregon
