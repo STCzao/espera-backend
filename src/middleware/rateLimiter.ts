@@ -8,7 +8,38 @@ interface RateLimitPolicy {
   bucket: string;
   limit: number;
   windowSeconds: number;
+  /**
+   * Second, tighter bucket keyed by IP *and* a request-derived scope (e.g.
+   * the business being scanned). The plain per-IP bucket alone punishes
+   * whole venues: every customer on a shop's wifi shares one public IP, so
+   * a small per-IP limit locks out the sixth person scanning the same QR.
+   * The IP-only bucket stays as a coarse ceiling so a client can't dodge
+   * limits by inventing scope values.
+   */
+  scoped?: {
+    limit: number;
+    scope: (request: Request) => string | undefined;
+  };
 }
+
+interface RateLimitCheck {
+  key: string;
+  limit: number;
+  windowSeconds: number;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_SCOPE_LENGTH = 128;
+
+const businessIdFromBody = (request: Request): string | undefined => {
+  const value = (request.body as { businessId?: unknown } | undefined)?.businessId;
+  return typeof value === "string" && UUID_PATTERN.test(value) ? value.toLowerCase() : undefined;
+};
+
+const tokenFromParams = (request: Request): string | undefined => {
+  const value = request.params?.token;
+  return typeof value === "string" && value.length > 0 && value.length <= MAX_SCOPE_LENGTH ? value : undefined;
+};
 
 interface MemoryEntry {
   count: number;
@@ -40,8 +71,8 @@ const POLICIES: Record<string, RateLimitPolicy> = {
   "POST /resend-verification":         { bucket: "resend-verification",       limit: 3,  windowSeconds: 15 * 60 },
   "POST /reset-password":              { bucket: "reset-password",            limit: 5,  windowSeconds: 10 * 60 },
   "POST /refresh-token":               { bucket: "refresh-token",             limit: 20, windowSeconds: 10 * 60 },
-  "POST /guest-turns":                 { bucket: "guest-turns",               limit: 5,  windowSeconds: 10 * 60 },
-  "GET /:token":                       { bucket: "qr-resolve",                limit: 30, windowSeconds: 60 },
+  "POST /guest-turns":                 { bucket: "guest-turns",               limit: 60,  windowSeconds: 10 * 60, scoped: { limit: 20, scope: businessIdFromBody } },
+  "GET /:token":                       { bucket: "qr-resolve",                limit: 120, windowSeconds: 60,      scoped: { limit: 30, scope: tokenFromParams } },
 };
 
 const getPolicy = (request: Request): RateLimitPolicy | null => {
@@ -61,14 +92,14 @@ const getPolicy = (request: Request): RateLimitPolicy | null => {
  */
 const getRequesterKey = (request: Request): string => request.ip || "unknown";
 
-const consumeFromMemory = (key: string, policy: RateLimitPolicy): number => {
+const consumeFromMemory = (key: string, windowSeconds: number): number => {
   const now = Date.now();
   const existing = memoryStore.get(key);
 
   if (!existing || existing.expiresAt <= now) {
     memoryStore.set(key, {
       count: 1,
-      expiresAt: now + policy.windowSeconds * 1000,
+      expiresAt: now + windowSeconds * 1000,
     });
 
     return 1;
@@ -81,16 +112,40 @@ const consumeFromMemory = (key: string, policy: RateLimitPolicy): number => {
 
 const consumeFromRedis = async (
   key: string,
-  policy: RateLimitPolicy,
+  windowSeconds: number,
 ): Promise<number> => {
   await ensureRedisConnection();
   const count = await redis.incr(key);
 
   if (count === 1) {
-    await redis.expire(key, policy.windowSeconds);
+    await redis.expire(key, windowSeconds);
   }
 
   return count;
+};
+
+const consume = async (check: RateLimitCheck): Promise<number> => {
+  try {
+    const count = await consumeFromRedis(check.key, check.windowSeconds);
+    if (isDegradedToMemory) {
+      isDegradedToMemory = false;
+      logger.info("Rate limiter recovered: back to Redis.");
+    }
+    return count;
+  } catch (error) {
+    if (!isDegradedToMemory) {
+      isDegradedToMemory = true;
+      // Per-process memory means each app instance behind a load balancer
+      // enforces its own separate limit — an N-instance deployment
+      // effectively multiplies every configured limit by N for as long as
+      // this lasts, so it needs to be loud, not just a silent fallback.
+      logger.error(
+        { error },
+        "Rate limiter degraded: Redis unavailable, falling back to per-process memory store.",
+      );
+    }
+    return consumeFromMemory(check.key, check.windowSeconds);
+  }
 };
 
 export const rateLimiter = async (
@@ -105,39 +160,34 @@ export const rateLimiter = async (
   }
 
   const requesterKey = getRequesterKey(request);
-  const key = `rate-limit:${policy.bucket}:${requesterKey}`;
+  const checks: RateLimitCheck[] = [
+    {
+      key: `rate-limit:${policy.bucket}:${requesterKey}`,
+      limit: policy.limit,
+      windowSeconds: policy.windowSeconds,
+    },
+  ];
 
-  let count: number;
-
-  try {
-    count = await consumeFromRedis(key, policy);
-    if (isDegradedToMemory) {
-      isDegradedToMemory = false;
-      logger.info("Rate limiter recovered: back to Redis.");
-    }
-  } catch (error) {
-    if (!isDegradedToMemory) {
-      isDegradedToMemory = true;
-      // Per-process memory means each app instance behind a load balancer
-      // enforces its own separate limit — an N-instance deployment
-      // effectively multiplies every configured limit by N for as long as
-      // this lasts, so it needs to be loud, not just a silent fallback.
-      logger.error(
-        { error },
-        "Rate limiter degraded: Redis unavailable, falling back to per-process memory store.",
-      );
-    }
-    count = consumeFromMemory(key, policy);
+  const scope = policy.scoped?.scope(request);
+  if (policy.scoped && scope) {
+    checks.push({
+      key: `rate-limit:${policy.bucket}:scoped:${requesterKey}:${scope}`,
+      limit: policy.scoped.limit,
+      windowSeconds: policy.windowSeconds,
+    });
   }
 
-  if (count > policy.limit) {
-    next(
-      AppError.tooManyRequests(
-        "Too many requests. Please try again later.",
-        "RATE_LIMIT_EXCEEDED",
-      ),
-    );
-    return;
+  for (const check of checks) {
+    const count = await consume(check);
+    if (count > check.limit) {
+      next(
+        AppError.tooManyRequests(
+          "Too many requests. Please try again later.",
+          "RATE_LIMIT_EXCEEDED",
+        ),
+      );
+      return;
+    }
   }
 
   next();

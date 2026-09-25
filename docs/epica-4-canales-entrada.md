@@ -112,8 +112,11 @@ pushes son para el flujo autenticado de la app.
 POST /api/queue/guest-turns
 ```
 
-Público (sin `authenticate`), rate-limited (5 requests / 10 min por IP,
-mismo `rateLimiter` que ya usan `login`/`register`).
+Público (sin `authenticate`), rate-limited con el mismo `rateLimiter` que
+usan `login`/`register`, pero con dos buckets: 60 requests / 10 min por IP
+(techo grueso) y 20 requests / 10 min por IP + `businessId`. Un tope plano de
+5 por IP dejaba sin servicio a los clientes de un mismo local, que comparten
+la IP pública de su wifi.
 
 Request body:
 

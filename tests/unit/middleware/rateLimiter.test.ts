@@ -195,4 +195,75 @@ describe("rateLimiter", () => {
 
     expect(loggerMocks.info).toHaveBeenCalledWith("Rate limiter recovered: back to Redis.");
   });
+
+  describe("guest-turns: a shared venue IP must not lock out customers of the same business", () => {
+    const BUSINESS = "11111111-1111-4111-8111-111111111111";
+    const guestRequest = (body: unknown) =>
+      buildRequest({ path: "/guest-turns", route: { path: "/guest-turns" } as Request["route"], body });
+
+    // The Redis mock answers by key, so each bucket can be driven independently.
+    const countsByKey = (counts: Record<string, number>) =>
+      redisMocks.incr.mockImplementation(async (key: string) => counts[key] ?? 1);
+
+    it("counts both a coarse per-IP bucket and a tighter per-IP-per-business bucket", async () => {
+      await rateLimiter(guestRequest({ businessId: BUSINESS }), {} as Response, buildNext());
+
+      expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:guest-turns:127.0.0.1");
+      expect(redisMocks.incr).toHaveBeenCalledWith(`rate-limit:guest-turns:scoped:127.0.0.1:${BUSINESS}`);
+    });
+
+    it("lets the 6th customer through — the old flat per-IP limit was 5", async () => {
+      countsByKey({ "rate-limit:guest-turns:127.0.0.1": 6, [`rate-limit:guest-turns:scoped:127.0.0.1:${BUSINESS}`]: 6 });
+      const next = buildNext();
+
+      await rateLimiter(guestRequest({ businessId: BUSINESS }), {} as Response, next);
+
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it("blocks once one business's scoped limit (20) is exceeded from a single IP", async () => {
+      countsByKey({ [`rate-limit:guest-turns:scoped:127.0.0.1:${BUSINESS}`]: 21 });
+      const next = buildNext();
+
+      await rateLimiter(guestRequest({ businessId: BUSINESS }), {} as Response, next);
+
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 429, code: "RATE_LIMIT_EXCEEDED" }));
+    });
+
+    it("still blocks on the coarse per-IP ceiling, so inventing business ids can't dodge it", async () => {
+      countsByKey({ "rate-limit:guest-turns:127.0.0.1": 61 });
+      const next = buildNext();
+
+      await rateLimiter(guestRequest({ businessId: BUSINESS }), {} as Response, next);
+
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 429 }));
+    });
+
+    it("ignores a missing or non-UUID businessId and falls back to the per-IP bucket only", async () => {
+      for (const body of [undefined, {}, { businessId: 42 }, { businessId: "not-a-uuid" }]) {
+        redisMocks.incr.mockClear();
+
+        await rateLimiter(guestRequest(body), {} as Response, buildNext());
+
+        expect(redisMocks.incr).toHaveBeenCalledTimes(1);
+        expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:guest-turns:127.0.0.1");
+      }
+    });
+  });
+
+  it("qr-resolve: adds a per-token bucket next to the per-IP one", async () => {
+    await rateLimiter(
+      buildRequest({
+        method: "GET",
+        path: "/abc123",
+        route: { path: "/:token" } as Request["route"],
+        params: { token: "abc123" },
+      }),
+      {} as Response,
+      buildNext(),
+    );
+
+    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:127.0.0.1");
+    expect(redisMocks.incr).toHaveBeenCalledWith("rate-limit:qr-resolve:scoped:127.0.0.1:abc123");
+  });
 });
