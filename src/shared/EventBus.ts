@@ -1,0 +1,68 @@
+import { EventEmitter } from "node:events";
+
+export type DomainEvents = {
+  "turn.created": {
+    turnId: string;
+    businessId: string;
+    queueId: string;
+  };
+  "turn.called": {
+    turnId: string;
+    businessId: string;
+    queueId: string;
+    counter?: string;
+  };
+  "turn.cancelled": {
+    turnId: string;
+    businessId: string;
+    queueId: string;
+    reason?: string;
+  };
+  "user.registered": {
+    userId: string;
+    email: string;
+  };
+  "business.closed": {
+    businessId: string;
+    ownerUserId: string;
+    previousStatus: "normal" | "delayed" | "paused" | "closed";
+    reason?: string;
+    occurredAt: Date;
+  };
+};
+
+/**
+ * In-process domain event bus.
+ *
+ * This keeps use cases decoupled from side effects in the MVP. Events that must
+ * survive process restarts or be delivered exactly once should later move to an
+ * outbox/worker pipeline.
+ */
+export class EventBus {
+  private readonly emitter = new EventEmitter();
+
+  public emit<EventName extends keyof DomainEvents & string>(
+    eventName: EventName,
+    payload: DomainEvents[EventName]
+  ): boolean {
+    return this.emitter.emit(eventName, payload);
+  }
+
+  public on<EventName extends keyof DomainEvents & string>(
+    eventName: EventName,
+    listener: (payload: DomainEvents[EventName]) => void
+  ): this {
+    this.emitter.on(eventName, listener);
+    return this;
+  }
+
+  public off<EventName extends keyof DomainEvents & string>(
+    eventName: EventName,
+    listener: (payload: DomainEvents[EventName]) => void
+  ): this {
+    this.emitter.off(eventName, listener);
+    return this;
+  }
+}
+
+export const domainEventBus = new EventBus();

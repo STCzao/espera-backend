@@ -1,0 +1,454 @@
+﻿# Estado y Arquitectura del Proyecto
+
+## Resumen ejecutivo
+
+`espera-back` es el backend principal del producto Espera. Cubre las Épicas 1,
+2 y 3 completas: autenticación, gestión de negocios y cola de turnos con tiempo
+real vía Socket.IO.
+
+El corte funcional alcanzado cubre `HU-1.1` a `HU-1.9` (auth y onboarding),
+`HU-2.1` a `HU-2.8` (gestión de negocios) y `HU-3.1` a `HU-3.12` (cola con
+prioridad, tiempo real, turnos manuales y panel de empleado).
+
+## Alcance real implementado
+
+### Historias cubiertas en buena medida
+
+- `HU-1.1` Registro con email y password
+- `HU-1.3` Login con email y password
+- `HU-1.5` Refresh token
+- `HU-1.6` Logout
+- `HU-1.7` Recuperación de password
+- `HU-1.8` Registro de negocio con aprobación pendiente
+- `HU-1.9` OAuth para panel de negocio
+- `HU-2.1` a `HU-2.8` Gestión de negocios (configuración, horarios, QR, empleados)
+- `HU-2.5.1` a `HU-2.5.4` Cuentas y Organizaciones (Organization, Membership, Subscription, límites de plan)
+- `HU-3.1` Sacar turno desde la app
+- `HU-3.2` Posición en cola en tiempo real (Socket.IO)
+- `HU-3.3` Tiempo estimado de espera
+- `HU-3.4` Confirmar en camino (prioridad in_transit)
+- `HU-3.5` Confirmar llegada (prioridad arrived)
+- `HU-3.6` Cancelar propio turno
+- `HU-3.7` Llamar al siguiente turno
+- `HU-3.8` Lista de turnos activos en el panel
+- `HU-3.9` Agregar turno manual (presencia física sin app)
+- `HU-3.10` Cancelar turno desde el panel (empleado)
+- `HU-3.11` Marcar turno como atendido
+- `HU-3.12` Jerarquía de prioridad en la cola
+
+### Historias en rollover
+
+- `HU-1.2` Registro de usuario con Google en app móvil
+- `HU-1.4` Login de usuario con Google en app móvil
+
+Estas historias quedaron diferidas por una dependencia externa válida:
+configuración OAuth real por plataforma y despliegue o registro previo de la
+aplicación móvil.
+
+## Módulos del sistema
+
+### auth
+
+Responsabilidades actuales:
+
+- registro local
+- login local
+- login Google
+- registro de negocio local
+- registro de negocio con Google
+- refresh token
+- logout
+- verificación de email
+- password reset
+- aprobación de cuenta de negocio (activa `Business.status → approved` y arranca trial de 30 días en `Subscription`)
+
+Fortalezas:
+
+- validación de entrada con `zod`
+- hashing con `bcrypt`
+- refresh tokens persistidos por hash
+- rotación de refresh token
+- bloqueo temporal por intentos fallidos
+- invalidación de sesiones tras cambio de password
+
+### business
+
+Responsabilidades actuales:
+
+- registro base de negocio (con slug autogenerado desde el nombre)
+- edición de perfil operativo
+- configuración de horarios y días no laborables
+- configuración de ventanillas activas
+- estado operativo del negocio
+- QR único del negocio
+- invitación, listado y revocación de empleados
+- listado de categorías de negocio (`GET /api/business/categories`, público)
+
+Estado:
+
+- módulo funcional para el primer corte de panel
+- `Business.status` (`pending | approved | rejected | suspended`) actúa como
+  compuerta de aprobación; `pending` por defecto al crear
+- `categoryId` FK a `business_categories` con 9 categorías sembradas
+- métricas y operación real de cola quedan para épicas posteriores
+
+### organization
+
+Responsabilidades actuales:
+
+- creación transparente de `Organization` al registrar el primer negocio
+- `Subscription` con ciclo de vida completo:
+  `pending → trial → active → expired → cancelled`
+- `Membership` por Organization con `role: admin | employee`
+- límites de plan (`PLAN_LIMITS`): Basic (1 negocio/1 cola), Pro (1/ilimitado),
+  Premium (10/20 por negocio)
+- `ResolveEffectiveRoleUseCase`: resuelve el rol de un usuario en una
+  Organization; no está conectado a `authorize.ts` aún (diferido a Épica 6)
+
+Estado:
+
+- módulo funcional; `Organization` y `Membership` son transparentes en UI para
+  usuarios Basic/Pro; solo relevantes para Premium (multi-sucursal)
+- `ResolveEffectiveRoleUseCase` implementado pero no wired en middleware
+
+### queue
+
+Responsabilidades actuales:
+
+- creación de turnos (app, manual) y jerarquía de prioridad
+- llamada al siguiente turno, cancelación (cliente y empleado)
+- confirmación de tránsito/llegada, marcar turno atendido
+- ventanillas de servicio individuales por cola: CRUD completo, ocupación,
+  derivación entre ventanillas (estado `redirected`)
+- tiempo real vía Socket.IO (`queue:update`)
+- historial y métricas del día (promedio de atención, hora pico, % cancelación)
+
+Estado:
+
+- módulo completo, Épica 3 (`HU-3.1` a `HU-3.12`) implementada con varios
+  refinamientos posteriores que superan el alcance original del backlog
+  (ver `docs/epica-3-cola.md`)
+- notificaciones push (Épica 5) no implementadas todavía
+
+## Arquitectura técnica
+
+El proyecto sigue una estructura de `Modular Monolith` con carpetas por módulo:
+
+```text
+src/
+  app.ts
+  middleware/
+  modules/
+    auth/
+      application/
+      domain/
+      infrastructure/
+      interfaces/
+    business/
+      application/
+      domain/
+      infrastructure/
+      interfaces/
+    organization/
+      application/
+      domain/
+      infrastructure/
+      public-api.ts
+    queue/
+      application/
+      domain/
+      infrastructure/
+      interfaces/
+  shared/
+```
+
+Capas transversales relevantes:
+
+- `shared/infrastructure/prisma.ts`
+- `shared/infrastructure/redis.ts`
+- `shared/infrastructure/email.ts`
+- `shared/infrastructure/logger.ts`
+- `shared/utils/slug.ts` — `toBaseSlug` + `generateUniqueSlug` (autogenera slug kebab-case con fallback anti-colisión)
+- `shared/EventBus.ts`
+- `middleware/authenticate.ts`
+- `middleware/authorize.ts`
+- `middleware/rateLimiter.ts`
+- `middleware/errorHandler.ts`
+
+## Infraestructura disponible
+
+### PostgreSQL
+
+Usado para:
+
+- usuarios
+- sesiones de refresh token
+- negocios
+
+### Redis
+
+Usado para:
+
+- rate limiting
+- tracking de intentos fallidos de login
+- health checks
+
+### Socket.IO
+
+Existe un servidor Socket.IO inicializado en `app.ts`, pero actualmente solo se
+usa para loguear conexiones y desconexiones.
+
+### Email
+
+Se usa `Resend` para:
+
+- verificación de email
+- recuperación de password
+- bienvenida al negocio aprobado
+
+## Estado de calidad actual
+
+Comandos principales:
+
+- `npm run typecheck`: ok
+- `npm run typecheck:test`: ok
+- `npm run build`: ok
+- `npm run lint`: ok
+- `npm run test:run`: ok con cobertura inicial de casos de uso de Épica 1
+
+Validación manual de Épica 1:
+
+- registro local validado con Postman
+- verificación de email validada con token de desarrollo
+- login local validado luego de verificar email
+- forgot/reset password validado con token de desarrollo
+- registro de negocio local validado con Postman
+- verificación de email de negocio validada con token de desarrollo
+- aprobación de negocio validada en base
+- login de negocio aprobado validado con sesión refresh activa
+- registro web de negocio con Google OAuth validado manualmente
+- login web con Google OAuth validado manualmente con sesión refresh activa
+
+Cobertura automatizada actual:
+
+- tests unitarios de aplicación sobre use cases de `auth`
+- test unitario de permisos para `auth:read_self` y `/auth/me`
+- tests API con `supertest` para contratos HTTP base de auth y cookies
+- tests dedicados de `rateLimiter` y `errorHandler`
+- repositorios en memoria para aislar reglas de negocio
+- mocks para servicios externos como email, intentos de login y token service
+- sin HTTP real, Prisma real, Redis real ni proveedores externos reales
+
+Casos cubiertos hasta ahora:
+
+- login local exitoso, credenciales inválidas y cuenta negocio pendiente
+- refresh token válido con rotación y token revocado
+- forgot/reset password para cuenta local, respuesta genérica y bloqueo de reset en cuentas Google
+- registro de negocio pendiente y rollback ante falla de email
+- verificación de email, logout y aprobación de negocio
+- registro/login Google con perfiles mockeados
+- contratos API base para registro, login, refresh, logout, `/me` y URL OAuth
+- rate limiting con Redis/fallback y serialización de errores
+
+Pendiente para completar mejor Épica 1:
+
+- tests de integración con Prisma/PostgreSQL y Redis
+- test dedicado de reenvío de verificación
+- validación automatizada de Resend real y Google real en staging
+
+## Conclusión
+
+El proyecto tiene una base técnica válida y una dirección arquitectónica
+correcta, pero su lectura adecuada es la de una fase 1 avanzada, no la de un
+MVP de producto completo.
+
+## Épica 2.5 — Cuentas y Organizaciones (implementada en backend)
+
+El backlog v2.1 formalizó como épica propia (9 pts, HU-2.5.1 a HU-2.5.4) lo
+que antes era solo un documento de decisión. Bloqueaba la Fase 2 (Queue)
+porque la Épica 3 necesita conocer cuántos `Business`/`Queue` habilita el
+plan de una cuenta antes de operar.
+
+Implementado:
+
+- Nuevo módulo `src/modules/organization/` (`domain/`, `application/`,
+  `infrastructure/`, `public-api.ts`) con `Organization`, `Membership`,
+  `Subscription` y la grilla de planes (`PLAN_LIMITS`).
+- Migración `20260627100000_add_organizations_memberships_subscriptions`:
+  agrega las tres tablas y `businesses.organizationId`, con backfill 1:1 de
+  Organization/Subscription BASIC/Membership ADMIN para todo `Business`
+  existente, y rollback manual documentado en el propio `migration.sql`
+  (HU-2.5.1).
+- `Membership` resuelve rol por Organization (`ResolveEffectiveRoleUseCase`),
+  sin tocar el campo `role` global del `User` (HU-2.5.2, HU-2.5.3).
+- `EnsureBusinessCreationAllowedUseCase` aplica el límite de negocios por
+  plan; está conectado en `RegisterBusinessUseCase`,
+  `RegisterBusinessAccountUseCase` y `RegisterBusinessWithGoogleUseCase`, que
+  ahora también crean la `Organization` del owner de forma transparente vía
+  `CreateOrganizationForOwnerUseCase` (HU-2.5.4).
+- `EnsureQueueCreationAllowedUseCase` y `UpdateOrganizationSubscriptionUseCase`
+  (downgrade bloqueado si hay más `Business` que el límite nuevo) quedan
+  implementados como piezas de dominio listas para que la Épica 3 y un futuro
+  flujo de billing las consuman; no se exponen por HTTP en este pase.
+
+Explícitamente fuera de alcance (así lo documenta el backlog): dónde vive la
+aprobación comercial (Organization vs Business) y migrar
+`middleware/authorize.ts` / los use cases de `business/` al rol efectivo de
+`Membership`. Ver `docs/decision-modelo-cuentas-negocios.md`.
+
+## Bugfixes pre-Épica 3 (2026-07-03)
+
+Dos ramas fusionadas a `develop` antes de arrancar Épica 3:
+
+### bugfix/h-2.1-business-category-entity (PR #26)
+
+- `BusinessCategory` promovida a entidad real en Postgres
+  (`business_categories`), reemplazando el mapa hardcodeado.
+- Migración `20260703100000_add_business_categories`: crea tabla, siembra 9
+  categorías conservando los UUIDs legacy, agrega FK `businesses.categoryId`.
+- `GET /api/business/categories` — endpoint público, sin auth, devuelve el
+  listado ordenado por nombre.
+- `POST /api/business` y flujos de registro ahora validan que `categoryId`
+  exista en la tabla.
+- Endpoint de config de atributos `GET /api/business/categories/:categoryId/config`
+  queda diferido a E8 (Backoffice).
+
+### bugfix/pre-e3-schema-debt (PR #27)
+
+- **Slug autogenerado**: los tres flujos de creación de negocio dejan de pedir
+  `slug` / `businessSlug`; la lógica de generación vive en
+  `src/shared/utils/slug.ts`.
+- **`Business.status`** (`pending | approved | rejected | suspended`): nuevo
+  campo con `pending` por defecto; actúa como compuerta de aprobación del
+  equipo antes de habilitar el negocio.
+- **`Subscription.status`** (`pending | trial | active | expired | cancelled`):
+  ciclo de vida completo, con campos `trialEndsAt`, `cancellationReason` y
+  `cancelledAt`.
+- **`ApproveBusinessAccountUseCase`** reescrito: al aprobar el usuario, busca
+  todos sus negocios pendientes, los marca `approved`, y arranca un trial de
+  30 días en sus `Subscription` (`status → trial`, `trialEndsAt = now + 30d`).
+- **Links de email corregidos**: `email.ts` usaba rutas con prefijo `/auth/`
+  que no existían en el frontend; también se corrigió el puerto default de
+  `APP_URL` en `.env.example` (`3000 → 5173`).
+
+## Bugfixes de alineación con backlog v2.3 (2026-07-07)
+
+### bugfix/align-registration-flow-hu18 (PR #32)
+
+Alineación del flujo de registro de negocio con HU-1.8 del backlog v2.3:
+
+- **Flujo separado**: el registro de negocio pasa a ser un paso posterior al
+  login, no un signup en un solo paso. `POST /api/auth/register-business`
+  queda deprecado.
+- **`LoginUseCase`**: elimina el bloqueo de login para `business_admin +
+  pending`; el usuario ve su negocio en estado de revisión desde el panel.
+- **`RegisterBusinessUseCase`**: acepta `role: user` y promueve al usuario a
+  `business_admin + pending` al crear su primer negocio. La ruta `POST
+  /api/business` deja de requerir `authorize("business:edit")`.
+- **Contratos de `GET /api/business/me`**: agrega `status`, elimina
+  `organizationId` (UUID interno sin uso en frontend).
+- **Contrato de `POST /api/business`**: devuelve `{ businessId, businessSlug,
+  status: "pending" }`.
+
+### bugfix/align-google-oauth-hu19 (PR #34)
+
+Alineación de Google OAuth con la arquitectura HU-1.8:
+
+- **`LoginWithGoogleUseCase`**: implementa semántica find-or-create. Si el
+  email de Google no tiene cuenta, la crea (`role: user`, `isEmailVerified:
+  true`) y emite tokens directamente. El mismo endpoint `POST
+  /api/auth/login/google` sirve para el botón de Google en login y en
+  registro.
+- Elimina el bloqueo de login para `business_admin + pending` en el flujo
+  Google, consistente con el fix del flujo local.
+- `POST /api/auth/register-business/google` queda deprecado.
+- `GOOGLE_CALLBACK_URL` debe apuntar al frontend
+  (`/oauth/google/callback`), no al backend.
+
+## Siguiente épica
+
+La Épica 3 — Cola está completa (`HU-3.1` a `HU-3.12`) con refinamientos
+adicionales (ventanillas de servicio, ocupación, derivación).
+
+Las Épicas 1, 2, 2.5 y 3 están completas, incluyendo el refinamiento del
+backlog v2.4 que resuelve la aprobación comercial en dos niveles
+(`Organization` y `Business` por separado, ver
+`docs/epica-2-5-cuentas-organizaciones.md`). La Épica 6 — Panel del Negocio
+está mayormente cubierta de facto por endpoints de `queue`/`business` ya
+existentes, con un gap puntual documentado (`docs/epica-6-panel-negocio.md`).
+
+En progreso en Fase 2:
+
+- `Épica 8 — Backoffice Espera` (22 pts, backlog v2.4): aprobación de
+  negocios, suspensión, métricas globales. Cambio de decisión arquitectónica
+  en v2.4 — módulo interno Node.js/TypeScript en este mismo repo (`espera-back`),
+  no un proyecto .NET separado. `HU-8.1` (login propio — reusa el login
+  normal con rol `super_admin`, bootstrap vía `npm run create:super-admin`),
+  `HU-8.2` y `HU-8.3` (listar y aprobar pendientes, construidas por el
+  refinamiento de aprobación en dos niveles) ya están implementadas.
+  Pendientes: `HU-8.4` (suspender/reactivar), `HU-8.5` (métricas globales),
+  `HU-8.6` (reportes, sin modelo de datos todavía), `HU-8.7` (bloqueada por
+  un gap de modelo — `Organization` no tiene campo de categoría). Ver
+  `docs/epica-8-backoffice.md`.
+
+Documentación de referencia:
+
+- `docs/story-documentation-standard.md`
+- `docs/epica-3-cola.md`
+- `docs/epica-2-5-cuentas-organizaciones.md`
+- `docs/epica-6-panel-negocio.md`
+- `docs/epica-8-backoffice.md`
+- `docs/decision-modelo-cuentas-negocios.md`
+
+Avance actual:
+
+- `HU-2.1` implementada en backend con dirección textual.
+- Persistencia extendida en `Business` con `address`, `latitude` y `longitude`
+  opcionales.
+- Visibilidad pública separada mediante `listingStatus`.
+- Endpoint de actualización de perfil: `PATCH /api/business/:businessId/profile`.
+- Google Maps queda en rollover justificado hasta la experiencia mobile de
+  descubrimiento/mapa.
+- `HU-2.2` implementada en backend para configurar y leer horarios semanales y
+  días no laborables.
+- Endpoints de horarios: `GET /api/business/:businessId/hours` y
+  `PUT /api/business/:businessId/hours`.
+- Regla base de disponibilidad pública preparada para que discovery mobile
+  muestre solo negocios accionables en el MVP inicial.
+- `HU-2.3` implementada en backend para configurar ventanillas o cajas activas.
+- Endpoint de ventanillas activas:
+  `PUT /api/business/:businessId/service-windows`.
+- Un negocio con `0` ventanillas activas queda sin atención disponible para
+  nuevos turnos, y queda preparado un servicio puro de estimación de espera para
+  integrarse con la cola persistida en épicas posteriores.
+- `HU-2.4` implementada en backend como canal QR de entrada a Espera.
+- Endpoints de QR:
+  `GET /api/business/:businessId/qr`,
+  `POST /api/business/:businessId/qr/regenerate`,
+  `GET /api/business/:businessId/qr.png` y `GET /api/qr/:token`.
+- El QR apunta a `{APP_URL}/q/:token`, permite descarga PNG desde el panel y
+  conserva el código anterior durante 24 horas al regenerar.
+- `HU-2.5` implementada en backend para cambiar estado operativo del negocio.
+- Endpoint de estado operativo:
+  `PATCH /api/business/:businessId/operational-status`.
+- Estados soportados: `normal`, `delayed`, `paused`, `closed`. `delayed`
+  mantiene turnos habilitados con indicador amarillo; `paused` y `closed`
+  bloquean nuevos turnos.
+- Al cambiar a `closed`, se emite el evento `business.closed` para integración
+  posterior con notificaciones push a turnos activos.
+- `HU-2.6` implementada en backend para editar datos del negocio y exponer
+  atributos de configuración por categoría.
+- Endpoints relacionados:
+  `PATCH /api/business/:businessId/profile` y
+  `GET /api/business/categories/:categoryId/config`.
+- `HU-2.8` implementada en backend para invitar empleados al panel.
+- Endpoints relacionados:
+  `POST /api/business/:businessId/employees/invitations`,
+  `GET /api/business/:businessId/employees`,
+  `POST /api/business/employee-invitations/:token/accept` y
+  `DELETE /api/business/:businessId/employees/:userId`.
+- La revocación marca la membresía como revocada e invalida las refresh
+  sessions activas del empleado.
+- Bugfix: `GET /api/business/me` resuelve los negocios del usuario autenticado
+  (`ownerUserId`), reemplazando el campo `businessId` muerto que nunca se
+  firmaba en el JWT. Ver `docs/epica-2-gestion-negocios.md`.

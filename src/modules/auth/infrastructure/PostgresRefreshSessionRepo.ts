@@ -1,0 +1,119 @@
+import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
+import type { TransactionHandle } from "@shared/kernel/Repository";
+
+import type { IRefreshSessionRepo } from "../domain/IRefreshSessionRepo";
+import type { RefreshSession } from "../domain/RefreshSession";
+
+export class PostgresRefreshSessionRepo implements IRefreshSessionRepo {
+  public async findByTokenHash(tokenHash: string): Promise<RefreshSession | null> {
+    const session = await prisma.refreshSession.findUnique({
+      where: { tokenHash },
+    });
+
+    return session ? this.toDomain(session) : null;
+  }
+
+  public async findByPreviousTokenHash(tokenHash: string): Promise<RefreshSession | null> {
+    const session = await prisma.refreshSession.findFirst({
+      where: { previousTokenHash: tokenHash },
+    });
+
+    return session ? this.toDomain(session) : null;
+  }
+
+  public async rotate(input: {
+    sessionId: string;
+    expectedTokenHash: string;
+    newTokenHash: string;
+    newExpiresAt: Date;
+    rotatedAt: Date;
+  }): Promise<boolean> {
+    const { count } = await prisma.refreshSession.updateMany({
+      where: { id: input.sessionId, tokenHash: input.expectedTokenHash, revokedAt: null },
+      data: {
+        tokenHash: input.newTokenHash,
+        previousTokenHash: input.expectedTokenHash,
+        rotatedAt: input.rotatedAt,
+        expiresAt: input.newExpiresAt,
+      },
+    });
+
+    return count === 1;
+  }
+
+  public async save(session: RefreshSession): Promise<RefreshSession> {
+    const saved = await prisma.refreshSession.upsert({
+      where: { id: session.id },
+      create: {
+        id: session.id,
+        userId: session.userId,
+        tokenHash: session.tokenHash,
+        expiresAt: session.expiresAt,
+        revokedAt: session.revokedAt ?? null,
+      },
+      update: {
+        tokenHash: session.tokenHash,
+        expiresAt: session.expiresAt,
+        revokedAt: session.revokedAt ?? null,
+      },
+    });
+
+    return this.toDomain(saved);
+  }
+
+  public async revokeById(id: string): Promise<void> {
+    await prisma.refreshSession.update({
+      where: { id },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  }
+
+  public async revokeAllByUserId(userId: string, tx?: TransactionHandle): Promise<void> {
+    await resolvePrismaClient(tx).refreshSession.updateMany({
+      where: {
+        userId,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+  }
+
+  public async deleteExpired(): Promise<void> {
+    await prisma.refreshSession.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date() } },
+          { revokedAt: { not: null } },
+        ],
+      },
+    });
+  }
+
+  private toDomain(raw: {
+    id: string;
+    userId: string;
+    tokenHash: string;
+    previousTokenHash: string | null;
+    rotatedAt: Date | null;
+    expiresAt: Date;
+    revokedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): RefreshSession {
+    return {
+      id: raw.id,
+      userId: raw.userId,
+      tokenHash: raw.tokenHash,
+      previousTokenHash: raw.previousTokenHash ?? undefined,
+      rotatedAt: raw.rotatedAt ?? undefined,
+      expiresAt: raw.expiresAt,
+      revokedAt: raw.revokedAt ?? undefined,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
+    };
+  }
+}

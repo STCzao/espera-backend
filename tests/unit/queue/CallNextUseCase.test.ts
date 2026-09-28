@@ -1,0 +1,304 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
+import { CallNextUseCase } from "../../../src/modules/queue/application/CallNextUseCase";
+import type { Turn } from "../../../src/modules/queue/domain/Turn";
+import { InMemoryBusinessEmployeeRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
+import {
+  InMemoryQueueRepo,
+  InMemoryTurnRepo,
+  buildQueue,
+  buildTurn,
+} from "../../helpers/queueFakes";
+
+// Returns fixed snapshots from the two "is it safe to call next" reads,
+// regardless of what's actually stored — simulating a request that read the
+// queue's state right before a concurrent request's write landed. Only
+// save() sees the live, mutable store, which is exactly the guard being
+// tested: two requests can read the identical pre-race state, but only one
+// of their writes should ever land.
+class FrozenReadsTurnRepo extends InMemoryTurnRepo {
+  public constructor(
+    initialTurns: Turn[],
+    private readonly frozenCalledTurn: Turn | null,
+    private readonly frozenNextTurn: Turn | null,
+  ) {
+    super(initialTurns);
+  }
+
+  public async findCalledTurnByQueue(): Promise<Turn | null> {
+    return this.frozenCalledTurn;
+  }
+
+  public async findNextWaitingTurn(): Promise<Turn | null> {
+    return this.frozenNextTurn;
+  }
+}
+
+const QUEUE_ID = "11111111-1111-4111-8111-111111111111";
+const BUSINESS_ID = "business-1"; // matches buildQueue()/buildTurn() default
+const OWNER_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const STRANGER_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+const buildUseCase = (options: {
+  queueRepo?: InMemoryQueueRepo;
+  turnRepo?: InMemoryTurnRepo;
+  emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
+  businessRepo?: InMemoryBusinessRepo;
+} = {}) => {
+  const queueRepo =
+    options.queueRepo ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, isActive: true })]);
+  const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
+  const emitter = options.emitter === undefined ? null : options.emitter;
+  const businessRepo = options.businessRepo ?? new InMemoryBusinessRepo([
+    buildBusiness({ id: BUSINESS_ID, ownerUserId: OWNER_ID }),
+  ]);
+  const ensureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(
+    businessRepo,
+    new InMemoryBusinessEmployeeRepo(),
+  );
+  return {
+    queueRepo,
+    turnRepo,
+    useCase: new CallNextUseCase(queueRepo, turnRepo, emitter as never, ensureBusinessMembershipUseCase),
+  };
+};
+
+describe("CallNextUseCase", () => {
+  it("marks the next waiting turn as called and returns it", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result).toMatchObject({ queueId: QUEUE_ID, displayNumber: "A-001" });
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
+  });
+
+  it("throws TURN_STILL_CALLED and does not touch anything when a called turn is still pending resolution", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "called" }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_STILL_CALLED" });
+
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
+    expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("waiting");
+  });
+
+  it("does not auto-complete an attending turn when calling the next", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "attending" }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("attending");
+    expect(turnRepo.all().find((t) => t.id === "t-2")?.status).toBe("called");
+  });
+
+  it("selects the highest-priority waiting turn first", async () => {
+    const base = new Date("2026-01-01T00:00:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, priority: "registered", createdAt: new Date(base.getTime()) }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, displayNumber: "A-002", priority: "arrived", createdAt: new Date(base.getTime() + 1000) }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result.displayNumber).toBe("A-002");
+  });
+
+  it("resolves FIFO when two turns have the same priority", async () => {
+    const base = new Date("2026-01-01T00:00:00.000Z");
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, priority: "registered", createdAt: new Date(base.getTime()) }),
+      buildTurn({ id: "t-2", queueId: QUEUE_ID, number: 2, displayNumber: "A-002", priority: "registered", createdAt: new Date(base.getTime() + 1000) }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result.displayNumber).toBe("A-001");
+  });
+
+  it("emits queue:update after calling a turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting" }),
+    ]);
+    const emitter = { emitQueueUpdate: vi.fn() };
+    const { useCase } = buildUseCase({ turnRepo, emitter });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(emitter.emitQueueUpdate).toHaveBeenCalledOnce();
+    expect(emitter.emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
+      calledTurnId: result.turnId,
+      calledDisplayNumber: result.displayNumber,
+    });
+  });
+
+  it("does not throw if no emitter is provided", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo, emitter: null });
+
+    await expect(useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID })).resolves.toBeDefined();
+  });
+
+  it("throws CONFLICT when the queue is empty", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_EMPTY" });
+  });
+
+  it("throws NOT_FOUND when the queue does not exist", async () => {
+    const { useCase } = buildUseCase({ queueRepo: new InMemoryQueueRepo() });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 404, code: "QUEUE_NOT_FOUND" });
+  });
+
+  it("throws CONFLICT when the queue is inactive", async () => {
+    const { useCase } = buildUseCase({
+      queueRepo: new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, isActive: false })]),
+    });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NOT_ACTIVE" });
+  });
+
+  it("throws BUSINESS_MEMBERSHIP_REQUIRED for a user unrelated to the business", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-1", queueId: QUEUE_ID, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID }),
+    ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
+  });
+
+  it("throws BAD_REQUEST for an invalid queueId", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: "not-a-uuid", requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it("throws TURN_CONFLICT instead of double-calling the same turn when two call-next requests race", async () => {
+    const t1 = buildTurn({ id: "t-1", queueId: QUEUE_ID, number: 1, status: "waiting" });
+    const turnRepo = new FrozenReadsTurnRepo([t1], null, t1);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const first = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+    expect(first.turnId).toBe("t-1");
+
+    // Replays the exact same (now stale) reads a real concurrent request
+    // would have made before the first one wrote.
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_CONFLICT" });
+
+    expect(turnRepo.all().find((t) => t.id === "t-1")?.status).toBe("called");
+  });
+});
+
+describe("CallNextUseCase — resolver el turno llamado antes de avanzar", () => {
+  it("does not block the first call to next even while another turn is attending (heads-up overlap)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-attending", queueId: QUEUE_ID, number: 1, status: "attending" }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result.turnId).toBe("t-next");
+    expect(turnRepo.all().find((t) => t.id === "t-next")?.status).toBe("called");
+  });
+
+  it("throws TURN_STILL_CALLED instead of auto-resolving, regardless of how long the turn has been called", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-called", queueId: QUEUE_ID, number: 1, status: "called", calledAt: new Date("2020-01-01T00:00:00.000Z") }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "TURN_STILL_CALLED" });
+
+    expect(turnRepo.all().find((t) => t.id === "t-called")?.status).toBe("called");
+  });
+
+  it("allows calling next again once the called turn was resolved (attended or marked no-show)", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({ id: "t-resolved", queueId: QUEUE_ID, number: 1, status: "no_show" }),
+      buildTurn({ id: "t-next", queueId: QUEUE_ID, number: 2, status: "waiting" }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result.turnId).toBe("t-next");
+  });
+});
+
+describe("CallNextUseCase — reserva telefónica que todavía no llegó a su ETA", () => {
+  it("throws QUEUE_NO_TURN_READY instead of QUEUE_EMPTY when the only waiting turn is a future phone reservation", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() + 60 * 60_000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "QUEUE_NO_TURN_READY" });
+  });
+
+  it("does not call a phone reservation before its declared ETA, even when it's the only turn", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() + 60 * 60_000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    await expect(useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID })).rejects.toThrow();
+    expect(turnRepo.all().find((t) => t.id === "t-phone")?.status).toBe("waiting");
+  });
+
+  it("calls a phone reservation once its declared ETA has arrived", async () => {
+    const turnRepo = new InMemoryTurnRepo([
+      buildTurn({
+        id: "t-phone", queueId: QUEUE_ID, number: 1, source: "phone", priority: "registered",
+        queueJoinedAt: new Date(Date.now() - 1000),
+      }),
+    ]);
+    const { useCase } = buildUseCase({ turnRepo });
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID });
+
+    expect(result.turnId).toBe("t-phone");
+  });
+});

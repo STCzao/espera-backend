@@ -1,0 +1,53 @@
+# Infraestructura local. Los valores salen de .env (ver .env.example); no hay
+# credenciales en este archivo, asi que es seguro tenerlo en el repo.
+#
+# Los datos de Postgres viven en ./data/postgres, un bind mount a tu disco, no
+# en un volumen nombrado de Docker: reinstalar Docker Desktop o hacer "reset to
+# factory defaults" borra los volumenes nombrados, pero no toca esta carpeta.
+#
+# Las rutas relativas las resuelve Compose contra la ubicacion de este archivo.
+# Es a proposito: un `docker run -v "$(pwd)/data/...:..."` desde Git Bash en
+# Windows mangla la ruta, el contenedor arranca igual y los datos se escriben
+# en otro lado, asi que se pierden sin ningun error visible. Con Compose no
+# pasa; levanta siempre con `docker compose up -d`.
+services:
+  # Sin env_file: .env a proposito. Compose ya lee .env para resolver los
+  # ${...} de abajo, y env_file ademas inyectaria TODO el archivo (JWT,
+  # cookies, Resend) dentro del contenedor de la base, donde cualquiera con
+  # docker inspect o una shell ahi adentro los puede leer. La base solo
+  # necesita estas tres variables.
+  postgres:
+    image: postgres:16-alpine
+    container_name: espera-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      # Evita el caso en que la app arranca antes de que Postgres acepte
+      # conexiones y falla el primer request.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: espera-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    # Sin bind mount a proposito: aca solo viven contadores con TTL (ventanas
+    # de rate limit e intentos de login fallidos). Perderlos al recrear el
+    # contenedor no rompe nada, solo regala unos intentos extra, asi que
+    # persistirlos seria complejidad sin beneficio.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

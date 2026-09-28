@@ -1,0 +1,498 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  EMPLOYEE
+  BUSINESS_ADMIN
+  SUPER_ADMIN
+}
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum OrganizationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum BusinessListingStatus {
+  DRAFT
+  HIDDEN
+  PUBLISHED
+}
+
+enum BusinessQrCodeStatus {
+  ACTIVE
+  RETIRING
+  REVOKED
+}
+
+enum BusinessOperationalStatus {
+  NORMAL
+  DELAYED
+  PAUSED
+  CLOSED
+}
+
+enum BusinessEmployeeStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum BusinessEmployeeInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum MembershipRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum ServiceWindowType {
+  CASHIER
+  CUSTOMER_SERVICE
+  INFORMATION
+  ADMIN
+  TECHNICAL
+}
+
+enum TurnStatus {
+  WAITING
+  CALLED
+  ATTENDING
+  REDIRECTED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum TurnPriority {
+  ARRIVED
+  PHYSICAL
+  IN_TRANSIT
+  REGISTERED
+}
+
+enum TurnSource {
+  APP
+  MANUAL
+  QR
+  WEB
+  PHONE
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PRO
+  PREMIUM
+}
+
+enum ReportedEntityType {
+  USER
+  BUSINESS
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  SUSPENDED
+  DISMISSED
+}
+
+model User {
+  id                      String    @id @default(uuid())
+  email                   String    @unique
+  firstName               String
+  lastName                String
+  phone                   String?
+  locality                String?
+  passwordHash            String?
+  role                    Role      @default(USER)
+  approvalStatus          ApprovalStatus  @default(APPROVED)
+  authProvider            AuthProvider    @default(LOCAL)
+  googleId                String?   @unique
+  isEmailVerified         Boolean   @default(false)
+  emailVerificationToken  String?   @unique
+  emailVerificationExpiry DateTime?
+  lastVerificationSentAt  DateTime?
+  passwordResetToken      String?   @unique
+  passwordResetExpiry     DateTime?
+  passwordResetUsedAt     DateTime?
+  isBlocked               Boolean   @default(false)
+  blockedByUserId         String?
+  blockedAt               DateTime?
+  blockReason             String?
+  unblockedByUserId       String?
+  unblockedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  businesses              Business[]
+  refreshSessions         RefreshSession[]
+  employeeMemberships     BusinessEmployee[]
+  memberships             Membership[]
+  turns                   Turn[]
+
+  @@map("users")
+}
+
+model Report {
+  id               String             @id @default(uuid())
+  reportedType     ReportedEntityType
+  reportedId       String
+  reason           String
+  reportedByUserId String
+  status           ReportStatus       @default(PENDING)
+  internalNote     String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([reportedType, reportedId])
+  @@index([reportedByUserId])
+  @@index([status])
+  @@map("reports")
+}
+
+model RefreshSession {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  // Hash of the token this session held before its last rotation, kept only
+  // to tell a harmless multi-tab race apart from a replayed (stolen) token.
+  previousTokenHash String?
+  rotatedAt  DateTime?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([previousTokenHash])
+  @@map("refresh_sessions")
+}
+
+model BusinessCategory {
+  id            String         @id
+  name          String
+  slug          String         @unique
+  businesses    Business[]
+  organizations Organization[] @relation("OrganizationCategory")
+
+  @@map("business_categories")
+}
+
+model Business {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  categoryId  String
+  phone       String?
+  address     String?
+  latitude    Float?
+  longitude   Float?
+  listingStatus BusinessListingStatus @default(DRAFT)
+  operationalStatus BusinessOperationalStatus @default(NORMAL)
+  ownerUserId String
+  organizationId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  status      BusinessStatus @default(PENDING)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+  rejectedAt       DateTime?
+  suspendedByUserId   String?
+  suspendedAt         DateTime?
+  suspensionReason    String?
+  reactivatedByUserId String?
+  reactivatedAt       DateTime?
+  approvalNote           String?
+  approvalAlertsSnapshot String[] @default([])
+  category    BusinessCategory @relation(fields: [categoryId], references: [id])
+  owner       User     @relation(fields: [ownerUserId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  openingHours BusinessOpeningHour[]
+  nonWorkingDays BusinessNonWorkingDay[]
+  qrCodes BusinessQrCode[]
+  employees BusinessEmployee[]
+  employeeInvitations BusinessEmployeeInvitation[]
+  queues Queue[]
+  turns Turn[]
+
+  @@index([organizationId])
+  // findByOwnerUserId (ListMyBusinessesUseCase, the owner's most-visited
+  // screen) filtered on this column with no index at all before this.
+  @@index([ownerUserId])
+  @@map("businesses")
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  legalId     String?
+  categoryId  String?
+  status      OrganizationStatus @default(PENDING)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+  rejectedAt       DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category    BusinessCategory? @relation("OrganizationCategory", fields: [categoryId], references: [id])
+  businesses  Business[]
+  memberships Membership[]
+  subscription Subscription?
+
+  @@map("organizations")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  organizationId     String             @unique
+  plan               SubscriptionPlan   @default(BASIC)
+  status             SubscriptionStatus @default(PENDING)
+  trialEndsAt        DateTime?
+  activatedByUserId  String?
+  activatedAt        DateTime?
+  cancelledByUserId  String?
+  cancellationReason String?
+  cancelledAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model Membership {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  role           MembershipRole
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model BusinessEmployee {
+  id              String   @id @default(uuid())
+  businessId      String
+  userId          String
+  status          BusinessEmployeeStatus @default(ACTIVE)
+  invitedByUserId String
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([businessId, status])
+  @@index([userId])
+  @@map("business_employees")
+}
+
+model BusinessEmployeeInvitation {
+  id             String   @id @default(uuid())
+  businessId     String
+  email          String
+  token          String   @unique
+  status         BusinessEmployeeInvitationStatus @default(PENDING)
+  invitedByUserId String
+  acceptedUserId String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, email, status])
+  @@map("business_employee_invitations")
+}
+
+model BusinessQrCode {
+  id         String   @id @default(uuid())
+  businessId String
+  token      String   @unique
+  status     BusinessQrCodeStatus @default(ACTIVE)
+  validUntil DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  // Also enforced by a partial unique index Prisma's schema DSL can't
+  // express (no WHERE clause support): one ACTIVE QR per businessId. See
+  // migration 20260918000000_unique_active_qr_per_business. RETIRING QR
+  // codes are excluded on purpose — several can coexist during a
+  // regeneration's transition window (RegenerateBusinessQrCodeUseCase).
+  @@map("business_qr_codes")
+}
+
+model BusinessOpeningHour {
+  id          String   @id @default(uuid())
+  businessId  String
+  dayOfWeek   Int
+  opensAt     String
+  closesAt    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, dayOfWeek])
+  @@map("business_opening_hours")
+}
+
+model BusinessNonWorkingDay {
+  id          String   @id @default(uuid())
+  businessId  String
+  date        DateTime
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, date])
+  @@index([businessId])
+  @@map("business_non_working_days")
+}
+
+model Queue {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  prefix     String   @default("A")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  turns           Turn[]
+  serviceWindows  ServiceWindow[]
+
+  @@index([businessId])
+  @@map("queues")
+}
+
+model ServiceWindow {
+  id        String            @id @default(uuid())
+  queueId   String
+  name      String
+  type      ServiceWindowType @default(CASHIER)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  queue Queue  @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  turns Turn[]
+
+  @@index([queueId])
+  @@map("service_windows")
+}
+
+model Turn {
+  id            String       @id @default(uuid())
+  queueId       String
+  businessId    String
+  customerId    String?
+  guestName     String?
+  phone         String?
+  number        Int
+  displayNumber String
+  status        TurnStatus   @default(WAITING)
+  priority      TurnPriority @default(REGISTERED)
+  source        TurnSource   @default(APP)
+  turnDate      DateTime
+  queueJoinedAt DateTime     @default(now())
+  serviceWindowId      String?
+  calledAt             DateTime?
+  startedAttentionAt   DateTime?
+  attendedAt           DateTime?
+  cancelledAt          DateTime?
+  noShowAt             DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  queue         Queue          @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  business      Business       @relation(fields: [businessId], references: [id])
+  customer      User?          @relation(fields: [customerId], references: [id])
+  serviceWindow ServiceWindow? @relation(fields: [serviceWindowId], references: [id])
+
+  @@index([queueId, status])
+  @@index([customerId, status])
+  @@index([businessId, turnDate])
+  // createWithNextNumber's tx.turn.count({ queueId, turnDate }) ran this
+  // filter with no covering index while already holding the queue's row
+  // lock (FOR UPDATE) — every new turn creation for a queue was serialized
+  // behind a scan that grows with that queue's full history. Same shape
+  // (queueId, turnDate) also covers getAverageServiceMinutes/getRawMetricsByDate.
+  @@index([queueId, turnDate])
+  // findRecentCalls filters queueId and orders by calledAt desc — the
+  // (queueId, status) index above only helps the equality prefix, not the
+  // ORDER BY.
+  @@index([queueId, calledAt])
+  // Also enforced by a partial unique index Prisma's schema DSL can't
+  // express (no WHERE clause support): one ATTENDING/REDIRECTED turn per
+  // serviceWindowId. See migration
+  // 20260820000000_unique_active_turn_per_service_window. That partial
+  // index already covers findAttendingByServiceWindow's exact filter
+  // (serviceWindowId + status IN (ATTENDING, REDIRECTED)) — no separate
+  // @@index needed for that lookup.
+  //
+  // Same DSL limitation for a second partial unique index: one active
+  // (WAITING/CALLED/ATTENDING/REDIRECTED) turn per customerId, system-wide
+  // (not per business, confirmed 2026-09-18). See migration
+  // 20260918010000_unique_active_turn_per_customer.
+  @@map("turns")
+}
