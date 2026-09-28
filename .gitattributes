@@ -1,0 +1,18 @@
+# Normaliza finales de linea por tipo de archivo.
+* text=auto
+
+# Los scripts de shell SIEMPRE con LF, tambien en Windows. Con CRLF, el
+# shebang queda como "#!/usr/bin/env bash\r" y Linux falla con
+# "bad interpreter: ... ^M" — lo que rompe estos scripts dentro de un
+# contenedor, en WSL o en CI, aunque en Git Bash parezcan andar.
+*.sh text eol=lf
+
+# Igual para lo que ejecuta un contenedor Linux.
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Los dumps son binarios: sin esto git los "normaliza" y los corrompe.
+*.dump binary
+*.tar.gz binary
+*.archive binary
