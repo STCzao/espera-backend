@@ -298,6 +298,36 @@ Redis caído devuelve 200 a propósito: el rate limiter y el contador de intento
 de login caen a memoria por proceso y lo registran en el log, así que sacar la
 instancia de rotación convertiría una degradación prevista en una caída.
 
+### Cookies y dominios
+
+Las cookies de sesión (`refreshToken` y la de estado de Google) sólo viajan si
+el frontend y el backend son **el mismo sitio** para el navegador. El sitio se
+decide por el dominio registrable, no por el puerto: `localhost:5173` y
+`localhost:3000` son el mismo sitio, y por eso en local todo anda.
+
+| Despliegue | ¿Mismo sitio? | Qué hacer |
+| --- | --- | --- |
+| `app.tudominio` + `api.tudominio` | Sí | Nada. `COOKIE_SAMESITE` sin setear |
+| `*.vercel.app` + `*.onrender.com` | No | `COOKIE_SAMESITE=none` en Render |
+
+`*.vercel.app` y `*.onrender.com` están en la Public Suffix List, así que cada
+subdominio es un sitio distinto: no hay forma de hacerlos same-site.
+
+Si el despliegue es cross-site y no se pone `none`, el síntoma es confuso: el
+login anda, pero **el usuario se desloguea a los 15 minutos** (falla el refresh)
+y el login con Google da `GOOGLE_OAUTH_STATE_MISMATCH`.
+
+`none` es un puente, no el destino: quita la protección CSRF que da `strict`.
+El daño real es acotado — sólo `/auth/refresh-token` y `/auth/logout`
+autentican por cookie, el resto usa el Bearer token, y CORS impide leer la
+respuesta desde otro origen — así que lo peor que logra un sitio malicioso es
+forzar un logout. Aun así, **en cuanto haya dominio propio conviene sacar la
+variable** y volver a `strict`.
+
+`COOKIE_DOMAIN` queda **sin setear** en producción: con front y back en
+dominios distintos no hay dominio común que compartir, y con subdominios la
+cookie del backend sólo necesita volver al backend.
+
 ### `TRUST_PROXY`
 
 Render termina TLS en su proxy, así que `request.ip` sale de `X-Forwarded-For`.
