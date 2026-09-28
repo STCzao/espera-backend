@@ -234,6 +234,11 @@ Respuesta `201`:
 - `position`: posición en la cola en el momento de creación considerando
   jerarquía de prioridad (ver HU-3.12).
 
+Emite `queue:update` con `{ createdTurnId, createdDisplayNumber }`, después de
+que el turno quedó creado. Un alta rechazada (cola inactiva, negocio pausado,
+fuera de horario, o el índice único de un turno activo por cliente) no emite
+nada.
+
 ### Reglas de negocio
 
 1. La cola debe existir y tener `isActive = true`.
@@ -754,7 +759,10 @@ Respuesta `201`:
 }
 ```
 
-Emite `queue:update` con `{ newTurnId, newDisplayNumber, guestName }`.
+Emite `queue:update` con `{ createdTurnId, createdDisplayNumber }`, igual que
+las otras dos altas. (Esta página venía prometiendo
+`{ newTurnId, newDisplayNumber, guestName }`, un payload que el código nunca
+llegó a emitir: la creación de turnos no avisaba nada.)
 
 ### Reglas de negocio
 
