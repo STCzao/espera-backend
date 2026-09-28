@@ -178,6 +178,89 @@ npx prisma migrate deploy
 El proceso maneja `SIGTERM`/`SIGINT`: deja de aceptar conexiones, cierra
 Socket.IO, Redis y Prisma, y responde `503` en `/health` mientras drena.
 
+## Base de datos local
+
+Los datos de Postgres viven en `./data/postgres` (bind mount declarado en
+`docker-compose.yml`), no en un volumen nombrado de Docker. Reinstalar Docker
+Desktop o hacer *reset to factory defaults* borra los volúmenes nombrados,
+pero no toca esa carpeta. Está en `.gitignore`.
+
+Levantá siempre con **`docker compose up -d`**, no con `docker run -v ...`:
+desde Git Bash en Windows, `$(pwd)` se mangla y el contenedor arranca
+igual pero escribe los datos en otro lado, así que se pierden sin ningún
+error visible. Compose resuelve las rutas relativas por su cuenta y no tiene
+ese problema.
+
+Las credenciales salen de `.env` (partí de `.env.example`). `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, `POSTGRES_DB` y `POSTGRES_PORT` los lee el contenedor;
+`DATABASE_URL` la lee la app. Son la misma base vista de dos lados: si
+cambiás una, actualizá la otra.
+
+### Datos de desarrollo (seed)
+
+Una base recién migrada sólo trae las categorías de rubro. Para tener un
+escenario usable en cualquier PC, sin registrar nada a mano:
+
+```bash
+docker compose up -d
+npx prisma migrate deploy
+npm run db:seed
+```
+
+Eso crea: super admin, dueño con negocio aprobado (plan PRO en trial), cola
+con dos ventanillas, empleada, cliente y 6 turnos del día en distintos estados
+(completado, no-show, en atención, llamado y dos esperando), más un segundo
+negocio **pendiente** para probar el backoffice. Todas las cuentas usan la
+clave `Password1` y el script imprime los emails, el `queueId` y el `turnId`
+del invitado al terminar.
+
+Es idempotente: borra lo que creó antes y lo vuelve a crear, así que correrlo
+de nuevo sirve para volver a cero. Y se niega a correr si `DATABASE_URL` no
+apunta a una base local, porque borra filas.
+
+**Este es el mecanismo de portabilidad entre máquinas.** El bind mount de
+abajo conserva lo que acumules en *esta* PC; el seed es lo que te da un
+entorno igual en cualquier otra.
+
+### Backup y restore
+
+```bash
+# Dump comprimido a ./backups/espera-<fecha>.dump
+./scripts/db-backup.sh
+
+# Restaurar en la base local (pide confirmación: pisa lo que haya)
+./scripts/db-restore.sh backups/espera-20260928-151936.dump
+
+# Restaurar en Render, con su External Database URL
+RENDER_DATABASE_URL='postgresql://...' ./scripts/db-restore-render.sh backups/espera-....dump
+```
+
+El formato es el custom de `pg_dump` (`-Fc`), no SQL plano: pesa menos y
+permite restaurar tablas sueltas. Los tres scripts corren `pg_dump`/
+`pg_restore` dentro de un contenedor, así que no hace falta instalar el
+cliente de Postgres en Windows y la versión del cliente siempre coincide con
+la del servidor.
+
+La URL de Render va por variable de entorno y no como argumento: los
+argumentos quedan en el historial del shell y se ven en la lista de procesos.
+
+### Migrar desde el volumen nombrado
+
+Si venís de la versión anterior del compose, tus datos están en el volumen
+`espera-backend_postgres_data` y el bind mount arranca **vacío**. Para no
+perderlos, con los contenedores viejos todavía arriba:
+
+```bash
+./scripts/db-backup.sh          # 1. dump de lo que hay hoy
+docker compose down             # 2. el volumen viejo NO se borra
+docker compose up -d            # 3. arranca sobre ./data/postgres, vacío
+npx prisma migrate deploy       # 4a. esquema limpio...
+./scripts/db-restore.sh backups/<el-dump>   # 4b. ...o restaurá los datos
+```
+
+El volumen viejo queda intacto por si algo sale mal. Cuando confirmes que la
+base nueva está bien: `docker volume rm espera-backend_postgres_data`.
+
 ## Despliegue en Render
 
 `render.yaml` declara el servicio web (a partir del `Dockerfile`), el Postgres
