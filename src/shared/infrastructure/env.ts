@@ -19,6 +19,18 @@ const baseEnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   REDIS_URL: z.string().default("redis://localhost:6379"),
   RESEND_API_KEY: z.string().optional(),
+  // Second stage of the staff-socket rollout. While false, a queue:join
+  // with no turnId and no authenticated session is still accepted and
+  // logged as a warning, so the remaining unauthenticated panels can be
+  // counted before they start being refused. Flip to true once the
+  // frontend sends the access token in the Socket.IO handshake.
+  //
+  // Parsed from the two literal strings rather than with z.coerce.boolean(),
+  // which turns the string "false" into true and would silently enable this.
+  SOCKET_REQUIRE_STAFF_AUTH: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   RESEND_FROM_EMAIL: z.string().optional(),
   APP_URL: z.string().url().optional(),
   TRUST_PROXY: z.string().optional(),

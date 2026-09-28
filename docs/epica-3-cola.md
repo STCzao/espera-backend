@@ -282,6 +282,54 @@ posición llamando a `GET /api/queue/:queueId/turns/my-turn`.
 El room se identifica como `queue:{queueId}`. La emisión se realiza vía
 `SocketIOEmitter.emitQueueUpdate(queueId, payload)`.
 
+#### Handshake
+
+El cliente puede mandar su access token al conectar:
+
+```js
+io(baseUrl, { auth: (cb) => cb({ token: accessToken }) });
+```
+
+El token se valida con las mismas reglas que el middleware `authenticate`:
+algoritmo fijo y relectura del usuario en la base, así que un usuario
+bloqueado no cuenta como staff aunque su token siga vigente.
+
+Un token ausente, vencido o mal firmado **no corta la conexión**: el socket
+queda anónimo. La misma conexión la usa el invitado de la web ligera, que
+nunca manda token, y voltearlo por un token malo sería una caída para él.
+
+#### `queue:join`
+
+Payload: `{ queueId, turnId? }`.
+
+| Caso | Requisito | Resultado |
+| --- | --- | --- |
+| Invitado (web ligera) | `turnId` de un turno de esa cola | entra, con o sin token |
+| Panel del personal | socket autenticado + dueño o empleado activo del negocio de la cola | entra |
+| Panel sin sesión | — | depende de `SOCKET_REQUIRE_STAFF_AUTH` |
+| Sin `queueId`, `turnId` de otra cola, cola inexistente, staff de otro negocio | — | rechazado |
+
+El `turnId` es la clave de acceso del invitado (UUID no adivinable), mismo
+modelo de confianza que `GET /api/queue/guest-turns/:turnId`. Un join sin
+`turnId` es el panel mirando la cola entera, y antes se aceptaba sin mirar
+quién era: cualquiera con un `queueId` podía escuchar nombres de invitados,
+turnIds y ventanillas.
+
+Un join rechazado no emite error al cliente; simplemente no se une al room y
+queda registrado con su motivo en el log del servidor.
+
+#### Cierre en dos etapas
+
+`SOCKET_REQUIRE_STAFF_AUTH` (default `false`) existe porque el frontend
+todavía no manda el token: empezar a rechazar dejaría al panel sin tiempo
+real.
+
+1. **Flag en `false`** — el join sin sesión se acepta y se loguea como
+   `Socket joined a queue room with no authenticated staff session (legacy panel)`.
+2. El frontend manda el token en el handshake.
+3. Cuando ese warning deja de aparecer, **flag en `true`**: ese join pasa a
+   rechazarse.
+
 ### Eventos e integraciones
 
 Socket.IO: `SocketIOEmitter` inyectado como dependencia opcional en todos los

@@ -1,3 +1,4 @@
+export * from "./application/EnsureBusinessMembershipUseCase";
 export * from "./application/RegisterBusinessUseCase";
 export * from "./domain/Business";
 export * from "./domain/Category";
