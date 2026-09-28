@@ -9,6 +9,7 @@ import express from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { Server as SocketIOServer } from "socket.io";
+import type { DefaultEventsMap } from "socket.io";
 
 import { errorHandler } from "./middleware/errorHandler";
 import { authRouter } from "./modules/auth/interfaces/auth.routes";
@@ -17,10 +18,14 @@ import { qrRouter } from "./modules/business/interfaces/qr.routes";
 import { organizationRouter } from "./modules/organization/interfaces/organization.routes";
 import { createQueueRouter } from "./modules/queue/interfaces/queue.routes";
 import { reportRouter } from "./modules/report/interfaces/report.routes";
+import { EnsureBusinessMembershipUseCase } from "./modules/business";
+import { PostgresQueueRepo } from "./modules/queue/infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "./modules/queue/infrastructure/PostgresTurnRepo";
 import { authorizeQueueJoin } from "./modules/queue/infrastructure/realtime/authorizeQueueJoin";
 import { SocketIOEmitter } from "./modules/queue/infrastructure/realtime/SocketIOEmitter";
 import { env, getTrustProxySetting } from "./shared/infrastructure/env";
+import { authenticateSocket } from "./middleware/authenticateSocket";
+import type { AuthenticatedUserSnapshot } from "./middleware/loadAuthenticatedUser";
 import { createShutdownHandler, isShuttingDown } from "./shared/infrastructure/gracefulShutdown";
 import { logger } from "./shared/infrastructure/logger";
 import { prisma } from "./shared/infrastructure/prisma";
@@ -113,21 +118,60 @@ export const createApp = (deps: { emitter?: SocketIOEmitter | null } = {}): expr
   return app;
 };
 
+/** Per-socket state set by the handshake middleware in createServer. */
+interface QueueSocketData {
+  user: AuthenticatedUserSnapshot | null;
+}
+
 export const createServer = () => {
   // Create the HTTP server before the app so that Socket.IO can attach to it
   // first, letting us pass the emitter into createApp.
   const server = http.createServer();
 
-  const io = new SocketIOServer(server, {
+  // The SocketData generic is what makes socket.data.user type-checked;
+  // left to its default it is `any`, and a typo there would compile.
+  const io = new SocketIOServer<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, QueueSocketData>(server, {
     cors: corsOptions,
   });
 
   const emitter = new SocketIOEmitter(io);
   const app = createApp({ emitter });
   const turnRepo = new PostgresTurnRepo();
+  const queueRepo = new PostgresQueueRepo();
+  const ensureBusinessMembership = new EnsureBusinessMembershipUseCase();
+
+  // Composition root for the queue room guard: authorizeQueueJoin lives in
+  // the queue module, which may not import the business module, so the
+  // owner/employee rule is handed to it from here instead of duplicated.
+  const queueJoinDeps = {
+    turnRepo,
+    queueRepo,
+    assertStaffAccess: (businessId: string, userId: string) =>
+      ensureBusinessMembership.execute({ businessId, userId }),
+    requireStaffAuth: env.SOCKET_REQUIRE_STAFF_AUTH,
+  };
 
   // Attach Express as the request handler after both io and app are ready.
   server.on("request", app);
+
+  // Runs once per connection, before any event. A token that is missing,
+  // expired or forged leaves the socket anonymous rather than refusing the
+  // connection: the same endpoint serves the anonymous web-ligera visitor,
+  // who never sends one. next() is therefore always called without an error.
+  io.use(async (socket, next) => {
+    try {
+      const user = await authenticateSocket(socket.handshake.auth?.token);
+      socket.data.user = user;
+      if (!user && socket.handshake.auth?.token) {
+        // Never log the token itself — it is a live credential.
+        logger.warn({ socketId: socket.id }, "Socket handshake carried an unusable token");
+      }
+    } catch (error) {
+      socket.data.user = null;
+      logger.warn({ socketId: socket.id, error }, "Socket handshake authentication failed");
+    }
+    next();
+  });
 
   io.on("connection", (socket) => {
     logger.info({ socketId: socket.id }, "Socket connected");
@@ -142,17 +186,33 @@ export const createServer = () => {
       async (payload: { queueId?: string; turnId?: string } | undefined) => {
         try {
           const { queueId, turnId } = payload ?? {};
-          const allowed = await authorizeQueueJoin({ queueId, turnId }, turnRepo);
-          if (!allowed) {
+          const userId = socket.data.user?.id ?? null;
+          const decision = await authorizeQueueJoin({ queueId, turnId, userId }, queueJoinDeps);
+
+          if (!decision.allowed) {
             logger.warn(
-              { socketId: socket.id, queueId, turnId },
+              { socketId: socket.id, queueId, turnId, userId, reason: decision.reason },
               "Rejected queue:join",
             );
             return;
           }
 
           void socket.join(`queue:${queueId}`);
-          logger.info({ socketId: socket.id, queueId, turnId }, "Socket joined queue room");
+
+          if (decision.reason === "unauthenticated_legacy") {
+            // Counting these is what says when SOCKET_REQUIRE_STAFF_AUTH can
+            // be turned on: once no panel produces this any more, refusing
+            // them costs nothing.
+            logger.warn(
+              { socketId: socket.id, queueId },
+              "Socket joined a queue room with no authenticated staff session (legacy panel)",
+            );
+          }
+
+          logger.info(
+            { socketId: socket.id, queueId, turnId, userId, reason: decision.reason },
+            "Socket joined queue room",
+          );
         } catch (error) {
           logger.warn({ socketId: socket.id, error }, "queue:join handler failed");
         }
