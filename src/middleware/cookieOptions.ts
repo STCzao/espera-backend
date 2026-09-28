@@ -1,7 +1,7 @@
 export interface BaseCookieOptions {
   httpOnly: true;
   secure: boolean;
-  sameSite: "strict" | "lax";
+  sameSite: "strict" | "lax" | "none";
   maxAge: number;
   path: string;
   domain?: string;
@@ -14,6 +14,12 @@ export interface BaseCookieOptions {
  * it reflects the current process.env — cheap, and avoids a stale
  * NODE_ENV/COOKIE_DOMAIN snapshot if either is ever set after import (tests
  * stubbing env vars, in particular).
+ *
+ * El `sameSite` que pide cada llamada es el valor por defecto, y
+ * COOKIE_SAMESITE lo pisa cuando el despliegue tiene el frontend en otro
+ * sitio que el backend (ver env.ts). Se pisan las dos cookies a la vez: si
+ * el despliegue es cross-site, lo es para todas, y dejar una en "lax"
+ * romperia el login con Google en vez del refresh.
  */
 export const buildBaseCookieOptions = (
   sameSite: BaseCookieOptions["sameSite"],
@@ -21,7 +27,7 @@ export const buildBaseCookieOptions = (
 ): BaseCookieOptions => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite,
+  sameSite: (process.env.COOKIE_SAMESITE as BaseCookieOptions["sameSite"] | undefined) ?? sameSite,
   maxAge: maxAgeMs,
   path: "/",
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),

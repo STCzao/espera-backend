@@ -5,6 +5,16 @@ const baseEnvSchema = z.object({
   APP_ORIGIN: z.string().optional(),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECRET: z.string().min(32, "COOKIE_SECRET must be at least 32 characters."),
+  // Puente temporal para un despliegue con el frontend y el backend en
+  // dominios distintos (p. ej. *.vercel.app y *.onrender.com). Ambos estan
+  // en la Public Suffix List, asi que el navegador los trata como sitios
+  // distintos y no manda una cookie "strict"/"lax": sin esto el refresh
+  // falla y el usuario se desloguea al vencer el access token.
+  //
+  // Es temporal a proposito. Con un dominio propio y subdominios
+  // (app.x / api.x) las dos partes son el mismo sitio, esta variable se
+  // saca y las cookies vuelven a "strict", que es mas seguro.
+  COOKIE_SAMESITE: z.enum(["strict", "lax", "none"]).optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required."),
   GOOGLE_CALLBACK_URL: z.string().url().optional(),
   GOOGLE_CLIENT_BUSINESS_ID: z.string().optional(),
@@ -37,6 +47,18 @@ const baseEnvSchema = z.object({
 });
 
 const envSchema = baseEnvSchema.superRefine((data, ctx) => {
+  // Los navegadores descartan una cookie "SameSite=None" que no sea
+  // "Secure", y `secure` sale de NODE_ENV === "production". Fuera de
+  // produccion esto no fallaria: simplemente dejarian de guardarse las
+  // cookies, sin ningun error, y se depura a ciegas. Mejor no arrancar.
+  if (data.COOKIE_SAMESITE === "none" && data.NODE_ENV !== "production") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["COOKIE_SAMESITE"],
+      message: 'COOKIE_SAMESITE="none" requires Secure cookies, which are only set when NODE_ENV=production.',
+    });
+  }
+
   // Without this, `cors({ origin: env.APP_ORIGIN ?? true, credentials: true })`
   // reflects any request origin in production — an authenticated CORS bypass
   // that's easy to miss in a rushed deploy since everything still "works".
