@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CreateTurnUseCase } from "../../../src/modules/queue/application/CreateTurnUseCase";
 import { InMemoryBusinessHoursRepo, InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
@@ -18,6 +18,7 @@ const buildUseCase = (options: {
   queueRepo?: InMemoryQueueRepo;
   turnRepo?: InMemoryTurnRepo;
   businessRepo?: InMemoryBusinessRepo;
+  emitter?: { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
 } = {}) => {
   const queueRepo =
     options.queueRepo ??
@@ -32,11 +33,16 @@ const buildUseCase = (options: {
   const turnRepo = options.turnRepo ?? new InMemoryTurnRepo();
   const businessHoursRepo = new InMemoryBusinessHoursRepo();
 
+  const emitter = options.emitter === undefined ? null : options.emitter;
+
   return {
     queueRepo,
     turnRepo,
     businessRepo,
-    useCase: new CreateTurnUseCase(queueRepo, turnRepo, businessRepo, businessHoursRepo),
+    emitter,
+    useCase: new CreateTurnUseCase(
+      queueRepo, turnRepo, businessRepo, businessHoursRepo, undefined, emitter as never,
+    ),
   };
 };
 
@@ -288,5 +294,79 @@ describe("CreateTurnUseCase — horario del negocio", () => {
     await expect(
       useCase.execute({ queueId: QUEUE_ID, guestName: "Invitado" }),
     ).rejects.toMatchObject({ statusCode: 409, code: "BUSINESS_OUTSIDE_OPERATING_HOURS" });
+  });
+});
+
+describe("CreateTurnUseCase — aviso al panel", () => {
+  const withEmitter = (options: Parameters<typeof buildUseCase>[0] = {}) => {
+    const emitQueueUpdate = vi.fn();
+    return { ...buildUseCase({ ...options, emitter: { emitQueueUpdate } }), emitQueueUpdate };
+  };
+
+  it("emits queue:update once, to the turn's own queue, after creating it", async () => {
+    const { useCase, emitQueueUpdate, turnRepo } = withEmitter();
+
+    const result = await useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID });
+
+    expect(emitQueueUpdate).toHaveBeenCalledTimes(1);
+    expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
+      createdTurnId: result.turnId,
+      createdDisplayNumber: result.displayNumber,
+    });
+    // El turno ya existe cuando se avisa, no al reves.
+    expect(turnRepo.all()).toHaveLength(1);
+  });
+
+  it("keeps working with no emitter wired (tests, entorno sin socket)", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID })).resolves.toBeDefined();
+  });
+
+  describe("no avisa de un turno que no se creo", () => {
+    it("queue does not exist", async () => {
+      const { useCase, emitQueueUpdate } = withEmitter({ queueRepo: new InMemoryQueueRepo() });
+
+      await expect(useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID })).rejects.toThrow();
+      expect(emitQueueUpdate).not.toHaveBeenCalled();
+    });
+
+    it("business is paused", async () => {
+      const businessRepo = new InMemoryBusinessRepo([
+        buildBusiness({ id: BUSINESS_ID, status: "approved", operationalStatus: "paused" }),
+      ]);
+      const { useCase, emitQueueUpdate } = withEmitter({ businessRepo });
+
+      await expect(useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID })).rejects.toThrow();
+      expect(emitQueueUpdate).not.toHaveBeenCalled();
+    });
+
+    it("the customer already has an active turn (checked in app)", async () => {
+      const turnRepo = new InMemoryTurnRepo([
+        buildTurn({ id: "otro", queueId: "otra-cola", customerId: CUSTOMER_ID, status: "waiting" }),
+      ]);
+      const { useCase, emitQueueUpdate } = withEmitter({ turnRepo });
+
+      await expect(useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID })).rejects.toMatchObject({
+        code: "CUSTOMER_HAS_ACTIVE_TURN",
+      });
+      expect(emitQueueUpdate).not.toHaveBeenCalled();
+    });
+
+    it("the unique index rejects the insert (P2002), the race the check above can't close", async () => {
+      const turnRepo = new InMemoryTurnRepo();
+      turnRepo.createWithNextNumber = async () => {
+        throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+          code: "P2002",
+          clientVersion: "test",
+        });
+      };
+      const { useCase, emitQueueUpdate } = withEmitter({ turnRepo });
+
+      await expect(useCase.execute({ queueId: QUEUE_ID, customerId: CUSTOMER_ID })).rejects.toMatchObject({
+        code: "CUSTOMER_HAS_ACTIVE_TURN",
+      });
+      expect(emitQueueUpdate).not.toHaveBeenCalled();
+    });
   });
 });

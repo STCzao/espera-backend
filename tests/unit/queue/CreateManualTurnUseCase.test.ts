@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { EnsureBusinessMembershipUseCase } from "../../../src/modules/business/application/EnsureBusinessMembershipUseCase";
 import { CreateManualTurnUseCase } from "../../../src/modules/queue/application/CreateManualTurnUseCase";
@@ -14,6 +14,7 @@ const buildUseCase = (options: {
   queueRepo?:    InMemoryQueueRepo;
   turnRepo?:     InMemoryTurnRepo;
   businessRepo?: InMemoryBusinessRepo;
+  emitter?:      { emitQueueUpdate: ReturnType<typeof vi.fn> } | null;
 } = {}) => {
   const queueRepo    = options.queueRepo    ?? new InMemoryQueueRepo([buildQueue({ id: QUEUE_ID, businessId: BUSINESS_ID, prefix: "A" })]);
   const turnRepo     = options.turnRepo     ?? new InMemoryTurnRepo();
@@ -22,7 +23,14 @@ const buildUseCase = (options: {
     businessRepo,
     new InMemoryBusinessEmployeeRepo(),
   );
-  return { useCase: new CreateManualTurnUseCase(queueRepo, turnRepo, businessRepo, ensureBusinessMembershipUseCase), turnRepo };
+  const emitter = options.emitter === undefined ? null : options.emitter;
+  return {
+    useCase: new CreateManualTurnUseCase(
+      queueRepo, turnRepo, businessRepo, ensureBusinessMembershipUseCase, emitter as never,
+    ),
+    turnRepo,
+    emitter,
+  };
 };
 
 describe("CreateManualTurnUseCase — creación exitosa", () => {
@@ -238,5 +246,53 @@ describe("CreateManualTurnUseCase — errores", () => {
     await expect(
       useCase.execute({ queueId: QUEUE_ID, requestingUserId: STRANGER_ID, guestName: "Juan" }),
     ).rejects.toMatchObject({ statusCode: 403, code: "BUSINESS_MEMBERSHIP_REQUIRED" });
+  });
+});
+
+describe("CreateManualTurnUseCase — aviso al panel", () => {
+  const withEmitter = (options: Parameters<typeof buildUseCase>[0] = {}) => {
+    const emitQueueUpdate = vi.fn();
+    return { ...buildUseCase({ ...options, emitter: { emitQueueUpdate } }), emitQueueUpdate };
+  };
+
+  it("emits queue:update once for a walk-in", async () => {
+    const { useCase, emitQueueUpdate, turnRepo } = withEmitter();
+
+    await useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, guestName: "Juan" });
+
+    const turn = turnRepo.all()[0];
+    expect(emitQueueUpdate).toHaveBeenCalledTimes(1);
+    expect(emitQueueUpdate).toHaveBeenCalledWith(QUEUE_ID, {
+      createdTurnId: turn.id,
+      createdDisplayNumber: turn.displayNumber,
+    });
+  });
+
+  it("emits for a phone reservation too, even though it joins the queue later", async () => {
+    const { useCase, emitQueueUpdate } = withEmitter();
+
+    await useCase.execute({
+      queueId: QUEUE_ID, requestingUserId: OWNER_ID, guestName: "Ana",
+      source: "phone", etaMinutes: 30,
+    });
+
+    expect(emitQueueUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not emit when the queue does not exist", async () => {
+    const { useCase, emitQueueUpdate } = withEmitter({ queueRepo: new InMemoryQueueRepo() });
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, guestName: "Juan" }),
+    ).rejects.toThrow();
+    expect(emitQueueUpdate).not.toHaveBeenCalled();
+  });
+
+  it("keeps working with no emitter wired", async () => {
+    const { useCase } = buildUseCase();
+
+    await expect(
+      useCase.execute({ queueId: QUEUE_ID, requestingUserId: OWNER_ID, guestName: "Juan" }),
+    ).resolves.toBeDefined();
   });
 });

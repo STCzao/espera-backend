@@ -29,14 +29,20 @@ import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter
 import { QueueController } from "./QueueController";
 
 export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Router => {
+  // Una sola instancia, compartida con CreateGuestTurnUseCase: ese use case
+  // delega la creacion aca, asi que el turno de invitado se anuncia por esta
+  // misma emision en vez de por una propia (que seria un segundo evento por
+  // el mismo turno).
+  const createTurnUseCase = new CreateTurnUseCase(undefined, undefined, undefined, undefined, undefined, emitter);
+
   const controller = new QueueController(
-    new CreateTurnUseCase(),
+    createTurnUseCase,
     new GetMyTurnUseCase(),
     new CallNextUseCase(undefined, undefined, emitter),
     new CancelTurnUseCase(undefined, emitter),
     new ConfirmTurnStatusUseCase(undefined, emitter),
     new GetQueueListUseCase(),
-    new CreateManualTurnUseCase(),
+    new CreateManualTurnUseCase(undefined, undefined, undefined, undefined, emitter),
     new CancelTurnByEmployeeUseCase(undefined, emitter),
     new AttendTurnUseCase(undefined, undefined, emitter),
     new GetQueueStatusUseCase(),
@@ -49,7 +55,7 @@ export const createQueueRouter = (emitter: SocketIOEmitter | null = null): Route
     new DeleteServiceWindowUseCase(),
     new RedirectTurnUseCase(undefined, undefined, emitter),
     new MarkTurnNoShowUseCase(undefined, emitter),
-    new CreateGuestTurnUseCase(),
+    new CreateGuestTurnUseCase(undefined, createTurnUseCase),
     new GetGuestTurnStatusUseCase(),
     new CancelGuestTurnUseCase(undefined, emitter),
   );
