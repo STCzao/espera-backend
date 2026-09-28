@@ -9,6 +9,7 @@ import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
+import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
 const schema = z.object({
   queueId:   z.string().uuid("Invalid queue id."),
@@ -47,6 +48,7 @@ export class CreateManualTurnUseCase
     private readonly turnRepo: ITurnRepo = new PostgresTurnRepo(),
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly ensureBusinessMembershipUseCase: EnsureBusinessMembershipUseCase = new EnsureBusinessMembershipUseCase(),
+    private readonly emitter: SocketIOEmitter | null = null,
   ) {}
 
   public async execute(input: CreateManualTurnInput): Promise<CreateManualTurnOutput> {
@@ -100,6 +102,12 @@ export class CreateManualTurnUseCase
       turnDate:  todayUTC(),
       prefix:    queue.prefix,
       queueJoinedAt,
+    });
+
+    // Igual que en CreateTurnUseCase: recien cuando el turno existe.
+    this.emitter?.emitQueueUpdate(turn.queueId, {
+      createdTurnId: turn.id,
+      createdDisplayNumber: turn.displayNumber,
     });
 
     return {

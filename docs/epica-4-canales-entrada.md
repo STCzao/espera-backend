@@ -137,6 +137,11 @@ mismo criterio que ya usa `activeQueueId` en `ListMyBusinessesUseCase`) y
 delega el resto — reglas de negocio, validaciones — a `CreateTurnUseCase`
 sin duplicarlas.
 
+Emite `queue:update` con `{ createdTurnId, createdDisplayNumber }` a la sala
+de la cola resuelta, para que el panel vea el turno sin recargar. La emisión
+sale de `CreateTurnUseCase`, en quien este endpoint delega la creación, así que
+es **un solo** evento por turno y no uno por capa.
+
 **Tope por cola:** una cola acepta como máximo 50 turnos de invitado activos
 a la vez (`waiting`/`called`/`attending`/`redirected` sin `customerId`); el
 siguiente recibe `409 GUEST_TURN_LIMIT_REACHED` y debe pasar por el mostrador

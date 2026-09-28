@@ -10,6 +10,7 @@ import type { IQueueRepo } from "../domain/IQueueRepo";
 import type { ITurnRepo } from "../domain/ITurnRepo";
 import { PostgresQueueRepo } from "../infrastructure/PostgresQueueRepo";
 import { PostgresTurnRepo } from "../infrastructure/PostgresTurnRepo";
+import type { SocketIOEmitter } from "../infrastructure/realtime/SocketIOEmitter";
 
 const schema = z
   .object({
@@ -37,6 +38,10 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
     private readonly businessRepo: IBusinessRepo = new PostgresBusinessRepo(),
     private readonly businessHoursRepo: IBusinessHoursRepo = new PostgresBusinessHoursRepo(),
     private readonly availabilityService: BusinessAvailabilityService = new BusinessAvailabilityService(),
+    // CreateGuestTurnUseCase delega la creacion aca, asi que el turno de la
+    // web ligera se anuncia por esta misma emision. Ese use case no recibe
+    // emitter justamente para que no pueda emitir de nuevo.
+    private readonly emitter: SocketIOEmitter | null = null,
   ) {}
 
   public async execute(input: CreateTurnInput): Promise<CreateTurnOutput> {
@@ -111,6 +116,14 @@ export class CreateTurnUseCase implements UseCase<CreateTurnInput, CreateTurnOut
       }
       throw error;
     }
+
+    // Despues del insert, no antes: si el indice unico lo rechaza (P2002,
+    // CUSTOMER_HAS_ACTIVE_TURN) la excepcion sale mas arriba y el panel no se
+    // entera de un turno que nunca existio.
+    this.emitter?.emitQueueUpdate(turn.queueId, {
+      createdTurnId: turn.id,
+      createdDisplayNumber: turn.displayNumber,
+    });
 
     return {
       turnId: turn.id,
