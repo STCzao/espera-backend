@@ -62,3 +62,17 @@ prisma/migrations/dev.db
 # Firebase / FCM
 *-firebase-adminsdk-*.json
 firebase-credentials.json
+
+# Datos de la base local (bind mount de docker-compose)
+data/
+
+# Dumps y backups
+backups/
+*.archive
+*.tar.gz
+*.dump
+# Los dumps son .sql, pero las migraciones de Prisma tambien: son codigo
+# fuente y sin ellas `prisma migrate deploy` no puede reconstruir la base en
+# produccion. Se ignoran los .sql sueltos y se rescatan las migraciones.
+*.sql
+!prisma/migrations/**/*.sql

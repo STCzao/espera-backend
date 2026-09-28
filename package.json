@@ -16,7 +16,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "postinstall": "prisma generate",
     "backfill:queues": "tsx src/scripts/backfill-queues.ts",
-    "create:super-admin": "tsx src/scripts/create-super-admin.ts"
+    "create:super-admin": "tsx src/scripts/create-super-admin.ts",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "repository": {
     "type": "git",
@@ -74,5 +75,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
