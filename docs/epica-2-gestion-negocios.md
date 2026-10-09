@@ -1110,18 +1110,37 @@ Respuesta esperada:
 
 ```json
 {
+  "organization": {
+    "id": "uuid",
+    "name": "Cafe Espera SRL",
+    "legalId": "30-12345678-9",
+    "status": "approved"
+  },
   "businesses": [
     {
       "id": "uuid",
       "name": "Cafe Espera",
       "slug": "cafe-espera",
       "status": "pending",
+      "organizationId": "uuid",
       "listingStatus": "draft",
       "operationalStatus": "normal"
     }
   ]
 }
 ```
+
+> **Actualizado**: `organizationId` se omitía del payload de cada negocio a
+> propósito. Se volvió a exponer (junto con un `organization` a nivel de
+> cuenta, con `name`/`legalId`/`status`) porque es lo único que le permite al
+> panel llamar `PATCH /api/organizations/:organizationId` — sin esto el
+> dueño no tenía forma de corregir un `legalId` faltante o mal cargado, que
+> es justo lo que dispara la nota obligatoria en `ApproveBusinessUseCase`
+> por alertas de coherencia. `organization` es un solo objeto, no uno por
+> negocio: hoy toda cuenta tiene una única Organization compartida por todos
+> sus Business (`CreateOrganizationForOwnerUseCase` reutiliza la existente
+> en vez de crear otra). Es `null` si el dueño todavía no creó ningún
+> negocio.
 
 ### Decisión de alcance
 
