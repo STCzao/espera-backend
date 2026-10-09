@@ -283,35 +283,35 @@ cuenta durante la espera.
 ### Contrato Backend
 
 ```text
-POST /api/business                                        ← requiere autenticación
-PATCH /api/auth/business-accounts/:userId/approve         ← requiere platform:approve_business_account
+POST  /api/business                              ← requiere autenticación
+PATCH /api/organizations/:organizationId/approve ← requiere platform:manage_approvals (una vez)
+PATCH /api/business/:businessId/approve          ← requiere platform:manage_approvals (por sucursal, requiere la Organization ya aprobada)
 ```
 
 `POST /api/auth/register-business` está **deprecado** (flujo anterior a
 backlog v2.2). Permanece activo hasta que el frontend complete la migración.
 
-> **Actualizado (backlog v2.4 — aprobación en dos niveles)**: desde el
-> refinamiento `bugfix/two-level-approval`, `PATCH
-> /api/auth/business-accounts/:userId/approve` **ya no aprueba el
-> `Business` ni arranca el trial**. Solo aprueba la cuenta/login del
-> usuario (`User.approvalStatus`). La aprobación comercial real vive en
-> `PATCH /api/organizations/:organizationId/approve` (una vez) y luego
-> `PATCH /api/business/:businessId/approve` (por cada sucursal, requiere la
-> Organization ya aprobada) — ver
-> `docs/epica-2-5-cuentas-organizaciones.md`, sección de refinamiento, para
-> el contrato completo.
+> **Actualizado**: no existe un paso separado para "aprobar la cuenta".
+> `PATCH /api/auth/business-accounts/:userId/approve`
+> (`ApproveBusinessAccountUseCase`) existió como gate de cuenta
+> independiente durante el backlog v2.4 y se quitó — nunca tuvo pantalla en
+> el frontend, así que en la práctica nadie lo llamaba por fuera de
+> aprobar el negocio. Hoy aprobar el `Business` (después de aprobar su
+> `Organization`) aprueba también la cuenta del dueño en la misma
+> operación — ver `docs/epica-2-5-cuentas-organizaciones.md`, sección de
+> refinamiento, para el contrato completo.
 
 ### Modelo y Persistencia
 
 - `User.role: user → business_admin` (en el momento del registro del negocio)
-- `User.approvalStatus: pending → approved` (vía `PATCH
-  /api/auth/business-accounts/:userId/approve` — solo gate de cuenta/login)
 - `Organization.status: pending → approved` (vía `PATCH
-  /api/organizations/:organizationId/approve` — independiente de lo anterior)
+  /api/organizations/:organizationId/approve`)
 - `Business.status: pending → approved` (vía `PATCH
   /api/business/:businessId/approve` — requiere Organization ya aprobada)
-- `Subscription.status: pending → trial` (al aprobar el `Business`, trial de
-  30 días — ya no al aprobar la cuenta)
+- `User.approvalStatus: pending → approved` (en la misma operación que
+  aprueba el `Business`, si la cuenta del dueño seguía pendiente)
+- `Subscription.status: pending → trial` (también en esa misma operación,
+  trial de 30 días)
 
 ### Reglas de Negocio
 

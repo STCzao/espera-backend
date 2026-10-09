@@ -132,8 +132,8 @@ Crear un environment con:
 | `refreshToken` | vacio |
 | `verificationToken` | vacio |
 | `resetToken` | vacio |
-| `businessUserId` | vacio |
 | `businessId` | vacio |
+| `organizationId` | vacio |
 
 Postman puede guardar automaticamente `accessToken` desde la respuesta de
 login. El refresh token tambien puede viajar como cookie `httpOnly`, por lo que
@@ -432,21 +432,43 @@ Resultado esperado:
 - `accessToken` y `refreshToken`
 - el panel muestra el negocio en estado "En revision"
 
-### 13. Aprobacion de negocio
+### 13. Aprobacion de negocio (dos pasos: organizacion y negocio)
 
-Requiere un usuario autenticado con rol `SUPER_ADMIN`.
+Requiere un usuario autenticado con rol `SUPER_ADMIN`. No existe un paso
+separado para "aprobar la cuenta": aprobar el negocio aprueba tambien la
+cuenta del dueño (`User.approvalStatus`) en la misma operacion.
 
-Request:
+**13a. Ubicar la organizacion pendiente** (para obtener `organizationId`):
 
 ```text
-PATCH {{baseUrl}}/auth/business-accounts/{{businessUserId}}/approve
+GET {{baseUrl}}/organizations/pending
+Authorization: Bearer {{accessToken}}
+```
+
+Guardar el `id` de la organizacion del negocio creado en el paso 11 en la
+variable `organizationId`.
+
+**13b. Aprobar la organizacion:**
+
+```text
+PATCH {{baseUrl}}/organizations/{{organizationId}}/approve
+Authorization: Bearer {{accessToken}}
+```
+
+**13c. Aprobar el negocio** (requiere la organizacion ya aprobada):
+
+```text
+PATCH {{baseUrl}}/business/{{businessId}}/approve
 Authorization: Bearer {{accessToken}}
 ```
 
 Resultado esperado:
 
 - `200`
-- `approvalStatus`: `approved`
+- `status`: `approved`
+- la cuenta del dueño (`User.approvalStatus`) queda `approved`
+- se crea una cola por defecto si el negocio no tenia ninguna, y arranca el
+  trial de la suscripcion
 - email de bienvenida best-effort
 
 ### 14. Login / Registro con Google OAuth (HU-1.9)

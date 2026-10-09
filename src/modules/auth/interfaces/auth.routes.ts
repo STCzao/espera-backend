@@ -26,12 +26,6 @@ authRouter.post(
   controller.registerBusinessWithGoogle,
 );
 authRouter.patch(
-  "/business-accounts/:userId/approve",
-  authenticate,
-  authorize("platform:approve_business_account"),
-  controller.approveBusinessAccount,
-);
-authRouter.patch(
   "/users/:userId/unblock",
   authenticate,
   authorize("platform:manage_approvals"),

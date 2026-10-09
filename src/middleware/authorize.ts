@@ -5,7 +5,6 @@ import { AppError } from "@shared/kernel/AppError";
 type Permission =
   | "*"
   | "auth:read_self"
-  | "platform:approve_business_account"
   | "platform:manage_approvals"
   | "organization:edit"
   | "turn:create"
@@ -29,7 +28,7 @@ const rolePermissions: Record<
   user: ["auth:read_self", "turn:create", "turn:cancel", "turn:read_own", "turn:update_own"],
   employee: ["auth:read_self", "queue:read", "queue:call_next", "turn:create", "turn:cancel", "turn:cancel_any", "turn:create_manual", "turn:attend", "turn:mark_no_show"],
   business_admin: ["auth:read_self", "queue:read", "queue:call_next", "queue:configure", "employee:manage", "business:edit", "organization:edit", "turn:cancel_any", "turn:create_manual", "turn:attend", "turn:mark_no_show"],
-  super_admin: ["*", "platform:approve_business_account", "platform:manage_approvals"]
+  super_admin: ["*", "platform:manage_approvals"]
 };
 
 /**
