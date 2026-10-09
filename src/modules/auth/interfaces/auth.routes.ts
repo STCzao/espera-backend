@@ -37,6 +37,24 @@ authRouter.patch(
   authorize("platform:manage_approvals"),
   controller.unblockUser,
 );
+authRouter.patch(
+  "/users/:userId/block",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.blockUser,
+);
+authRouter.get(
+  "/users",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.listUsers,
+);
+authRouter.get(
+  "/users/:userId",
+  authenticate,
+  authorize("platform:manage_approvals"),
+  controller.getUserSummary,
+);
 authRouter.get("/verify-email", controller.verifyEmail);
 authRouter.post(
   "/resend-verification",

@@ -99,4 +99,70 @@ describe("PostgresUserRepo (real Postgres)", () => {
 
     await expect(repo.save(second)).rejects.toThrow();
   });
+
+  describe("findMany / countMany", () => {
+    // Shared scenario for every test in this block: created once, since none
+    // of them mutate it.
+    const seed = async () => {
+      const prefix = randomUUID();
+      const users = await Promise.all([
+        repo.save(buildUser({
+          email: `${prefix}-ana.garcia@example.com`, firstName: "Ana", lastName: "Garcia",
+          role: "business_admin", approvalStatus: "pending", isBlocked: false,
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        })),
+        repo.save(buildUser({
+          email: `${prefix}-bruno@example.com`, firstName: "Bruno", lastName: "Lopez",
+          role: "user", approvalStatus: "approved", isBlocked: true,
+          createdAt: new Date("2026-02-01T00:00:00.000Z"),
+        })),
+      ]);
+      createdUserIds.push(...users.map((u) => u.id));
+      return { prefix, users };
+    };
+
+    it("filters by role, isBlocked and approvalStatus against real Postgres enums", async () => {
+      const { prefix } = await seed();
+      const byPrefix = { search: prefix };
+
+      const admins = await repo.findMany({ ...byPrefix, role: "business_admin" });
+      expect(admins.map((u) => u.email)).toEqual([expect.stringContaining("ana.garcia")]);
+
+      const blocked = await repo.findMany({ ...byPrefix, isBlocked: true });
+      expect(blocked.map((u) => u.email)).toEqual([expect.stringContaining("bruno")]);
+
+      const pending = await repo.findMany({ ...byPrefix, approvalStatus: "pending" });
+      expect(pending.map((u) => u.email)).toEqual([expect.stringContaining("ana.garcia")]);
+    });
+
+    it("search matches email, firstName and lastName, case-insensitive", async () => {
+      const { prefix } = await seed();
+
+      await expect(repo.findMany({ search: "GARCIA" })).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ firstName: "Ana" })]),
+      );
+      await expect(repo.findMany({ search: `${prefix}-bruno` })).resolves.toEqual([
+        expect.objectContaining({ firstName: "Bruno" }),
+      ]);
+    });
+
+    it("countMany agrees with findMany for the same filter", async () => {
+      const { prefix } = await seed();
+
+      const rows = await repo.findMany({ search: prefix });
+      const count = await repo.countMany({ search: prefix });
+
+      expect(count).toBe(rows.length);
+      expect(count).toBe(2);
+    });
+
+    it("paginates in the database via skip/take, sorted by createdAt", async () => {
+      const { prefix } = await seed();
+
+      const page = await repo.findMany({ search: prefix, sortBy: "createdAt", sortDir: "asc", skip: 1, take: 1 });
+
+      expect(page).toHaveLength(1);
+      expect(page[0].firstName).toBe("Bruno");
+    });
+  });
 });

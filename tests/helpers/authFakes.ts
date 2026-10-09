@@ -1,4 +1,4 @@
-import type { IUserRepo } from "../../src/modules/auth/domain/IUserRepo";
+import type { FindManyUsersFilters, IUserRepo } from "../../src/modules/auth/domain/IUserRepo";
 import type { IRefreshSessionRepo } from "../../src/modules/auth/domain/IRefreshSessionRepo";
 import type { RefreshSession } from "../../src/modules/auth/domain/RefreshSession";
 import type { User } from "../../src/modules/auth/domain/User";
@@ -141,6 +141,38 @@ export class InMemoryUserRepo implements IUserRepo {
 
   public async count(): Promise<number> {
     return this.users.size;
+  }
+
+  private matchesFilters(user: User, filters: FindManyUsersFilters): boolean {
+    if (filters.role && user.role !== filters.role) return false;
+    if (filters.isBlocked !== undefined && user.isBlocked !== filters.isBlocked) return false;
+    if (filters.approvalStatus && user.approvalStatus !== filters.approvalStatus) return false;
+    if (filters.search) {
+      const needle = filters.search.toLowerCase();
+      const haystack = `${user.email} ${user.firstName} ${user.lastName}`.toLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    return true;
+  }
+
+  public async findMany(filters: FindManyUsersFilters = {}): Promise<User[]> {
+    const matches = [...this.users.values()].filter((user) => this.matchesFilters(user, filters));
+
+    const sortDir = filters.sortDir === "asc" ? 1 : -1;
+    matches.sort((a, b) => {
+      const cmp = filters.sortBy === "name"
+        ? `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
+        : a.createdAt.getTime() - b.createdAt.getTime();
+      return cmp * sortDir;
+    });
+
+    if (filters.skip === undefined && filters.take === undefined) return matches;
+    const start = filters.skip ?? 0;
+    return matches.slice(start, filters.take === undefined ? undefined : start + filters.take);
+  }
+
+  public async countMany(filters: FindManyUsersFilters = {}): Promise<number> {
+    return [...this.users.values()].filter((user) => this.matchesFilters(user, filters)).length;
   }
 
   public all(): User[] {

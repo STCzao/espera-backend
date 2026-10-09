@@ -18,7 +18,19 @@ const authMocks = vi.hoisted(() => ({
   resendVerificationExecute: vi.fn(),
   resetPasswordExecute: vi.fn(),
   verifyEmailExecute: vi.fn(),
+  listUsersExecute: vi.fn(),
+  getUserSummaryExecute: vi.fn(),
+  blockUserExecute: vi.fn(),
 }));
+
+const loaderMocks = vi.hoisted(() => ({ loadAuthenticatedUser: vi.fn() }));
+
+const BUSINESS_ADMIN_LOADER_RESULT = {
+  email: "owner@example.com",
+  role: "business_admin" as const,
+  approvalStatus: "approved" as const,
+  isBlocked: false,
+};
 
 // This suite hits every POST route through the real Express app, including
 // the real `rateLimiter` middleware (only the use cases are mocked below) —
@@ -117,15 +129,30 @@ vi.mock("../../../src/modules/auth/infrastructure/GoogleOAuthService", () => ({
 }));
 
 // authenticate re-reads the user from the database on every request; these
-// suites have no database, so the loader answers with an approved business admin.
+// suites have no database, so the loader answers with an approved business
+// admin by default (reset in beforeEach) — tests that need a different
+// principal (e.g. super_admin, for the Backoffice user-directory routes)
+// override it with mockResolvedValueOnce.
 vi.mock("../../../src/middleware/loadAuthenticatedUser", () => ({
-  loadAuthenticatedUser: async (id: string) => ({
-    id,
-    email: "owner@example.com",
-    role: "business_admin",
-    approvalStatus: "approved",
-    isBlocked: false,
-  }),
+  loadAuthenticatedUser: loaderMocks.loadAuthenticatedUser,
+}));
+
+vi.mock("../../../src/modules/auth/application/ListUsersUseCase", () => ({
+  ListUsersUseCase: class {
+    public execute = authMocks.listUsersExecute;
+  },
+}));
+
+vi.mock("../../../src/modules/auth/application/GetUserSummaryUseCase", () => ({
+  GetUserSummaryUseCase: class {
+    public execute = authMocks.getUserSummaryExecute;
+  },
+}));
+
+vi.mock("../../../src/modules/auth/application/BlockUserUseCase", () => ({
+  BlockUserUseCase: class {
+    public execute = authMocks.blockUserExecute;
+  },
 }));
 
 describe("auth API", () => {
@@ -143,6 +170,13 @@ describe("auth API", () => {
     authMocks.resendVerificationExecute.mockReset();
     authMocks.resetPasswordExecute.mockReset();
     authMocks.verifyEmailExecute.mockReset();
+    authMocks.listUsersExecute.mockReset();
+    authMocks.getUserSummaryExecute.mockReset();
+    authMocks.blockUserExecute.mockReset();
+
+    loaderMocks.loadAuthenticatedUser.mockReset().mockImplementation(
+      async (id: string) => ({ id, ...BUSINESS_ADMIN_LOADER_RESULT }),
+    );
 
     redisMocks.ensureRedisConnection.mockReset().mockResolvedValue(undefined);
     redisMocks.eval.mockReset().mockResolvedValue(1);
@@ -263,5 +297,75 @@ describe("auth API", () => {
     expect(response.body.url).toContain(`state=${response.body.state}`);
     expect(response.headers["set-cookie"]?.[0]).toContain("googleOAuthState=");
     expect(response.headers["set-cookie"]?.[0]).toContain("HttpOnly");
+  });
+
+  describe("directorio de usuarios (Backoffice)", () => {
+    const superAdminToken = () =>
+      jwt.sign({}, process.env.JWT_ACCESS_SECRET ?? "test-access-secret", {
+        subject: "super-admin-1", expiresIn: "15m",
+      });
+
+    const asSuperAdmin = () => {
+      loaderMocks.loadAuthenticatedUser.mockResolvedValueOnce({
+        id: "super-admin-1", email: "admin@example.com", role: "super_admin", approvalStatus: "approved", isBlocked: false,
+      });
+    };
+
+    it("GET /auth/users requires platform:manage_approvals — a business_admin gets 403", async () => {
+      const token = jwt.sign(
+        { role: "business_admin" },
+        process.env.JWT_ACCESS_SECRET ?? "test-access-secret",
+        { subject: "biz-admin-1", expiresIn: "15m" },
+      );
+
+      const response = await request(createApp()).get("/api/auth/users").set("Authorization", `Bearer ${token}`);
+
+      expect(response.status).toBe(403);
+      expect(authMocks.listUsersExecute).not.toHaveBeenCalled();
+    });
+
+    it("GET /auth/users forwards filters from the query string and returns the list", async () => {
+      asSuperAdmin();
+      authMocks.listUsersExecute.mockResolvedValue({ items: [], page: 1, pageSize: 20, total: 0 });
+
+      const response = await request(createApp())
+        .get("/api/auth/users?role=business_admin&isBlocked=true&search=ana&page=2")
+        .set("Authorization", `Bearer ${superAdminToken()}`);
+
+      expect(response.status).toBe(200);
+      expect(authMocks.listUsersExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ role: "business_admin", isBlocked: true, search: "ana", page: 2 }),
+      );
+    });
+
+    it("GET /auth/users/:userId returns the resolved summary", async () => {
+      asSuperAdmin();
+      authMocks.getUserSummaryExecute.mockResolvedValue({ userId: "user-9", firstName: "Ana" });
+
+      const response = await request(createApp())
+        .get("/api/auth/users/user-9")
+        .set("Authorization", `Bearer ${superAdminToken()}`);
+
+      expect(response.status).toBe(200);
+      expect(authMocks.getUserSummaryExecute).toHaveBeenCalledWith({ userId: "user-9" });
+      expect(response.body).toMatchObject({ userId: "user-9", firstName: "Ana" });
+    });
+
+    it("PATCH /auth/users/:userId/block blocks directly, no Report required", async () => {
+      asSuperAdmin();
+      authMocks.blockUserExecute.mockResolvedValue({
+        userId: "user-9", isBlocked: true, blockedByUserId: "super-admin-1", blockedAt: new Date(), blockReason: "Spam",
+      });
+
+      const response = await request(createApp())
+        .patch("/api/auth/users/user-9/block")
+        .set("Authorization", `Bearer ${superAdminToken()}`)
+        .send({ reason: "Spam" });
+
+      expect(response.status).toBe(200);
+      expect(authMocks.blockUserExecute).toHaveBeenCalledWith({
+        userId: "user-9", blockedByUserId: "super-admin-1", reason: "Spam",
+      });
+    });
   });
 });

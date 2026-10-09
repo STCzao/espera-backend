@@ -18,3 +18,12 @@ export const asQueryNumber = (value: unknown): number | undefined => {
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : undefined;
 };
+
+export const asQueryBoolean = (value: unknown): boolean | undefined => {
+  const raw = asQueryString(value);
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  // Anything else (absent, "1", "yes", garbage) reads as "absent" — same
+  // "don't guess, just drop the filter" rule as asQueryNumber.
+  return undefined;
+};
