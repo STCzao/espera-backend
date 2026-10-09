@@ -1,13 +1,14 @@
 import {
   ApprovalStatus,
   AuthProvider,
+  type Prisma,
   Role,
   type User as PrismaUser,
 } from "@prisma/client";
 
 import { prisma, resolvePrismaClient } from "@shared/infrastructure/prisma";
 import type { TransactionHandle } from "@shared/kernel/Repository";
-import type { IUserRepo } from "../domain/IUserRepo";
+import type { FindManyUsersFilters, IUserRepo } from "../domain/IUserRepo";
 import type { User } from "../domain/User";
 
 const toRoleEnum = (role: User["role"]): Role =>
@@ -19,6 +20,19 @@ const toApprovalStatusEnum = (
 
 const toAuthProviderEnum = (authProvider: User["authProvider"]): AuthProvider =>
   authProvider.toUpperCase() as AuthProvider;
+
+const toFindManyWhere = (filters: FindManyUsersFilters): Prisma.UserWhereInput => ({
+  role: filters.role ? toRoleEnum(filters.role) : undefined,
+  isBlocked: filters.isBlocked,
+  approvalStatus: filters.approvalStatus ? toApprovalStatusEnum(filters.approvalStatus) : undefined,
+  OR: filters.search
+    ? [
+        { email: { contains: filters.search, mode: "insensitive" } },
+        { firstName: { contains: filters.search, mode: "insensitive" } },
+        { lastName: { contains: filters.search, mode: "insensitive" } },
+      ]
+    : undefined,
+});
 
 export class PostgresUserRepo implements IUserRepo {
   /**
@@ -130,6 +144,24 @@ export class PostgresUserRepo implements IUserRepo {
 
   public async count(): Promise<number> {
     return prisma.user.count();
+  }
+
+  public async findMany(filters: FindManyUsersFilters = {}): Promise<User[]> {
+    const rows = await prisma.user.findMany({
+      where: toFindManyWhere(filters),
+      // No single "name" column to sort by directly — lastName first, then
+      // firstName, same tiebreak order an admin reading a list expects.
+      orderBy: filters.sortBy === "name"
+        ? [{ lastName: filters.sortDir ?? "asc" }, { firstName: filters.sortDir ?? "asc" }]
+        : { createdAt: filters.sortDir ?? "desc" },
+      skip: filters.skip,
+      take: filters.take,
+    });
+    return rows.map((row) => this.toDomain(row));
+  }
+
+  public async countMany(filters: FindManyUsersFilters = {}): Promise<number> {
+    return prisma.user.count({ where: toFindManyWhere(filters) });
   }
 
   /**

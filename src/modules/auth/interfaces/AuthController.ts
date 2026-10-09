@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 
 import { AppError } from "@shared/kernel/AppError";
 import { logger } from "@shared/infrastructure/logger";
-import { asQueryString } from "@shared/utils/queryParams";
+import { asQueryBoolean, asQueryNumber, asQueryString } from "@shared/utils/queryParams";
 import {
   clearRefreshTokenCookie,
   setRefreshTokenCookie,
@@ -25,6 +25,9 @@ import { VerifyEmailUseCase } from "../application/VerifyEmailUseCase";
 import { RegisterBusinessAccountUseCase } from "../application/RegisterBusinessAccountUseCase";
 import { RegisterBusinessWithGoogleUseCase } from "../application/RegisterBusinessWithGoogleUseCase";
 import { ApproveBusinessAccountUseCase } from "../application/ApproveBusinessAccountUseCase";
+import { BlockUserUseCase } from "../application/BlockUserUseCase";
+import { GetUserSummaryUseCase } from "../application/GetUserSummaryUseCase";
+import { ListUsersUseCase } from "../application/ListUsersUseCase";
 import { UnblockUserUseCase } from "../application/UnblockUserUseCase";
 import { GoogleOAuthService } from "../infrastructure/GoogleOAuthService";
 
@@ -43,6 +46,9 @@ export class AuthController {
     private readonly registerBusinessWithGoogleUseCase = new RegisterBusinessWithGoogleUseCase(),
     private readonly approveBusinessAccountUseCase = new ApproveBusinessAccountUseCase(),
     private readonly unblockUserUseCase = new UnblockUserUseCase(),
+    private readonly blockUserUseCase = new BlockUserUseCase(),
+    private readonly listUsersUseCase = new ListUsersUseCase(),
+    private readonly getUserSummaryUseCase = new GetUserSummaryUseCase(),
     private readonly googleOAuthService = new GoogleOAuthService(),
   ) {}
 
@@ -109,6 +115,56 @@ export class AuthController {
     });
 
     logger.info({ userId: result.userId }, "User unblocked");
+    response.status(200).json(result);
+  };
+
+  /**
+   * Blocks a User account directly from the Backoffice, without a Report
+   * needing to exist first (HU-8.6 only wired this through
+   * SuspendReportedUseCase until now).
+   */
+  public blockUser = async (
+    request: Request,
+    response: Response,
+  ): Promise<void> => {
+    const result = await this.blockUserUseCase.execute({
+      userId: String(request.params.userId),
+      blockedByUserId: request.user?.id ?? "",
+      reason: String(request.body?.reason ?? ""),
+    });
+
+    logger.info({ userId: result.userId }, "User blocked");
+    response.status(200).json(result);
+  };
+
+  /**
+   * Admin-facing user directory (Backoffice "Usuarios").
+   */
+  public listUsers = async (request: Request, response: Response): Promise<void> => {
+    const query = request.query;
+
+    const result = await this.listUsersUseCase.execute({
+      role:           asQueryString(query.role) as never,
+      isBlocked:      asQueryBoolean(query.isBlocked),
+      approvalStatus: asQueryString(query.approvalStatus) as never,
+      search:         asQueryString(query.search),
+      sortBy:         asQueryString(query.sortBy) as never,
+      sortDir:        asQueryString(query.sortDir) as never,
+      page:           asQueryNumber(query.page),
+      pageSize:       asQueryNumber(query.pageSize),
+    });
+    response.status(200).json(result);
+  };
+
+  /**
+   * Resolves a single user for the Backoffice — the detail view of the
+   * Usuarios directory, and reused wherever another screen needs to show
+   * "who" (business owner, organization admin, reported user).
+   */
+  public getUserSummary = async (request: Request, response: Response): Promise<void> => {
+    const result = await this.getUserSummaryUseCase.execute({
+      userId: String(request.params.userId),
+    });
     response.status(200).json(result);
   };
 

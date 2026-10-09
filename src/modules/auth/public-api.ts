@@ -6,3 +6,5 @@ export { ACCESS_TOKEN_ALGORITHM } from "./infrastructure/JWTTokenService";
 export { PostgresRefreshSessionRepo } from "./infrastructure/PostgresRefreshSessionRepo";
 export { BlockUserUseCase } from "./application/BlockUserUseCase";
 export { UnblockUserUseCase } from "./application/UnblockUserUseCase";
+export { GetUserSummaryUseCase } from "./application/GetUserSummaryUseCase";
+export type { GetUserSummaryOutput } from "./application/GetUserSummaryUseCase";
