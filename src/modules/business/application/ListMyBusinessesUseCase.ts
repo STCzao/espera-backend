@@ -2,8 +2,8 @@ import { z } from "zod";
 
 import { AppError } from "@shared/kernel/AppError";
 import type { UseCase } from "@shared/kernel/UseCase";
-import type { ISubscriptionRepo, SubscriptionPlan } from "@modules/organization/public-api";
-import { PostgresSubscriptionRepo } from "@modules/organization/public-api";
+import type { IOrganizationRepo, ISubscriptionRepo, SubscriptionPlan } from "@modules/organization/public-api";
+import { PostgresOrganizationRepo, PostgresSubscriptionRepo } from "@modules/organization/public-api";
 import type { IQueueRepo, IServiceWindowRepo } from "@modules/queue/public-api";
 import { PostgresQueueRepo, PostgresServiceWindowRepo } from "@modules/queue/public-api";
 import type { IBusinessRepo } from "../domain/IBusinessRepo";
@@ -16,12 +16,24 @@ const listMyBusinessesSchema = z.object({
 export type ListMyBusinessesInput = z.infer<typeof listMyBusinessesSchema>;
 
 export interface ListMyBusinessesOutput {
+  // One per account today (every Business an owner creates shares the same
+  // Organization — CreateOrganizationForOwnerUseCase reuses it instead of
+  // making a new one), so this is a single object, not one per business.
+  // null only when the owner has no Business yet, since an Organization is
+  // first created alongside the owner's first Business.
+  organization: {
+    id: string;
+    name: string;
+    legalId: string | null;
+    status: string;
+  } | null;
   businesses: Array<{
     id: string;
     name: string;
     slug: string;
     categoryId: string;
     status: string;
+    organizationId: string;
     phone?: string;
     address?: string;
     latitude?: number;
@@ -54,6 +66,10 @@ export class ListMyBusinessesUseCase
     private readonly subscriptionRepo: ISubscriptionRepo = new PostgresSubscriptionRepo(),
     private readonly queueRepo: IQueueRepo = new PostgresQueueRepo(),
     private readonly windowRepo: IServiceWindowRepo = new PostgresServiceWindowRepo(),
+    // Appended at the end on purpose: every existing caller/test constructs
+    // this positionally, and inserting a param earlier silently shifts every
+    // argument after it into the wrong slot instead of failing loudly.
+    private readonly organizationRepo: IOrganizationRepo = new PostgresOrganizationRepo(),
   ) {}
 
   public async execute(input: ListMyBusinessesInput): Promise<ListMyBusinessesOutput> {
@@ -63,6 +79,10 @@ export class ListMyBusinessesUseCase
     }
 
     const businesses = await this.businessRepo.findByOwnerUserId(parsed.data.ownerUserId);
+
+    const organization = businesses.length > 0
+      ? await this.organizationRepo.findById(businesses[0].organizationId)
+      : null;
 
     const results = await Promise.all(
       businesses.map(async (business) => {
@@ -97,6 +117,7 @@ export class ListMyBusinessesUseCase
           slug: business.slug,
           categoryId: business.categoryId,
           status: business.status,
+          organizationId: business.organizationId,
           phone: business.phone,
           address: business.address,
           latitude: business.latitude,
@@ -113,6 +134,11 @@ export class ListMyBusinessesUseCase
       }),
     );
 
-    return { businesses: results };
+    return {
+      organization: organization
+        ? { id: organization.id, name: organization.name, legalId: organization.legalId ?? null, status: organization.status }
+        : null,
+      businesses: results,
+    };
   }
 }

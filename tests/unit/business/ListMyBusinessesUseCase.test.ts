@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ListMyBusinessesUseCase } from "../../../src/modules/business/application/ListMyBusinessesUseCase";
 import { InMemoryBusinessRepo, buildBusiness } from "../../helpers/authFakes";
-import { InMemorySubscriptionRepo, buildSubscription } from "../../helpers/organizationFakes";
+import { InMemoryOrganizationRepo, InMemorySubscriptionRepo, buildOrganization, buildSubscription } from "../../helpers/organizationFakes";
 import { InMemoryQueueRepo, InMemoryServiceWindowRepo, buildQueue, buildServiceWindow } from "../../helpers/queueFakes";
 
 const OWNER_ID = "11111111-1111-4111-8111-111111111111";
@@ -11,6 +11,7 @@ const ORG_ID = "organization-1";
 const buildUseCase = (options: {
   businesses?: ReturnType<typeof buildBusiness>[];
   subscription?: ReturnType<typeof buildSubscription>;
+  organization?: ReturnType<typeof buildOrganization> | null;
   queueRepo?: InMemoryQueueRepo;
   windowRepo?: InMemoryServiceWindowRepo;
 } = {}) => {
@@ -20,7 +21,9 @@ const buildUseCase = (options: {
   );
   const queueRepo = options.queueRepo ?? new InMemoryQueueRepo();
   const windowRepo = options.windowRepo ?? new InMemoryServiceWindowRepo();
-  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo, queueRepo, windowRepo);
+  const organization = options.organization === null ? null : (options.organization ?? buildOrganization({ id: ORG_ID }));
+  const organizationRepo = new InMemoryOrganizationRepo(organization ? [organization] : []);
+  return new ListMyBusinessesUseCase(businessRepo, subscriptionRepo, queueRepo, windowRepo, organizationRepo);
 };
 
 describe("ListMyBusinessesUseCase", () => {
@@ -39,16 +42,18 @@ describe("ListMyBusinessesUseCase", () => {
     expect(result.businesses[1]).toMatchObject({ slug: "bar-espera", status: "pending" });
   });
 
-  it("does not expose organizationId", async () => {
+  it("exposes organizationId per business, needed to call PATCH /organizations/:organizationId", async () => {
+    // Used to be withheld on purpose; the panel now needs it to let an
+    // owner edit their Organization's name/legalId (no endpoint can do that
+    // without it, and GET /business/me was the only place this account's
+    // owner could learn it from).
     const useCase = buildUseCase({
       businesses: [buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })],
     });
 
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
-    const business = result.businesses[0] as Record<string, unknown>;
 
-    expect(business).not.toHaveProperty("organizationId");
-    expect(business).toHaveProperty("id");
+    expect(result.businesses[0]).toMatchObject({ organizationId: ORG_ID });
   });
 
   it("includes profile fields needed to preload the edit form", async () => {
@@ -74,7 +79,6 @@ describe("ListMyBusinessesUseCase", () => {
       latitude: -34.6037,
       longitude: -58.3816,
     });
-    expect(business).not.toHaveProperty("organizationId");
   });
 
   it("exposes subscription plan and status for each business", async () => {
@@ -116,6 +120,7 @@ describe("ListMyBusinessesUseCase", () => {
       new InMemorySubscriptionRepo([]),
       new InMemoryQueueRepo(),
       new InMemoryServiceWindowRepo(),
+      new InMemoryOrganizationRepo([buildOrganization({ id: ORG_ID })]),
     );
 
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
@@ -206,5 +211,63 @@ describe("ListMyBusinessesUseCase", () => {
     const result = await useCase.execute({ ownerUserId: OWNER_ID });
 
     expect(result.businesses).toHaveLength(0);
+  });
+
+  describe("organization", () => {
+    it("exposes id, name, legalId and status — the panel's edit form needs all four", async () => {
+      const useCase = buildUseCase({
+        businesses: [buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+        organization: buildOrganization({ id: ORG_ID, name: "Café Espera SRL", legalId: "30-12345678-9", status: "approved" }),
+      });
+
+      const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+      expect(result.organization).toEqual({
+        id: ORG_ID,
+        name: "Café Espera SRL",
+        legalId: "30-12345678-9",
+        status: "approved",
+      });
+    });
+
+    it("returns legalId as null instead of undefined when the Organization predates it being mandatory", async () => {
+      const useCase = buildUseCase({
+        businesses: [buildBusiness({ ownerUserId: OWNER_ID, organizationId: ORG_ID })],
+        organization: buildOrganization({ id: ORG_ID, legalId: undefined }),
+      });
+
+      const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+      expect(result.organization?.legalId).toBeNull();
+    });
+
+    it("is null when the owner has no Business yet (no Organization exists until the first one is created)", async () => {
+      const useCase = buildUseCase({ businesses: [] });
+
+      const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+      expect(result.organization).toBeNull();
+    });
+
+    it("is read once, not once per business, since every Business shares the one account-level Organization", async () => {
+      const organization = buildOrganization({ id: ORG_ID, name: "Café Espera SRL" });
+      const organizationRepo = new InMemoryOrganizationRepo([organization]);
+      const findByIdSpy = vi.spyOn(organizationRepo, "findById");
+      const useCase = new ListMyBusinessesUseCase(
+        new InMemoryBusinessRepo([
+          buildBusiness({ id: "biz-1", ownerUserId: OWNER_ID, organizationId: ORG_ID }),
+          buildBusiness({ id: "biz-2", ownerUserId: OWNER_ID, organizationId: ORG_ID }),
+        ]),
+        new InMemorySubscriptionRepo([buildSubscription({ organizationId: ORG_ID })]),
+        new InMemoryQueueRepo(),
+        new InMemoryServiceWindowRepo(),
+        organizationRepo,
+      );
+
+      const result = await useCase.execute({ ownerUserId: OWNER_ID });
+
+      expect(findByIdSpy).toHaveBeenCalledTimes(1);
+      expect(result.organization?.name).toBe("Café Espera SRL");
+    });
   });
 });
