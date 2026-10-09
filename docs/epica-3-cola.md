@@ -52,9 +52,10 @@ DELETE /api/queue/:queueId/windows/:windowId                  queue:configure
 > `/api/queue/` (plural) por error.
 >
 > **Queue bootstrap**: la cola inicial `("Caja principal", prefix "A")` se
-> crea automáticamente al aprobar el Business en
-> `ApproveBusinessAccountUseCase`. El `activeQueueId` se expone en
-> `GET /api/business/me` para que el frontend pueda arrancar sin un paso
+> crea automáticamente al aprobar el Business en `ApproveBusinessUseCase`
+> (no en `ApproveBusinessAccountUseCase` — esa clase no existe más, ver
+> `docs/epica-2-5-cuentas-organizaciones.md`). El `activeQueueId` se expone
+> en `GET /api/business/me` para que el frontend pueda arrancar sin un paso
 > extra de configuración.
 
 ## Modelo de datos central

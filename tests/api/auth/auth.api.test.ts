@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/app";
 
 const authMocks = vi.hoisted(() => ({
-  approveBusinessAccountExecute: vi.fn(),
   googleGetAuthorizationUrl: vi.fn(),
   loginExecute: vi.fn(),
   loginWithGoogleExecute: vi.fn(),
@@ -47,12 +46,6 @@ vi.mock("../../../src/shared/infrastructure/redis", () => ({
   ensureRedisConnection: redisMocks.ensureRedisConnection,
   redis: {
     eval: redisMocks.eval,
-  },
-}));
-
-vi.mock("../../../src/modules/auth/application/ApproveBusinessAccountUseCase", () => ({
-  ApproveBusinessAccountUseCase: class {
-    public execute = authMocks.approveBusinessAccountExecute;
   },
 }));
 
@@ -157,7 +150,6 @@ vi.mock("../../../src/modules/auth/application/BlockUserUseCase", () => ({
 
 describe("auth API", () => {
   beforeEach(() => {
-    authMocks.approveBusinessAccountExecute.mockReset();
     authMocks.googleGetAuthorizationUrl.mockReset();
     authMocks.loginExecute.mockReset();
     authMocks.loginWithGoogleExecute.mockReset();

@@ -24,7 +24,6 @@ import { ResetPasswordUseCase } from "../application/ResetPasswordUseCase";
 import { VerifyEmailUseCase } from "../application/VerifyEmailUseCase";
 import { RegisterBusinessAccountUseCase } from "../application/RegisterBusinessAccountUseCase";
 import { RegisterBusinessWithGoogleUseCase } from "../application/RegisterBusinessWithGoogleUseCase";
-import { ApproveBusinessAccountUseCase } from "../application/ApproveBusinessAccountUseCase";
 import { BlockUserUseCase } from "../application/BlockUserUseCase";
 import { GetUserSummaryUseCase } from "../application/GetUserSummaryUseCase";
 import { ListUsersUseCase } from "../application/ListUsersUseCase";
@@ -44,7 +43,6 @@ export class AuthController {
     private readonly verifyEmailUseCase = new VerifyEmailUseCase(),
     private readonly registerBusinessAccountUseCase = new RegisterBusinessAccountUseCase(),
     private readonly registerBusinessWithGoogleUseCase = new RegisterBusinessWithGoogleUseCase(),
-    private readonly approveBusinessAccountUseCase = new ApproveBusinessAccountUseCase(),
     private readonly unblockUserUseCase = new UnblockUserUseCase(),
     private readonly blockUserUseCase = new BlockUserUseCase(),
     private readonly listUsersUseCase = new ListUsersUseCase(),
@@ -83,24 +81,6 @@ export class AuthController {
 
     return requestState;
   }
-
-  /**
-   * Approves a pending business admin account.
-   */
-  public approveBusinessAccount = async (
-    request: Request,
-    response: Response,
-  ): Promise<void> => {
-    const userId =
-      typeof request.params.userId === "string" ? request.params.userId : "";
-
-    const result = await this.approveBusinessAccountUseCase.execute({
-      userId,
-    });
-
-    logger.info({ userId: result.userId }, "Business account approved");
-    response.status(200).json(result);
-  };
 
   /**
    * Reverses a User block (HU-8.6), restoring login access.

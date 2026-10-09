@@ -474,7 +474,6 @@ de integracion ni de API.
 | Forgot password | `tests/unit/auth/RequestPasswordResetUseCase.test.ts` | Token para cuentas locales, respuesta generica para emails inexistentes, bloqueo silencioso de recuperacion para cuentas Google | Unitario de aplicacion |
 | Verificacion de email | `tests/unit/auth/VerifyEmailUseCase.test.ts` | Verificacion con token valido y rechazo de token expirado | Unitario de aplicacion |
 | Logout | `tests/unit/auth/LogoutUseCase.test.ts` | Revocacion de sesion refresh e idempotencia cuando el token no existe | Unitario de aplicacion |
-| Aprobacion de negocio | `tests/unit/auth/ApproveBusinessAccountUseCase.test.ts` | Aprobacion de `business_admin` y rechazo de cuentas no negocio | Unitario de aplicacion |
 | Registro de negocio | `tests/unit/auth/RegisterBusinessAccountUseCase.test.ts` | Creacion de usuario `business_admin` pendiente, creacion de negocio, envio de verificacion, rollback ante falla de email | Unitario de aplicacion |
 | Registro negocio Google | `tests/unit/auth/RegisterBusinessWithGoogleUseCase.test.ts` | Creacion de negocio Google pendiente, cuenta existente y rechazo de email Google no verificado | Unitario de aplicacion |
 | Login Google | `tests/unit/auth/LoginWithGoogleUseCase.test.ts` | Login exitoso aprobado, bloqueo pendiente y rechazo de cuenta local | Unitario de aplicacion |
